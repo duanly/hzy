@@ -6,9 +6,14 @@ import { DB } from './db.ts';
 import type { Lobby } from './lobby.ts';
 import { isMj } from './lobby.ts';
 import type { Room } from './room.ts';
+/* 微软 Edge 和谷歌那两条**暂时摘掉了**：服务器搬到国内之后，
+   speech.platform.bing.com 和 translate.google.com 都出不去，选了也只会报错，
+   留在单子里反而害人点。edgetts.ts / gtts.ts 两个文件照旧留着、没删 ——
+   哪天服务器能出网了（或者挂上代理），把下面这两行 import 解开、
+   再把 voices 那一段和 one() 里的分支接回去就行，实现本身一直是好的。
 import { EDGE_VOICES, edgeTTS, isEdgeVoice } from './edgetts.ts';
-import { GOOGLE_VOICES, googleTTS, isGoogleVoice, isAutoVoice } from './gtts.ts';
-import { ALI_VOICES, aliTTS, isAliVoice, setAliKey, hasAliKey } from './alitts.ts';
+import { GOOGLE_VOICES, googleTTS, isGoogleVoice, isAutoVoice } from './gtts.ts'; */
+import { ALI_VOICES, ALI_LANGS, aliTTS, aliTranslate, isAliVoice, isAliLang, setAliKey, hasAliKey } from './alitts.ts';
 
 /* 自录语音包：文件名就是播报用的 key（peng / chi / hu / s1 / b10 …）。
    只认这张白名单 —— 不然随便传个名字进来，等于让人往服务器上写任意文件。 */
@@ -296,6 +301,12 @@ export async function handleAdmin(
          只记合成出来的那些；人工录的 / 传的不在这里头，所以永远不会被自动覆盖掉。 */
       const mades = db.getSetting<Record<string, Record<string, string>>>('voiceMade', {});
       const made = mades[packId] ?? {};
+      /* 这一套的念法现在是哪门语言。翻译过就记下来，没翻过就是中文。
+         为什么要**记**而不是看文本猜：日语里全是汉字，按"有没有汉字"去猜，
+         翻成日语之后会被当成还是中文，再翻一次就成了日译英 —— 而 source_lang
+         这边一直按中文发过去，翻出来是什么样没人知道。记一笔就没这些事了。 */
+      const packLangs = db.getSetting<Record<string, string>>('voiceLang', {});
+      const packLang = packLangs[packId] ?? 'Chinese';
       const stale = (k: string) => made[k] !== undefined && made[k] !== sayOf(k);
       if (req.method === 'GET') {
         const have = voiceFiles(dir);
@@ -307,12 +318,11 @@ export async function handleAdmin(
           // 每个玩法默认用哪一套（玩家没自己挑的时候）
           byVariant: db.getSetting<Record<string, string>>('voicePacks', {}),
           variants: VOICE_VARIANTS.map(v => ({ id: v, name: VARIANT_CN[v] ?? v })),
-          // 在线合成能选的发音人（服务器连不上外网时这个单子还在，点了才会报错）
-          /* 次序＝下拉框里的次序，第一条就是默认选中的那条。
-             「自动」摆最前（它会自己挑通得了的那条），然后才是阿里 / 微软 / 谷歌。 */
-          voices: [...GOOGLE_VOICES.filter(v => isAutoVoice(v.id)),
-                   ...ALI_VOICES, ...EDGE_VOICES,
-                   ...GOOGLE_VOICES.filter(v => !isAutoVoice(v.id))],
+          /* 在线合成能选的发音人。现在只有百炼这一家（见文件头上那段注释），
+             48 个，带 group 字段，界面按组折起来。次序＝下拉框里的次序。 */
+          voices: ALI_VOICES,
+          langs: ALI_LANGS,
+          lang: packLang,             // 这一套现在是哪门语言（界面上要回显）
           aliKey: hasAliKey(),        // 前端据此提示「还没填 Key」
           items: VOICE_KEYS.map(k => ({
             key: k, label: VOICE_LABEL[k] ?? k, say: sayOf(k), custom: !!mine[k], stale: stale(k),
@@ -375,11 +385,16 @@ export async function handleAdmin(
          存完就是普通的语音包 —— 客户端照常拿 /voice/... 播，跟人工录的没有区别，
          也不会再碰在线服务（所以这一步只在后台点一次，玩家那头永远不联网合成）。 */
       if (body.gen) {
-        const g = body.gen as { voice?: string; rate?: number; pitch?: number; keys?: string[]; all?: boolean };
-        const voice = String(g.voice ?? 'zh-CN-XiaoxiaoNeural');
-        if (!isAliVoice(voice) && !isEdgeVoice(voice) && !isGoogleVoice(voice) && !isAutoVoice(voice)) return json(res, 400, { error: '发音人名字不对' });
-        const rate = Math.max(-50, Math.min(50, Number(g.rate ?? 0)));
-        const pitch = Math.max(-50, Math.min(50, Number(g.pitch ?? 0)));
+        const g = body.gen as { voice?: string; lang?: string; keys?: string[]; all?: boolean };
+        const voice = String(g.voice ?? 'a:Cherry');
+        if (!isAliVoice(voice)) return json(res, 400, { error: '发音人名字不对' });
+        /* 语速 / 音调这两个参数没了：百炼那条接口压根不收（文档上只有 text / voice /
+           language_type / stream 四个）。以前能调是因为走的微软那条。
+           真要调，得换 qwen3-tts-instruct-flash、用它的 instructions 字段说"慢一点"，
+           那是另一个模型、另一套行为，没验证过就先不上。 */
+        /* 没明说就跟着这一套自己的语言走 —— 翻成英文之后直接点「生成」，
+           不用再去下拉框里挑一次 English（挑错了念出来就是一团糟）。 */
+        const lang = isAliLang(String(g.lang ?? '')) ? String(g.lang) : packLang;
         const have = voiceFiles(dir);
         // 默认只补缺的那几条；勾了「整套重做」才全部覆盖
         /* 「生成缺的」＝还没有的 + **念法改过、跟当初合成时不一样的那几条**。
@@ -397,20 +412,12 @@ export async function handleAdmin(
           const says = saysOf(k);
           const text = says[0] ?? k;
           try {
-            /* `g:` 开头的走谷歌那条（普通 HTTPS），其余走微软 Edge 那条（WebSocket）；
-               选「自动」就先试微软、不成当场换备用 —— 微软整套试不通之后会自己歇十分钟，
-               所以不会每条都白耗五次握手。两条出来的都是 mp3，存下来没有任何区别。 */
+            /* 只剩百炼这一条路了，没有备选也就没有"先试谁"的次序问题。
+               回来的可能是 mp3（机器上有 ffmpeg）也可能是 wav，后面按实际格式存。 */
             const one = async (t: string): Promise<{ buf: Buffer; ext: string }> => {
-              if (isAliVoice(voice)) return aliTTS(t, { voice });
-              if (isGoogleVoice(voice)) return { buf: await googleTTS(t, { voice, rate }), ext: 'mp3' };
-              if (!isAutoVoice(voice)) return { buf: await edgeTTS(t, { voice, rate, pitch }), ext: 'mp3' };
-              /* 「自动」的次序：**先阿里**（国内服务器上只有它出得去），
-                 没填 Key 才轮到微软，微软也不成再退到谷歌那条。 */
-              if (hasAliKey()) {
-                try { const a = await aliTTS(t, { voice: 'a:Cherry' }); used.add('百炼'); return a; } catch { /* 往下试 */ }
-              }
-              try { const b = await edgeTTS(t, { voice: 'zh-CN-XiaoxiaoNeural', rate, pitch }); used.add('微软'); return { buf: b, ext: 'mp3' }; }
-              catch { const b = await googleTTS(t, { rate }); used.add('备用'); return { buf: b, ext: 'mp3' }; }
+              const a = await aliTTS(t, { voice, lang });
+              used.add('百炼');
+              return a;
             };
             const bufs: { buf: Buffer; ext: string }[] = [];
             for (const t of says) bufs.push(await one(t));
@@ -437,16 +444,68 @@ export async function handleAdmin(
         if (Object.keys(made).length) mades[packId] = made; else delete mades[packId];
         db.setSetting('voiceMade', mades);
       };
+      /* 把整套念法翻成某门语言：{ translate: { to: 'English' } }。
+         翻完是**填回「念什么」那一栏**，不直接去合成 —— 牌桌上的吆喝是行话，
+         机器翻出来不一定地道（「开跑」「提龙」这种尤其），得让人过一眼再生成。
+
+         从哪句翻：当前那句里**还有汉字**就翻当前那句（照顾自己改过念法的人，
+         「碰 / 碰啦 / 我碰了」这点味道能带过去）；已经是外语了就退回内置的中文原句翻 ——
+         不然翻第二遍就成了英译英，越翻越歪。 */
+      if (body.translate) {
+        const to = String((body.translate as { to?: string }).to ?? '');
+        if (!isAliLang(to)) return json(res, 400, { error: '不认识的语言' });
+        if (to === 'Chinese') return json(res, 400, { error: '本来就是中文，不用翻' });
+        if (!hasAliKey()) return json(res, 400, { error: '还没填百炼的 API Key' });
+        const map = db.getSetting<Record<string, Record<string, string>>>('voiceText', {});
+        const one = { ...(map[packId] ?? {}) };
+        const done: { key: string; text: string }[] = [];
+        const failed: { key: string; why: string }[] = [];
+        for (const k of VOICE_KEYS) {
+          /* 还是中文就翻当前这句（自己改过的念法，那点味道能带过去）；
+             已经翻成别的语言了就退回内置的中文原句 —— 拿译文再翻一遍只会越翻越歪。 */
+          const src = packLang === 'Chinese' ? sayOf(k) : (VOICE_LABEL[k] ?? k);
+          try {
+            /* 一条里可能有好几种说法（用 / 隔开），一句一句翻再拼回去 ——
+               整串丢过去翻，分隔符经常被翻译模型吃掉或者挪位置。 */
+            const parts: string[] = [];
+            for (const t of src.split(/[\/／|]/).map(x => x.trim()).filter(Boolean).slice(0, TAKES)) {
+              parts.push(await aliTranslate(t, to));
+            }
+            const out = parts.join(' / ').slice(0, 60);
+            if (!out) throw new Error('翻回来是空的');
+            one[k] = out;
+            done.push({ key: k, text: out });
+          } catch (e) {
+            failed.push({ key: k, why: (e as Error).message });
+            // 头两条就不通，剩下三十多条一样不通 —— 别让人干等
+            if (done.length === 0 && failed.length >= 2) break;
+          }
+        }
+        if (done.length) {
+          map[packId] = one;
+          db.setSetting('voiceText', map);
+          packLangs[packId] = to;
+          db.setSetting('voiceLang', packLangs);
+        }
+        return json(res, 200, { ok: true, done, failed, to });
+      }
       /* 改念法：{ setText: <key>, text: '<念什么>' }。text 留空＝恢复默认。 */
       if (body.setText !== undefined) {
         const k = String(body.setText);
         if (!VOICE_KEYS.includes(k)) return json(res, 400, { error: '没有这一条' });
-        const t = String(body.text ?? '').trim().slice(0, 20);
+        /* 上限从 20 放到 60：外语翻出来比中文长一大截 ——
+           「该你出牌」四个字，英文是 It's your turn to play，二十二个。
+           卡在 20 会把翻译结果拦腰截断，念出来半句。 */
+        const t = String(body.text ?? '').trim().slice(0, 60);
         const map = db.getSetting<Record<string, Record<string, string>>>('voiceText', {});
         const one = { ...(map[packId] ?? {}) };
         if (t && t !== (VOICE_LABEL[k] ?? k)) one[k] = t; else delete one[k];
         if (Object.keys(one).length) map[packId] = one; else delete map[packId];
         db.setSetting('voiceText', map);
+        /* 自定义的念法一条不剩了＝回到内置那套中文，语言标记也得跟着回去，
+           不然下次翻译会以为"还是外语"，从中文原句翻 —— 结果是对的，但
+           界面上会一直显示着 English，看着莫名其妙。 */
+        if (!map[packId] && packLangs[packId]) { delete packLangs[packId]; db.setSetting('voiceLang', packLangs); }
         return json(res, 200, { ok: true, say: t || (VOICE_LABEL[k] ?? k) });
       }
       if (body.del) {

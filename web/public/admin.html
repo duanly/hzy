@@ -127,6 +127,26 @@ async function render() {
 let voicePackId = '';
 let rec = null, recKey = '', recTimer = null;
 
+/* 这一页里凡是点一下就重画（render()）的地方，重画一次下拉框就回到第一项 ——
+   挑好「晴儿（四川话）」，随手改个念法，回头一看又成「芊悦」了，还不一定注意得到，
+   于是一整套用错音色合出来。所以把选择记在外头，重画完再塞回去。
+   顺手也写进 localStorage：关了浏览器明天再来，还是上次那个。 */
+const VPREF = 'phzVoicePref';
+function vpref() {
+  try { return JSON.parse(localStorage.getItem(VPREF) || '{}') || {}; } catch (e) { return {}; }
+}
+function setVpref(k, v) {
+  try { const o = vpref(); o[k] = v; localStorage.setItem(VPREF, JSON.stringify(o)); } catch (e) { /* 隐私模式下写不进去，随它 */ }
+}
+/** 把 select 的值恢复成记住的那个；那一项已经没了（比如音色下架）就退回第一项 */
+function restoreSel(sel, key, fallback) {
+  const want = vpref()[key];
+  if (want !== undefined && [...sel.options].some(o => o.value === want)) sel.value = want;
+  else if (fallback !== undefined) sel.value = fallback;
+  sel.addEventListener('change', () => setVpref(key, sel.value));
+  return sel;
+}
+
 async function pageVoice(main) {
   const d = await api('voice?pack=' + encodeURIComponent(voicePackId), null, 'GET');
   main.innerHTML = '';
@@ -178,7 +198,12 @@ async function pageVoice(main) {
   box.appendChild(vrow);
 
   box.appendChild($('<div class="hint"><b>最省事的办法：新建一套，挑个发音人，点「生成这一套」</b> —— ' +
-    '服务端连一次微软 Edge 的在线朗读，三十多条一次性合成成 mp3 存下来，以后就是普通语音包（不再联网）。' +
+    '服务端连一次百炼（阿里云）把三十多条一次性合成成 mp3 存下来，以后就是普通语音包（不再联网）。' +
+    '<b>方言</b>那一组有四川 / 北京 / 南京 / 陕西 / 闽南 / 天津 / 上海 / 粤语八种；' +
+    '<b>湖南话没有</b>，衡阳味还得自己录。<br>' +
+    '<b>要外语报牌声</b>：先在「语言」里挑一门，点「翻成这门语言」把念法整套翻过去，' +
+    '下面过一眼改顺了，再点「生成这一套」。' +
+    '光挑语言不翻是没用的 —— 合成只管念，不管翻，拿英文的念法去念中文字只会念成一团糟。<br>' +
     '要人味儿再照下面自己录，录了哪条盖哪条。<br>' +
     '<b>一条可以有好几种说法</b>：「念什么」里用 <b>/</b> 隔开，比如 <b>碰 / 碰啦 / 我碰了</b> —— ' +
     '生成时一句合一条，牌桌上随机挑一条念，听着不那么机械。<br>' +
@@ -192,14 +217,27 @@ async function pageVoice(main) {
     '录的时候干脆利落一点，一条别超过 1 秒，末尾别留空白。<br>' +
     '<b>试听没声音？</b>iPhone / iPad 先看一眼机身侧边的<b>静音开关</b> —— 拨到静音时网页里的声音是不响的。</div>'));
 
-  /* 在线生成：服务端连一次微软 Edge 的「大声朗读」接口，把整套合成成 mp3 存下来。
+  /* 在线生成：服务端连一次百炼，把整套合成成 mp3 存下来。
      存完就是普通的语音包 —— 客户端照常拿 /voice/... 播，跟人工录的没区别，
      也不会再联网（合成只在这儿点一次）。服务器出不了网的话，点了会明说是哪一步不通。 */
   const gen = $('<div class="row" style="margin:10px 0;flex-wrap:wrap;gap:8px;align-items:center;' +
     'border:1px dashed var(--line);border-radius:10px;padding:10px"></div>');
   gen.appendChild($('<b>在线生成：</b>'));
+  /* 48 个音色平铺成一个下拉框没法翻，按 group 折成「普通话 / 方言 / 外语」三档。
+     服务端给的次序就是这儿的次序，不在前端重排。 */
   const gv = $('<select style="width:auto"></select>');
-  for (const v of (d.voices || [])) gv.appendChild($(`<option value="${v.id}">${v.name}</option>`));
+  {
+    const groups = new Map();
+    for (const v of (d.voices || [])) {
+      if (!groups.has(v.group || '')) groups.set(v.group || '', []);
+      groups.get(v.group || '').push(v);
+    }
+    for (const [name, vs] of groups) {
+      const host = name ? $(`<optgroup label="${name}（${vs.length}）"></optgroup>`) : gv;
+      for (const v of vs) host.appendChild($(`<option value="${v.id}">${v.name}</option>`));
+      if (name) gv.appendChild(host);
+    }
+  }
   gen.appendChild(gv);
   /* 发音人是服务端给的。一条都没有 = 跑着的还是旧版服务端（文件换了但进程没重启），
      这时候别让人对着一个空下拉框猜。 */
@@ -208,9 +246,21 @@ async function pageVoice(main) {
     gen.appendChild($('<span class="hint" style="color:#e6b43c">挑不到发音人 —— 服务端还没重启，' +
       '新接口还没生效。重启一下服务再进这一页。</span>'));
   }
-  const gr = $('<select style="width:auto"><option value="-20">慢一点</option><option value="-10">稍慢</option>' +
-    '<option value="0" selected>正常语速</option><option value="10">稍快</option><option value="20">快一点</option></select>');
-  gen.appendChild(gr);
+  /* 原先这儿是语速（慢一点 / 正常 / 快一点）。**百炼那条接口不收语速参数** ——
+     以前能调是因为走的微软那条，现在微软摘掉了，留着这个框就是个骗人的摆设。
+     换成语言：它决定 language_type，也就是"按哪门语言的发音规则去念"。 */
+  const gl = $('<select style="width:auto"></select>');
+  for (const l of (d.langs || [{ id: 'Chinese', name: '中文' }])) gl.appendChild($(`<option value="${l.id}">${l.name}</option>`));
+  gen.appendChild($('<span class="hint">语言</span>'));
+  gen.appendChild(gl);
+  // 这一套翻过哪门语言，服务端记着 —— 拿它当默认，比记住上次点的那个准
+  restoreSel(gl, 'lang', d.lang || 'Chinese');
+  restoreSel(gv, 'voice');
+  /* 「翻成这门语言」：TTS 只会念不会翻，给它中文它就念中文。
+     想要英文报牌声，得先把「念什么」整套翻过去 —— 翻完是填回下面那张表让人过目，
+     不直接合成（牌桌行话机器翻不准，「开跑」「提龙」尤其）。 */
+  const gtr = $('<button class="ghost">翻成这门语言</button>');
+  gen.appendChild(gtr);
   const gall = $('<label class="row" style="gap:4px"><input type="checkbox" /> 整套重做（连已经有的一起覆盖）</label>');
   gen.appendChild(gall);
   const gbtn = $('<button>生成这一套</button>');
@@ -222,13 +272,28 @@ async function pageVoice(main) {
     gbtn.disabled = true;
     gtip.textContent = '正在合成…（三十多条，头一回要等十几秒）';
     try {
-      const r = await api('voice', { pack: voicePackId, gen: { voice: gv.value, rate: Number(gr.value), all } });
+      const r = await api('voice', { pack: voicePackId, gen: { voice: gv.value, lang: gl.value, all } });
       gtip.textContent = `生成 ${r.saved.length} 条` + (r.used ? `（用的是${r.used}）` : '')
         + (r.failed && r.failed.length ? `，${r.failed.length} 条没成：${r.failed[0].why}` : '')
         + (r.note ? ` —— ${r.note}` : '');
       setTimeout(() => render(), 1200);
     } catch (e) { gtip.textContent = '失败：' + e.message; }
     gbtn.disabled = false;
+  };
+  gtr.onclick = async () => {
+    if (gl.value === 'Chinese') { gtip.textContent = '本来就是中文，不用翻'; return; }
+    const ln = (gl.selectedOptions[0] || {}).textContent || gl.value;
+    if (!confirm(`把这一套的「念什么」整套翻成 ${ln}？\n\n翻完会覆盖现在的念法（原来的中文还能靠「留空恢复默认」找回来）。\n翻的是文字，还要再点一次「生成这一套」才会出声。`)) return;
+    gtr.disabled = true; gbtn.disabled = true;
+    gtip.textContent = '正在翻…（三十多条，要等十几秒）';
+    try {
+      const r = await api('voice', { pack: voicePackId, translate: { to: gl.value } });
+      gtip.textContent = `翻好 ${r.done.length} 条`
+        + (r.failed && r.failed.length ? `，${r.failed.length} 条没成：${r.failed[0].why}` : '')
+        + ' —— 下面过一眼，改顺了再点「生成这一套」';
+      setTimeout(() => render(), 1500);
+    } catch (e) { gtip.textContent = '失败：' + e.message; }
+    gtr.disabled = false; gbtn.disabled = false;
   };
   box.appendChild(gen);
 
@@ -241,7 +306,8 @@ async function pageVoice(main) {
   const ak = $('<input type="password" placeholder="sk-…（百炼控制台申请）" style="width:260px" />');
   ali.appendChild(ak);
   const akb = $('<button class="ghost">保存</button>');
-  const aktip = $(`<span class="hint">${d.aliKey ? '已配好，选「芊悦」那几条就能合成' : '还没填 —— 阿里那几个发音人现在点了会报错'}</span>`);
+  /* 现在只剩百炼这一家，没 Key 就是一条也合不了 —— 说重一点，别让人白点半天 */
+  const aktip = $(`<span class="hint">${d.aliKey ? '已配好，挑个发音人就能生成' : '<b style="color:#e6b43c">还没填 —— 在线生成现在一条也合不了</b>（就这一家，没有备选）'}</span>`);
   ali.appendChild(akb); ali.appendChild(aktip);
   akb.onclick = async () => {
     akb.disabled = true;

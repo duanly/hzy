@@ -1,20 +1,40 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { botDecide } from '../../packages/engine/src/index.ts';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const PORT = 18787;
 const BASE = `http://127.0.0.1:${PORT}`;
 
+/**
+ * 语音包写到哪儿。这儿踩过两个坑，都是"单跑一遍绿、连跑几遍红"那种最难查的：
+ *
+ * 1. 原先目录名只带 pid。这机器上 pid 只有两三位（69、340、361…），转一圈很快撞回来，
+ *    而目录又一直没人清 —— 新一轮就跑进上一轮留下的目录里。
+ * 2. 就算目录每轮都是新的，**一个文件里十几条用例还是共用同一个**。
+ *    「在线合成」那条建的语音套留在里头，谁先谁后一变，「语音包」那条就中招。
+ *
+ * 中招的样子都一样：目录里只要躺着一套语音包，"没挑套的时候自动顶一套上来"那条逻辑
+ * 就把它顶上来，于是拿到的是 /voice/packs/xxx/peng.mp3，而用例等的是 /voice/peng.mp3。
+ *
+ * 所以干脆**每起一次服务端就给一个全新的目录**，用例之间彻底不相干，
+ * 谁先谁后、并行串行都无所谓。跑完整棵删掉。
+ * （前提是没有哪条用例起两次服务端、指望文件留着 —— 确认过，没有。）
+ */
+const VOICE_ROOT = join(tmpdir(), `phz-voice-test-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+let voiceSeq = 0;
+after(() => { try { rmSync(VOICE_ROOT, { recursive: true, force: true }); } catch { /* 删不掉就算了，不值得让测试挂 */ } });
+
 function startServer(extraEnv: Record<string, string> = {}) {
   const p = spawn(process.execPath, ['--experimental-strip-types', 'src/index.ts'], {
     cwd: root, env: { ...process.env, ...extraEnv, PORT: String(PORT), DB_PATH: ':memory:', NODE_ENV: 'test', BOT_SPEED: '0.08', TIMER_SPEED: '0.12',
-      // 语音包写到临时目录，别弄脏真实的 data/voice
-      VOICE_DIR: join(tmpdir(), `phz-voice-test-${process.pid}`) }, stdio: ['ignore', 'pipe', 'pipe'],
+      // 语音包写到临时目录，别弄脏真实的 data/voice（为什么一条用例一个目录，见 VOICE_ROOT 上面那段）
+      VOICE_DIR: join(VOICE_ROOT, `v${++voiceSeq}`) }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   p.stderr.on('data', d => { const s = String(d); if (!s.includes('ExperimentalWarning') && !s.includes('strip-types') && !s.includes('SQLite')) process.stderr.write(s); });
   p.stdout.on('data', d => { const s = String(d); if (s.includes('bot act error')) process.stderr.write(s); });
@@ -724,53 +744,85 @@ test('语音包：后台传 mp3 存到数据目录，客户端看得到；名字
    而是**照同一套协议起一个假服务**，看两件事：
    1. 我们手写的那个 WS 客户端（握手、掩码、二进制帧里的头部长度）到底对不对；
    2. 合成回来的 mp3 有没有按 key 落到这一套的目录里，客户端清单里跟着出现。 */
-test('在线合成：照 Edge 的协议走一遍，整套报牌声落成 mp3', async () => {
+test('在线合成：照百炼的协议走一遍，整套报牌声落成 mp3', async () => {
   const { createServer } = await import('node:http');
-  const { acceptUpgrade } = await import('../src/ws.ts');
-  const asked: string[] = [];
-  const fake = createServer();
-  fake.on('upgrade', (req, sock) => {
-    const conn = acceptUpgrade(req, sock as any);
-    if (!conn) return;
-    conn.on('message', (data: string | Buffer, bin: boolean) => {
-      if (bin) return;
-      const s = String(data);
-      if (!/Path:ssml/.test(s)) return;                       // speech.config 那一帧不用回
-      asked.push((s.match(/>([^<]*)<\/prosody>/) ?? [])[1] ?? '');
-      // 音频帧：开头两个字节是头部长度，后面才是音频本身
-      const head = Buffer.from('X-RequestId:1\r\nPath:audio\r\n\r\n', 'utf8');
-      const mp3 = Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x00]), Buffer.alloc(900, 7)]);
-      const len = Buffer.alloc(2); len.writeUInt16BE(head.length, 0);
-      conn.send(Buffer.concat([len, head, mp3]));
-      conn.send('X-RequestId:1\r\nPath:turn.end\r\n\r\n{}');
+  /* 假的百炼。真接口就是一次普通的 HTTPS POST，所以这儿拿个 http server 顶上就行 ——
+     比原来那个 Edge 的 WebSocket 假服务简单太多（那一版要自己拼帧）。
+     两个路径：/tts 合成，/mt 翻译。 */
+  const asked: string[] = [];          // 每次请求要念的那句
+  const spoke: string[] = [];          // 用的哪个发音人
+  const langs: string[] = [];          // language_type 传的是什么
+  const mt: { text: string; to: string }[] = [];
+  /** 一段真有幅度的 WAV。**不能用全 0 的静音** —— trimWav 会把首尾静音掐掉，
+      整片都是静音就被掐成空的，后面什么也测不出来。 */
+  const wav = (ms = 120) => {
+    const rate = 24000, n = Math.round(rate * ms / 1000);
+    const d = Buffer.alloc(n * 2);
+    for (let i = 0; i < n; i++) d.writeInt16LE(Math.round(Math.sin(i / 8) * 9000), i * 2);
+    const h = Buffer.alloc(44);
+    h.write('RIFF', 0); h.writeUInt32LE(36 + d.length, 4); h.write('WAVE', 8);
+    h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+    h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+    h.write('data', 36); h.writeUInt32LE(d.length, 40);
+    return Buffer.concat([h, d]);
+  };
+  const fake = createServer((req, res) => {
+    let raw = '';
+    req.on('data', c => { raw += c; });
+    req.on('end', () => {
+      const j = JSON.parse(raw || '{}');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      if ((req.url ?? '').includes('/mt')) {
+        const text = j.input.messages[0].content;
+        const to = j.parameters.translation_options.target_lang;
+        mt.push({ text, to });
+        // 翻译结果做个看得出来的记号，好断言它确实填回去了
+        res.end(JSON.stringify({ output: { choices: [{ message: { content: `<${to}>${text}` } }] } }));
+        return;
+      }
+      asked.push(j.input.text); spoke.push(j.input.voice); langs.push(j.input.language_type);
+      res.end(JSON.stringify({ output: { audio: { data: wav().toString('base64') } } }));
     });
   });
   await new Promise<void>(r => fake.listen(18899, '127.0.0.1', r));
-  const srv = await startServer({ EDGE_TTS_URL: 'ws://127.0.0.1:18899/edge/v1' });
+  const srv = await startServer({
+    DASHSCOPE_TTS_URL: 'http://127.0.0.1:18899/tts',
+    DASHSCOPE_MT_URL: 'http://127.0.0.1:18899/mt',
+    DASHSCOPE_API_KEY: 'sk-test',
+  });
   try {
     const adm = await (await fetch(`${BASE}/api/admin/login`, { method: 'POST', body: JSON.stringify({ username: 'admin', password: 'admin8888' }) })).json() as any;
     const H = { authorization: `Bearer ${adm.token}`, 'Content-Type': 'application/json' };
     const P = (b: any) => fetch(`${BASE}/api/admin/voice`, { method: 'POST', headers: H, body: JSON.stringify(b) }).then(r => r.json()) as Promise<any>;
 
     const list = await (await fetch(`${BASE}/api/admin/voice`, { headers: H })).json() as any;
-    assert.ok(list.voices.length >= 5, '后台要能挑发音人');
+    // 整张表都在：48 个音色，分普通话 / 方言 / 外语三组
+    assert.equal(list.voices.length, 48, '音色要是百炼文档上那一整张表');
+    assert.ok(list.voices.every((v: any) => v.id.startsWith('a:')), '只剩百炼这一家，不该再有微软 / 谷歌的');
+    const byGroup = (g: string) => list.voices.filter((v: any) => v.group === g).length;
+    assert.deepEqual([byGroup('普通话'), byGroup('方言'), byGroup('外语')], [28, 10, 10]);
+    assert.ok(list.voices.some((v: any) => v.id === 'a:Roy'), '闽南话那个要在');
+    assert.ok(list.voices.some((v: any) => v.id === 'a:Eldric Sage'), 'id 里带空格的不许被顺手去掉');
+    assert.equal(list.langs.length, 10, '十种语言');
 
     const pk = await P({ newPack: '在线合成' });
-    const gen = await P({ pack: pk.id, gen: { voice: 'zh-CN-XiaoxiaoNeural', rate: -10, keys: ['peng', 'wei', 'your_turn'] } });
+    const gen = await P({ pack: pk.id, gen: { voice: 'a:Cherry', keys: ['peng', 'wei', 'your_turn'] } });
     assert.deepEqual(gen.failed, [], `合成不该失败：${JSON.stringify(gen.failed)}`);
     assert.deepEqual(gen.saved.sort(), ['peng', 'wei', 'your_turn']);
     // 念的是牌桌上真正报的那一句 —— 偎报「笑起」，不是「偎」
     assert.deepEqual(asked, ['碰', '笑起', '该你出牌']);
+    assert.deepEqual([...new Set(spoke)], ['Cherry'], '发音人要原样传过去，a: 前缀得剥掉');
+    assert.deepEqual([...new Set(langs)], ['Chinese'], '没指定语言就是中文');
 
     const clips = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
-    assert.equal((clips.clips.wei ?? '').split('?')[0], `/voice/packs/${pk.id}/wei.mp3`, '合成出来的按 mp3 存');
+    assert.equal((clips.clips.wei ?? '').split('?')[0], `/voice/packs/${pk.id}/wei.mp3`, '有 ffmpeg 就转成 mp3 存');
     const f = await fetch(`${BASE}${clips.clips.wei}`);
     assert.equal(f.status, 200);
     assert.equal(f.headers.get('content-type'), 'audio/mpeg');
-    assert.equal((await f.arrayBuffer()).byteLength, 904);
+    assert.ok((await f.arrayBuffer()).byteLength > 200, '存下来的不该是个空壳');
 
     // 再点一次「只补缺的」：已经有的不重做
-    const again = await P({ pack: pk.id, gen: { voice: 'zh-CN-XiaoxiaoNeural', keys: [] } });
+    const again = await P({ pack: pk.id, gen: { voice: 'a:Cherry', keys: [] } });
     assert.ok(!again.saved.includes('peng'), '已经有的那几条不该重做');
     assert.ok(again.saved.includes('hu'), '缺的那几条要补上');
 
@@ -785,9 +837,8 @@ test('在线合成：照 Edge 的协议走一遍，整套报牌声落成 mp3', a
     assert.equal(row.label, '碰', 'label 还是这一条本来的叫法');
     /* 改完词，「生成缺的」要认得出这一条过时了 —— 以前只看"文件在不在"，
        改完词一点「生成缺的」什么都不动，非得整套重做才行。 */
-    const list2b = await (await fetch(`${BASE}/api/admin/voice?pack=${pk.id}`, { headers: H })).json() as any;
-    assert.equal(list2b.items.find((x: any) => x.key === 'peng').stale, true, '念法改了＝这一条过时了');
-    const fix = await P({ pack: pk.id, gen: { voice: 'zh-CN-XiaoxiaoNeural' } });
+    assert.equal(list2.items.find((x: any) => x.key === 'peng').stale, true, '念法改了＝这一条过时了');
+    const fix = await P({ pack: pk.id, gen: { voice: 'a:Cherry' } });
     assert.deepEqual(fix.saved, ['peng'], '只重做改过词的那一条，别的一概不动');
     assert.deepEqual(asked, ['碰啦'], '合成时念的是改过的那句');
     const clips2 = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
@@ -796,7 +847,7 @@ test('在线合成：照 Edge 的协议走一遍，整套报牌声落成 mp3', a
        牌桌上随机挑一条念。 */
     asked.length = 0;
     await P({ pack: pk.id, setText: 'peng', text: '碰 / 碰啦 / 我碰了' });
-    const three = await P({ pack: pk.id, gen: { voice: 'zh-CN-XiaoxiaoNeural' } });
+    const three = await P({ pack: pk.id, gen: { voice: 'a:Cherry' } });
     assert.deepEqual(three.saved, ['peng']);
     assert.deepEqual(asked, ['碰', '碰啦', '我碰了'], '三种说法各合一条');
     const cl3 = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
@@ -809,9 +860,34 @@ test('在线合成：照 Edge 的协议走一遍，整套报牌声落成 mp3', a
     assert.equal(listT.items.find((x: any) => x.key === 'peng').takes, 3, '后台也看得到有三条');
     // 改回一种说法：多出来的那两条要清掉
     await P({ pack: pk.id, setText: 'peng', text: '碰啦' });
-    await P({ pack: pk.id, gen: { voice: 'zh-CN-XiaoxiaoNeural' } });
+    await P({ pack: pk.id, gen: { voice: 'a:Cherry' } });
     const cl1 = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
     assert.equal(cl1.takes.peng.length, 1, '改回一种说法，多的那两条要清掉');
+
+    /* ── 外语：先把念法翻过去，再拿翻好的文本合成 ──
+       要紧的是这个次序。TTS 只会念不会翻，直接把 language_type 设成 English
+       去念中文，出来是一团糟。 */
+    const tr = await P({ pack: pk.id, translate: { to: 'English' } });
+    assert.equal(tr.failed.length, 0, `翻译不该失败：${JSON.stringify(tr.failed)}`);
+    assert.ok(tr.done.length > 20, '整套都要翻');
+    assert.ok(mt.every(x => x.to === 'English'), '目标语言要传对');
+    // 翻的是当前那句（还有汉字就翻当前的），「碰啦」是刚改过的
+    assert.ok(mt.some(x => x.text === '碰啦'), '自己改过的念法要带着味道一起翻');
+    const listE = await (await fetch(`${BASE}/api/admin/voice?pack=${pk.id}`, { headers: H })).json() as any;
+    assert.equal(listE.items.find((x: any) => x.key === 'peng').say, '<English>碰啦', '翻完填回「念什么」那一栏');
+
+    // 再翻一次：这会儿念法已经是外语了，要退回内置中文原句去翻，不能英译英
+    mt.length = 0;
+    await P({ pack: pk.id, translate: { to: 'Japanese' } });
+    assert.ok(mt.some(x => x.text === '碰'), '已经是外语的那条，要退回中文原句再翻');
+    assert.ok(!mt.some(x => x.text.startsWith('<English>')), '不许拿翻译结果再翻一遍');
+
+    // 拿翻好的文本合成：language_type 要跟着走
+    asked.length = 0; langs.length = 0;
+    const jp = await P({ pack: pk.id, gen: { voice: 'a:Ono Anna', lang: 'Japanese', keys: ['peng'], all: true } });
+    assert.deepEqual(jp.saved, ['peng']);
+    assert.deepEqual([...new Set(langs)], ['Japanese'], '挑了日语，language_type 就得是 Japanese');
+    assert.deepEqual([...new Set(spoke.slice(-1))], ['Ono Anna'], 'id 里的空格要原样传过去');
 
     // 留空＝恢复默认
     await P({ pack: pk.id, setText: 'peng', text: '' });

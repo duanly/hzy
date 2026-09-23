@@ -25,25 +25,108 @@ const URL_GEN = process.env.DASHSCOPE_TTS_URL
   || 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 const MODEL = process.env.DASHSCOPE_TTS_MODEL || 'qwen3-tts-flash';
 
-/** 挑得出来的音色。`a:` 前缀是为了跟微软（裸名字）、谷歌（`g:`）分开 */
-export const ALI_VOICES: { id: string; name: string }[] = [
-  { id: 'a:Cherry', name: '芊悦（女 · 普通话）' },
-  { id: 'a:Serena', name: '苏瑶（女 · 普通话，偏稳）' },
-  { id: 'a:Ethan', name: '晨煦（男 · 普通话）' },
-  { id: 'a:Chelsie', name: '千雪（女 · 普通话，偏清亮）' },
-  { id: 'a:Nofish', name: '不吃鱼（男 · 普通话）' },
-  /* 方言这一档：**没有湖南话**，几家都没有。牌桌上真要衡阳味，
-     还得自己录一套（后台「自录」那条路）。下面这几个留着给想换口味的人。 */
-  { id: 'a:Sunny', name: '晴儿（女 · 四川话）' },
-  { id: 'a:Eric', name: '程川（男 · 四川话）' },
-  { id: 'a:Dylan', name: '晓东（男 · 北京话）' },
-  { id: 'a:Marcus', name: '秦川（男 · 陕西话）' },
-  { id: 'a:Peter', name: '李彼得（男 · 天津话）' },
-  { id: 'a:Jada', name: '阿珍（女 · 上海话）' },
-  { id: 'a:Li', name: '老李（男 · 南京话）' },
-  { id: 'a:Rocky', name: '阿强（男 · 粤语）' },
-  { id: 'a:Kiki', name: '阿清（女 · 粤语）' },
+/**
+ * 挑得出来的音色 —— 照百炼文档上 qwen3-tts-flash 那张表抄全（48 个）。
+ * `a:` 前缀是历史包袱：当初要跟微软（裸名字）、谷歌（`g:`）分开，现在只剩这一家了，
+ * 但存量的语音包设置里存着带前缀的值，去掉前缀老数据就对不上，所以留着。
+ *
+ * **有几个 id 里带空格**（`Eldric Sage`、`Ono Anna`、`Radio Gol`）—— 不是抄错了，
+ * 百炼文档就是这么写的（中文版和繁体版两处对过，一模一样）。别顺手把空格去掉。
+ *
+ * 分三组，界面里按组折起来 —— 48 个平铺成一个下拉框没法看：
+ *   · 普通话 28 个
+ *   · 方言 10 个（8 种：上海 / 北京 / 南京 / 陕西 / 闽南 / 天津 / 四川 / 粤语）
+ *   · 外语 10 个（这些也能说普通话，只是本行是那门外语，口音更地道）
+ *
+ * **还是没有湖南话**。查了一圈，百炼这边八种方言里就是没有 —— 牌桌上真要衡阳味，
+ * 还得自己录一套（后台「自录」那条路）。这句话从第一版留到现在，改动前先确认它还成立。
+ */
+export type AliGroup = '普通话' | '方言' | '外语';
+export interface AliVoice { id: string; name: string; group: AliGroup }
+
+const mand = (id: string, cn: string, sex: '男' | '女'): AliVoice =>
+  ({ id: `a:${id}`, name: `${cn}（${sex} · 普通话）`, group: '普通话' });
+const dial = (id: string, cn: string, sex: '男' | '女', d: string): AliVoice =>
+  ({ id: `a:${id}`, name: `${cn}（${sex} · ${d}）`, group: '方言' });
+const forn = (id: string, cn: string, sex: '男' | '女', l: string): AliVoice =>
+  ({ id: `a:${id}`, name: `${cn}（${sex} · ${l}）`, group: '外语' });
+
+export const ALI_VOICES: AliVoice[] = [
+  // ── 普通话 ──（前四个是原来就在用的，位置别动，老设置里存的就是它们）
+  mand('Cherry', '芊悦', '女'),
+  mand('Serena', '苏瑶', '女'),
+  mand('Ethan', '晨煦', '男'),
+  mand('Chelsie', '千雪', '女'),
+  mand('Nofish', '不吃鱼', '男'),
+  mand('Momo', '茉兔', '女'),
+  mand('Vivian', '十三', '女'),
+  mand('Moon', '月白', '男'),
+  mand('Maia', '四月', '女'),
+  mand('Kai', '凯', '男'),
+  mand('Bella', '萌宝', '女'),
+  mand('Jennifer', '詹妮弗', '女'),
+  mand('Ryan', '甜茶', '男'),
+  mand('Katerina', '卡捷琳娜', '女'),
+  mand('Aiden', '艾登', '男'),
+  mand('Eldric Sage', '沧明子', '男'),
+  mand('Mia', '乖小妹', '女'),
+  mand('Mochi', '沙小弥', '男'),
+  mand('Bellona', '燕铮莺', '女'),
+  mand('Vincent', '田叔', '男'),
+  mand('Bunny', '萌小姬', '女'),
+  mand('Neil', '阿闻', '男'),
+  mand('Elias', '墨讲师', '女'),
+  mand('Arthur', '徐大爷', '男'),
+  mand('Nini', '邻家妹妹', '女'),
+  mand('Seren', '小婉', '女'),
+  mand('Pip', '顽屁小孩', '男'),
+  mand('Stella', '少女阿月', '女'),
+  // ── 方言 ──
+  dial('Sunny', '晴儿', '女', '四川话'),
+  dial('Eric', '程川', '男', '四川话'),
+  dial('Dylan', '晓东', '男', '北京话'),
+  dial('Marcus', '秦川', '男', '陕西话'),
+  dial('Peter', '李彼得', '男', '天津话'),
+  dial('Jada', '阿珍', '女', '上海话'),
+  dial('Li', '老李', '男', '南京话'),
+  dial('Roy', '阿杰', '男', '闽南话'),
+  dial('Rocky', '阿强', '男', '粤语'),
+  dial('Kiki', '阿清', '女', '粤语'),
+  // ── 外语 ──（本行是那门语言；配合下面的 language_type 用）
+  forn('Bodega', '博德加', '男', '西班牙语'),
+  forn('Sonrisa', '索尼莎', '女', '西班牙语'),
+  forn('Alek', '阿列克', '男', '俄语'),
+  forn('Dolce', '多尔切', '男', '意大利语'),
+  forn('Sohee', '素熙', '女', '韩语'),
+  forn('Ono Anna', '小野杏', '女', '日语'),
+  forn('Lenn', '莱恩', '男', '德语'),
+  forn('Emilien', '埃米尔安', '男', '法语'),
+  forn('Andre', '安德雷', '男', '葡萄牙语'),
+  forn('Radio Gol', '拉迪奥·戈尔', '男', '葡萄牙语'),
 ];
+
+/**
+ * 能合成 / 能翻译的语言。左边是界面上显示的，右边是百炼认的那个词
+ * （TTS 的 language_type 和 qwen-mt 的 target_lang 用的是同一套英文名，正好共用一份）。
+ *
+ * 要紧的一点：**TTS 不会翻译**。给它中文它就念中文，把 language_type 设成 English
+ * 只会让它用英文的发音规则去念中文字，出来是一团糟。
+ * 想要英文报牌声，得先把「念什么」翻成英文（后台那个「翻成这门语言」按钮），再合成。
+ */
+export const ALI_LANGS: { id: string; name: string }[] = [
+  { id: 'Chinese', name: '中文（普通话 / 方言）' },
+  { id: 'English', name: 'English 英语' },
+  { id: 'Japanese', name: '日本語 日语' },
+  { id: 'Korean', name: '한국어 韩语' },
+  { id: 'French', name: 'Français 法语' },
+  { id: 'German', name: 'Deutsch 德语' },
+  { id: 'Spanish', name: 'Español 西班牙语' },
+  { id: 'Italian', name: 'Italiano 意大利语' },
+  { id: 'Portuguese', name: 'Português 葡萄牙语' },
+  { id: 'Russian', name: 'Русский 俄语' },
+];
+export const isAliLang = (l: string) => ALI_LANGS.some(x => x.id === l);
+
 export const isAliVoice = (v: string) => v.startsWith('a:');
 
 /** 这把钥匙从哪儿来：先看环境变量，没有再看后台存的那个 */
@@ -114,17 +197,21 @@ export function toMp3(wav: Buffer): { buf: Buffer; ext: 'mp3' | 'wav' } {
 }
 
 /** 合成一条。回来的是音频字节 + 它到底是什么格式（存文件要用对后缀） */
-export async function aliTTS(text: string, opts: { voice?: string; timeoutMs?: number } = {}):
+export async function aliTTS(text: string, opts: { voice?: string; lang?: string; timeoutMs?: number } = {}):
   Promise<{ buf: Buffer; ext: 'mp3' | 'wav' }> {
   const key = aliKey();
   if (!key) throw new Error('还没填百炼的 API Key（后台语音页那个输入框，或者 DASHSCOPE_API_KEY 环境变量）');
   const voice = (opts.voice ?? 'a:Cherry').replace(/^a:/, '') || 'Cherry';
+  const lang = opts.lang && isAliLang(opts.lang) ? opts.lang : 'Chinese';
   const ms = opts.timeoutMs ?? 30000;
 
   const r = await fetch(URL_GEN, {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, input: { text: text.slice(0, 200), voice, language_type: 'Chinese' } }),
+    /* language_type 不是"翻译成这门语言"，是"按这门语言的发音规则去念"。
+       文档里那句「单一语种指明语言能明显提高合成质量」就是这个意思。
+       所以给英文文本要配 English，给中文配 Chinese —— 配反了念出来是一团糟。 */
+    body: JSON.stringify({ model: MODEL, input: { text: text.slice(0, 200), voice, language_type: lang } }),
     signal: AbortSignal.timeout(ms),
   });
   const body = await r.text();
@@ -151,4 +238,50 @@ export async function aliTTS(text: string, opts: { voice?: string; timeoutMs?: n
   if (wav.length < 200) throw new Error('取回来的音频太小，八成是空的');
 
   return toMp3(trimWav(wav));
+}
+
+
+/* ── 翻译：qwen-mt，跟 TTS 同一把 Key ──────────────────────────────
+   为什么要有它：TTS 只会**念**，不会翻。想要一套英文报牌声，
+   得先把「碰」「该你出牌」这些念法翻成英文，再拿英文文本去合成。
+   qwen-mt 是百炼自家的翻译模型，参数简单（一个 translation_options 就完事），
+   跟这个服务端"不引第三方包"的路子一样 —— 还是一次普通的 HTTPS POST。 */
+const URL_MT = process.env.DASHSCOPE_MT_URL
+  || 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
+const MODEL_MT = process.env.DASHSCOPE_MT_MODEL || 'qwen-mt-turbo';
+
+/**
+ * 把一句话翻成 `to` 那门语言。`to` 用百炼认的英文名（见 ALI_LANGS）。
+ *
+ * 翻的是牌桌上的吆喝（「碰」「开跑」「该你出牌」），又短又是行话，
+ * 机器翻出来不一定地道 —— 所以后台那边翻完是**填回「念什么」那一栏**让人过目，
+ * 不是翻完直接合成。改一改再点生成，出来的才能听。
+ */
+export async function aliTranslate(text: string, to: string, timeoutMs = 20000): Promise<string> {
+  const key = aliKey();
+  if (!key) throw new Error('还没填百炼的 API Key');
+  if (!isAliLang(to)) throw new Error(`不认识的语言：${to}`);
+  if (to === 'Chinese') return text;          // 翻成中文＝原样，白跑一趟接口
+
+  const r = await fetch(URL_MT, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL_MT,
+      input: { messages: [{ role: 'user', content: text.slice(0, 200) }] },
+      parameters: { translation_options: { source_lang: 'Chinese', target_lang: to } },
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body = await r.text();
+  if (!r.ok) {
+    let why = body.slice(0, 200);
+    try { const j = JSON.parse(body); why = `${j.code ?? ''} ${j.message ?? ''}`.trim() || why; } catch { /* 不是 JSON 就照原样 */ }
+    throw new Error(`百炼翻译 ${r.status}：${why}`);
+  }
+  let j: any;
+  try { j = JSON.parse(body); } catch { throw new Error('百炼翻译回的不是 JSON'); }
+  const out = j?.output?.choices?.[0]?.message?.content ?? j?.output?.text;
+  if (typeof out !== 'string' || !out.trim()) throw new Error('百炼翻译没给结果');
+  return out.trim();
 }
