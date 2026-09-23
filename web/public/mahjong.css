@@ -262,3 +262,111 @@
 /* 自己的手牌点得动 */
 .mj-bottom .mj-hand .mj-tile { cursor: pointer; }
 .mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }
+
+/* ================= 一整屏：顶栏 + 行动按钮 + 结算 ================= */
+/* **别在这儿写 position: relative**。.screen 本身是 position:absolute; inset:0 ——
+   钉在视口上、高度就是一屏。写个 relative 会把它覆盖掉，整屏改成随内容长的普通块：
+   量出来 401px、视口才 375px，手牌和右下角的按钮就一起掉到屏幕外面去。
+   .mj-acts 要的那个定位祖先，.screen 已经是了，不用再加。 */
+.mj-screen { display: flex; flex-direction: column; min-height: 0; }
+/* height:auto 是**必须**的：.mj-table 自己写着 height:100%（单独用的时候要占满），
+   在这儿 100% 指的是整个 .mj-screen 的高度 —— 于是顶栏那 30px 就被挤出屏幕，
+   自己的手牌和右下角的按钮一起掉到屏幕外面去。交给 flex 去分高度。 */
+.mj-screen .mj-table { flex: 1; min-height: 0; height: auto; }
+/* 侧面两家下地的牌**竖着摞**，摞多了这一行就撑高，把下面我的手牌顶出屏幕。
+   让它自己折成第二列：宁可往里长，也不许往下顶。 */
+.mj-left, .mj-right { overflow: hidden; }
+.mj-left .mj-melds, .mj-right .mj-melds { flex-wrap: wrap; max-height: 100%; }
+
+.mj-bar {
+  display: flex; align-items: center; gap: 10px; flex: none;
+  padding: 4px 10px; font-size: 12px; color: #e8ddc0;
+  background: rgba(0,0,0,.18); border-bottom: 1px solid rgba(214,183,106,.18);
+}
+.mj-bar .grow { flex: 1; }
+.mj-bar .btn.sm { font-size: 11px; padding: 2px 8px; }
+.mj-clock { font-weight: 800; color: #ffd98a; font-variant-numeric: tabular-nums; }
+
+/* 行动按钮**横着排在最下面那条**，我自己手牌的右边。
+   一开始是照跑胡子那样竖排贴右下角的，渲染出来才发现：下家的头像和分数
+   也钉在右下角（"每一方的左端"转一圈就转到那儿），按钮正好糊在人家脸上。
+   挪到底下这条：那一行本来就是我自己的地盘，谁也不挡。
+   顺序是「胡 杠 碰 过」从左到右 —— 最常点的「过」落在最右边，拇指不用挪。 */
+.mj-acts {
+  position: absolute; right: 10px; bottom: 8px; z-index: 6;
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
+}
+/* 给按钮留出位子：不留的话，窄屏上 14 张手牌会一直铺到按钮底下去 */
+.mj-bottom { padding-right: 178px; }
+.mj-act {
+  width: 62px; height: 62px; border-radius: 50%; border: none;
+  font-size: 24px; font-weight: 900; color: #fff7e2; cursor: pointer;
+  font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
+  background: linear-gradient(#3f8c5e, #276243); box-shadow: 0 3px 8px rgba(0,0,0,.45);
+  touch-action: manipulation; user-select: none;
+}
+/* 胡 / 碰跟字牌那边同一套酒红：这两个是"要掏钱或者要收钱"的动作，颜色得跳出来 */
+.mj-act-hu, .mj-act-peng { background: linear-gradient(#a33b35, #7d2723); }
+.mj-act-gang { background: linear-gradient(#c2a24f, #8f7526); color: #3a2a06; }
+.mj-act-pass { background: linear-gradient(#5a5a5a, #3c3c3c); width: 52px; height: 52px; font-size: 20px; }
+/* 锁住期间：点过的那个亮着（让人知道自己点的是哪个），没点的暗下去 */
+.mj-act.chosen { box-shadow: 0 0 0 3px #ffd98a, 0 3px 8px rgba(0,0,0,.45); }
+.mj-act.idle { opacity: .35; filter: saturate(.2); }
+
+.mj-gangpick {
+  position: absolute; right: 10px; bottom: 72px; z-index: 7;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px; font-size: 12px; color: #f2e6c4;
+  background: rgba(16,48,33,.96); border: 1px solid rgba(214,183,106,.45);
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
+}
+.mj-gangpick-t { background: none; border: none; padding: 0; cursor: pointer; }
+
+/* ---- 结算 ---- */
+/* Modal 把 className 挂在**遮罩**（.modal-bg）上，不是里面那块面板。
+   一开始直接写 .mj-end{max-width:420px}，结果遮罩只有 420 宽、缩在左边，
+   面板也没继承到 .modal 自带的 max-height/overflow —— 内容直接被切掉半截。
+   照 .chi-modal 的写法，往里点一层。 */
+.mj-end .modal { min-width: 300px; max-width: 420px; color: #f2e6c4; padding: 14px 16px; }
+.mj-end-head { font-size: 20px; text-align: center; margin-bottom: 10px; }
+.mj-end-head b { color: #ffd98a; }
+.mj-end-ma {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px; margin-bottom: 10px; border-radius: 10px;
+  background: rgba(200,50,43,.12); border: 1px dashed rgba(214,183,106,.45);
+}
+.mj-end-ma-label { font-size: 13px; color: #ffd98a; font-weight: 800; }
+.mj-end-ma-name { font-size: 16px; font-weight: 800; }
+.mj-end-ma-none { font-size: 13px; color: rgba(242,230,196,.7); }
+.mj-end-why { margin: 0 0 10px; padding-left: 18px; font-size: 12px; line-height: 1.7; color: rgba(242,230,196,.9); }
+.mj-end-tally { width: 100%; border-collapse: collapse; font-size: 14px; }
+.mj-end-tally td { padding: 5px 4px; border-top: 1px solid rgba(214,183,106,.16); }
+.mj-end-tally .gg { font-size: 11px; color: rgba(242,230,196,.6); text-align: right; white-space: nowrap; }
+.mj-end-tally .v { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mj-end-tally .v.pos { color: #7ee6a4; } .mj-end-tally .v.neg { color: #ff9b7a; }
+.mj-end-tally tr.win .n { color: #ffd98a; font-weight: 800; }
+.mj-end-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12px; }
+
+@media (max-height: 430px) {
+  /* 手机横屏只有 375 高，结算面板得把行距收一收，不然一屏塞不下要滚 */
+  .mj-end .modal { padding: 10px 14px; }
+  .mj-end-head { font-size: 17px; margin-bottom: 6px; }
+  .mj-end-ma { padding: 6px; margin-bottom: 6px; }
+  /* 行距、行高都抠到最紧：375 高的时候 .modal 只给到 88vh＝330，
+     松一点内容就是 338，差这么十来个像素就要滚一下，翻马那块会被推出视野。 */
+  .mj-end-why { line-height: 1.4; margin-bottom: 6px; }
+  .mj-end-tally td { padding: 2px 4px; }
+  .mj-end-foot { margin-top: 8px; }
+  .mj-act { width: 50px; height: 50px; font-size: 20px; }
+  .mj-act-pass { width: 42px; height: 42px; font-size: 17px; }
+  .mj-acts { gap: 6px; right: 6px; bottom: 6px; }
+  .mj-bottom { padding-right: 150px; }
+  .mj-gangpick { bottom: 60px; }
+}
+
+/* 窄屏（小手机横屏 667）：14 张手牌 + 头像 + 按钮那一条，横着摆不下。
+   **缩牌不叠牌** —— 叠起来省地方，但自己的手牌是要一张张看清楚再挑的，
+   叠了反而选错。别家的牌才叠。 */
+@media (max-width: 720px) {
+  .mj-bottom .mj-hand .mj-tile { width: 26px; height: 35px; border-radius: 4px; }
+}

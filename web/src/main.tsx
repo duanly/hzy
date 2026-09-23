@@ -1,12 +1,13 @@
 import { Component, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { PublicUser, RoomView } from '../../server/src/protocol.ts';
+import { MJ_VARIANT_ID, type PublicUser, type RoomView } from '../../server/src/protocol.ts';
 import { socket, getToken, setToken, api, type AuthResult } from './net.ts';
 import { Login } from './Login.tsx';
 import { deviceId } from './device.ts';
 import { initPerf } from './perf.ts';
 import { Home } from './Home.tsx';
 import { Table } from './Table.tsx';
+import { MjRoom } from './MjRoom.tsx';
 import { Spectate } from './Spectate.tsx';
 import { ToastHost, toast } from './ui.tsx';
 import { installClientLog, note } from './log.ts';
@@ -91,9 +92,14 @@ function App() {
       {noisyOffline && <div className="toast" style={{ animation: 'none' }}>连接断开，重连中…</div>}
       {room && room.status !== 'closed'
         ? <Guard onReset={() => setRoom(null)}>
+            {/* 两种玩法两个组件：麻将走 MjRoom，字牌走 Table。
+                按 variant 分流而不是塞进一个组件里 —— 规则、摆法、按钮全不一样，
+                合在一起改哪边都要担心碰坏另一边。 */}
             {room.spectating
               ? <Spectate room={room} me={me} onLeft={() => setRoom(null)} />
-              : <Table room={room} me={me} onLeft={() => setRoom(null)} />}
+              : room.variant === MJ_VARIANT_ID
+                ? <MjRoom room={room} me={me} onLeft={() => setRoom(null)} />
+                : <Table room={room} me={me} onLeft={() => setRoom(null)} />}
           </Guard>
         : <Home me={me} canOpenRoom={!!(me.vip || me.canOpenRoom !== false)} onLogout={() => { socket.close(); setMe(null); setRoom(null); }}
             onMe={u => setMe(m => (m ? { ...m, ...u } : m))} />}

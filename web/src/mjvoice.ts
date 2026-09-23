@@ -92,5 +92,12 @@ export function sayMa(tile: number | null) {
   say(tileSpeech(tile), tileKey(tile));
 }
 
+/**
+ * 报打出去的那一张：**只报牌名**，不带动作词（「五筒」，不是「打五筒」）。
+ * 真桌上就是这么喊的；而且一局要喊几十次，多一个字都嫌吵。
+ * 所以 MJ_WORDS.discard 是空的 —— 那条路子走 sayAction 会直接静音，走这儿。
+ */
+export function sayTile(t: number) { say(tileSpeech(t), tileKey(t)); }
+
 /** 轮到你了：只出个提示音 + 一句短的，别吵 */
 export function sayYourTurn() { cue('mj_your_turn'); }

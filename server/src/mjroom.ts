@@ -184,6 +184,7 @@ export class MahjongRoom {
       claimMs: (this.cfg.claimSec ?? 10) * 1000,
       onEvent: e => this.onGameEvent(e),
     });
+    this.eventCursor = 0;        // 新一局是新的 events 数组，游标跟着归零
     this.roundSeatUsers = this.seats.map(s => (s.userId !== null ? [s.userId] : []));
     this.game.start();
     for (const s of this.seats) { s.ready = true; s.misses = 0; }
@@ -380,10 +381,45 @@ export class MahjongRoom {
 
   private touch() { this.lastActivity = this.now(); }
 
+  /**
+   * 事件游标。引擎每局是新的 `events` 数组，所以开局要归零（见 startRound）。
+   * 这儿只负责"发过的不再发"，不做帧切片 —— 麻将的画面比字牌简单，
+   * 客户端收到一批就按顺序播一遍。
+   */
+  private eventCursor = 0;
+
+  /**
+   * 事件里有**不能给别人看**的东西，按座位裁一遍再发：
+   *  · deal —— 四家的底牌全在里头，直接扔掉（自己的手牌快照里本来就有）。
+   *  · draw —— 摸到哪张是私密的，别人只该知道"他摸了一张、还剩几张"。
+   *  · 暗杠 —— 杠的是哪张只有自己看得见，跟 view() 里的处理对齐。
+   *  · options —— 本来就是一人一份，快照里已经带了，这儿不重复发。
+   * 漏一条就等于开了天眼，所以宁可白名单式地想一遍。
+   */
+  private eventsFor(seat: number, evs: GameEvent[]): GameEvent[] {
+    const out: GameEvent[] = [];
+    for (const e of evs) {
+      if (e.t === 'deal' || e.t === 'options') continue;
+      if (e.t === 'draw' && e.seat !== seat) { out.push({ ...e, tile: -1 }); continue; }
+      if (e.t === 'gang' && e.kind === 'an' && e.seat !== seat) { out.push({ ...e, tile: -1 }); continue; }
+      out.push(e);
+    }
+    return out;
+  }
+
   broadcast() {
     this.touch();
-    for (const s of this.seats) if (s.client) s.client.send({ type: 'room.state', room: this.view(s.userId) } as any);
-    for (const [uid, c] of this.spectators) c.send({ type: 'room.state', room: this.view(uid) } as any);
+    const g = this.game;
+    const fresh = g ? g.events.slice(this.eventCursor) : [];
+    if (g) this.eventCursor = g.events.length;
+    for (let i = 0; i < this.seats.length; i++) {
+      const s = this.seats[i];
+      if (!s.client) continue;
+      s.client.send({ type: 'game.events', events: this.eventsFor(i, fresh), room: this.view(s.userId) } as any);
+    }
+    // 观战的按"谁也不是"裁：摸牌、暗杠一律不露牌面
+    const forWatcher = this.eventsFor(-1, fresh);
+    for (const [uid, c] of this.spectators) c.send({ type: 'game.events', events: forWatcher, room: this.view(uid) } as any);
   }
 
   // ---------- index.ts 会调的那几个：方法名跟 Room 对齐，不然路由那边要为两种房间各写一遍 ----------

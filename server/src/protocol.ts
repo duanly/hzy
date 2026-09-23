@@ -162,7 +162,9 @@ export type ClientMsg =
   | { type: 'room.start' }
   | { type: 'room.end' }            // 房主解散并结算
   | { type: 'room.state' }
-  | { type: 'game.act'; action: ActionType; card?: Kind; combo?: Kind[]; lay?: number }
+  /* tile 是麻将那边用的（打哪张、杠哪张）；跑胡子走 card/combo/lay。
+     两种玩法共用这一条消息，服务端按房间类型挑字段。 */
+  | { type: 'game.act'; action: ActionType; card?: Kind; combo?: Kind[]; lay?: number; tile?: number }
   | { type: 'seat.wake' }                          // 我回来了：解除"机器人替我打"（点按钮、手动理牌都算）
   | { type: 'chat'; text: string }
   | { type: 'voice'; data: string; mime: string; durationMs: number }
