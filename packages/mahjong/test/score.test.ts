@@ -11,7 +11,7 @@ test('马牌倍数：点数即倍数，1 点算 9 倍', () => {
   assert.equal(maMultiplier(W(9)), 9);
   assert.equal(maMultiplier(T(2)), 2);
   for (const one of [W(1), T(1), B(1)]) assert.equal(maMultiplier(one), 9, '一条一万一筒都算 9 倍');
-  assert.equal(maMultiplier(HONG), 1, '红中没点数，算 1 倍');
+  assert.equal(maMultiplier(HONG), 9, '红中跟一点一样，算 9 倍');
 });
 
 test('底分 1、翻到五筒、用了红中：每家 6 分', () => {
@@ -35,9 +35,10 @@ test('翻到一点 + 无中胡：这一局最大', () => {
   assert.equal(s.total, 60);
 });
 
-test('翻到红中当马', () => {
-  assert.equal(scoreHu(HONG, 1).perPlayer, 2, '(1+1)');
-  assert.equal(scoreHu(HONG, 0).perPlayer, 4, '(1+1) × 2');
+test('翻到红中当马：跟翻到一点一个价', () => {
+  assert.equal(scoreHu(HONG, 1).perPlayer, 10, '(1+9)');
+  assert.equal(scoreHu(HONG, 0).perPlayer, 20, '(1+9) × 2 —— 跟一点无中胡并列最大');
+  assert.equal(scoreHu(HONG, 0).perPlayer, scoreHu(tileOf('tiao',1), 0).perPlayer);
 });
 
 test('杠分：明杠一倍、暗杠两倍，三家各付', () => {
@@ -49,7 +50,7 @@ test('杠分：明杠一倍、暗杠两倍，三家各付', () => {
 });
 
 test('底分不是 1 的时候按比例走', () => {
-  const s = scoreHu(B(5), 1, 3, { baseScore: 5, oneMultiplier: 9, hongMaMultiplier: 1, noHongMultiplier: 2, mingGang: 1, anGang: 2 });
+  const s = scoreHu(B(5), 1, 3, { baseScore: 5, oneMultiplier: 9, hongMaMultiplier: 9, noHongMultiplier: 2, mingGang: 1, anGang: 2 });
   assert.equal(s.perPlayer, 30);
   assert.equal(s.total, 90);
 });

@@ -7,7 +7,7 @@
  *
  * 胡分 = 底分 ×（1 + 马牌倍数）×（无中胡 ? 2 : 1）
  *   · 那个 1 是胡牌本身。
- *   · 马牌倍数：翻出来的是几点就是几倍；一条 / 一万 / 一筒算 9 倍；红中没点数，算 1 倍。
+ *   · 马牌倍数：翻出来的是几点就是几倍；一条 / 一万 / 一筒算 9 倍；红中也算 9 倍。
  *   · 无中胡：胡的时候一张红中都没用上，整个分数翻倍。
  */
 import { HONG, rankOf, type Tile } from './tiles.ts';
@@ -17,7 +17,7 @@ export interface MahjongRules {
   baseScore: number;
   /** 一点算几倍（一条 / 一万 / 一筒） */
   oneMultiplier: number;
-  /** 翻到红中当马牌算几倍（它没有点数） */
+  /** 翻到红中当马牌算几倍 —— 跟翻到一点一样，最大的那档 */
   hongMaMultiplier: number;
   /** 没用红中胡的翻几倍 */
   noHongMultiplier: number;
@@ -30,7 +30,7 @@ export interface MahjongRules {
 export const DEFAULT_RULES: MahjongRules = {
   baseScore: 1,
   oneMultiplier: 9,
-  hongMaMultiplier: 1,
+  hongMaMultiplier: 9,
   noHongMultiplier: 2,
   mingGang: 1,
   anGang: 2,
