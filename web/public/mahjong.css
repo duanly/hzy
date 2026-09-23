@@ -1,0 +1,95 @@
+/* 麻将牌面。跟字牌那套（styles.css）分开放：两种玩法的样式互不打扰，改哪个只动哪个文件。 */
+
+.mj-tile {
+  position: relative; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  /* 牌面是象牙白，底下压一层"牌背"的绿，看着像真牌那样有厚度 */
+  background: linear-gradient(#fffdf5, #f2ead4);
+  border-radius: 12%;
+  box-shadow:
+    inset 0 -8% 0 rgba(0,0,0,.10),      /* 下沿的阴影：厚度 */
+    inset 0 2px 0 rgba(255,255,255,.9), /* 上沿的高光 */
+    0 1px 2px rgba(0,0,0,.35);
+  border: 1px solid rgba(120,100,60,.35);
+  overflow: hidden;
+  user-select: none;
+}
+.mj-face { width: 100%; height: 100%; display: block; }
+
+/* 尺寸：跟字牌那套的 xxs/xs/sm/md 对齐，比例是真牌的 3:4 */
+.mj-xxs { width: 13px; height: 17px; border-radius: 3px; }
+.mj-xs  { width: 19px; height: 25px; border-radius: 3px; }
+.mj-sm  { width: 26px; height: 35px; border-radius: 4px; }
+.mj-md  { width: 38px; height: 51px; border-radius: 5px; }
+
+/* 墨色 / 红 / 绿：牌面上就这三种颜色 */
+.mj-ink-fill   { fill: #2b2b2b; }
+.mj-paper-fill { fill: #fffdf5; }
+.mj-red-fill   { fill: #c8322b; }
+.mj-red-stroke { stroke: #c8322b; }
+.mj-green-fill { fill: #1f7a46; }
+.mj-ink-text   { fill: #2b2b2b; }
+.mj-red-text   { fill: #c8322b; }
+/* 字号按 viewBox 的 100 来算，缩放自动跟着 */
+.mj-big { font-size: 62px; font-weight: 900; font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif); }
+.mj-mid { font-size: 42px; font-weight: 800; font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif); }
+
+/* 背面：别人的手牌。竹绿加一道斜光 */
+.mj-back {
+  background: linear-gradient(135deg, #2f7d52, #1d5a39 60%, #174a2f);
+  border-color: rgba(0,0,0,.35);
+  box-shadow: inset 0 -8% 0 rgba(0,0,0,.25), inset 0 2px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.4);
+}
+.mj-back::after {
+  content: ''; position: absolute; inset: 14%;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 8%;
+}
+
+/* 选中：抬起来一点（真人打牌就是先把牌推出来） */
+.mj-sel { transform: translateY(-18%); box-shadow: inset 0 -8% 0 rgba(0,0,0,.10), 0 6px 10px rgba(0,0,0,.45); }
+.mj-tile { transition: transform .12s ease; }
+/* 弃牌不压暗 —— 跟字牌那边同一个道理：牌面小，压暗就看不清打过什么了 */
+.mj-dim { opacity: 1; }
+
+/* 一手牌：紧挨着排，最后一张（刚摸的）单独空开一点 */
+.mj-hand { display: flex; gap: 2px; align-items: flex-end; }
+.mj-hand .mj-drawn { margin-left: 10px; }
+/* 下地的牌组（碰 / 杠）：一组之间留空 */
+.mj-melds { display: flex; gap: 6px; flex-wrap: wrap; }
+.mj-meld { display: flex; gap: 1px; }
+/* 暗杠：中间两张扣着 */
+.mj-meld.mj-angang .mj-tile:nth-child(2),
+.mj-meld.mj-angang .mj-tile:nth-child(3) { }
+
+/* 弃牌区：红虚线框 + 角上一个「弃」的圆戳，跟字牌那边一个规矩 */
+.mj-discards {
+  position: relative; display: flex; flex-wrap: wrap; gap: 1px;
+  padding: 2px; border: 1px dashed rgba(220,60,60,.75); border-radius: 5px;
+  background: rgba(120,20,20,.15); max-width: 160px; align-content: flex-start;
+}
+.mj-discards .mj-pile-tag {
+  position: absolute; right: 0; bottom: 0; z-index: 2; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%;
+  font-style: normal; font-size: 8px; line-height: 1; font-weight: 900;
+  color: rgba(255,240,226,.95);
+  background: radial-gradient(circle at 40% 34%, rgba(216,70,79,.72), rgba(140,22,32,.78) 72%);
+  border: 1px solid rgba(255,190,170,.75);
+  box-shadow: 0 1px 3px rgba(0,0,0,.55);
+  text-shadow: 0 1px 2px rgba(0,0,0,.75);
+}
+
+/* 刚打出来那张：桌子中间亮一下 */
+.mj-table-tile { position: relative; }
+.mj-table-tile::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 10px;
+  border: 2px solid var(--gold, #d6b76a); animation: mjPop .5s ease-out;
+}
+@keyframes mjPop { from { opacity: 0; transform: scale(.7) } to { opacity: 1; transform: scale(1) } }
+
+/* 翻出来的马：单独亮出来，压一个「马」字 */
+.mj-ma { position: relative; }
+.mj-ma::before {
+  content: '马'; position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  font-size: 11px; font-weight: 900; color: var(--gold, #d6b76a); text-shadow: 0 1px 3px #000;
+}
