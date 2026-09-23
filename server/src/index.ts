@@ -15,12 +15,12 @@ import type { Room } from './room.ts';
 import { lookup as ipLookup, cachedLoc, seed as ipSeed } from './iploc.ts';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const PORT = Number(process.env.PORT ?? 8787);
-const DB_PATH = process.env.DB_PATH ?? resolve(__dirname, '../data/paohuzi.db');
-const WEB_DIST = process.env.WEB_DIST ?? resolve(__dirname, '../../web/dist');
+const PORT = Number(process.env.PORT || 8787);
+const DB_PATH = process.env.DB_PATH || resolve(__dirname, '../data/paohuzi.db');
+const WEB_DIST = process.env.WEB_DIST || resolve(__dirname, '../../web/dist');
 /* 自录语音包放**数据目录**，不放 web/dist —— 那儿是每次构建都会被覆盖的产物，
    录音属于数据，得跟数据库一起活着（升级、重新部署都不该丢）。 */
-export const VOICE_DIR = process.env.VOICE_DIR ?? resolve(__dirname, '../data/voice');
+export const VOICE_DIR = process.env.VOICE_DIR || resolve(__dirname, '../data/voice');
 
 /** 这些错是正常的人机对话（房间没了、积分不够……），日志里记一行就够，不用堆栈 */
 const EXPECTED_ERRORS = ['房间不存在', '月卡', '最多同时开', '房间已满', '已经在座位上', '房间已解散', '房间已满', '密码不对', '积分不足', '没有开房权限', '不在房间', '牌局未进行', '场次不存在'];
@@ -599,7 +599,9 @@ setInterval(() => { for (const s of sessions) s.conn.ping(); }, 30000);
 process.on('uncaughtException', e => console.error('[未捕获异常]', e));
 process.on('unhandledRejection', e => console.error('[未处理的 Promise 拒绝]', e));
 
-const adminInfo = db.ensureAdmin('admin', process.env.ADMIN_PASSWORD ?? 'admin8888');
+/* 用 || 不用 ?? —— docker 的 env_file 里写一行 `ADMIN_PASSWORD=` 传进来的是**空串**，
+   ?? 不会兜底，后台密码就成了空的（比 admin8888 还糟）。环境变量空＝没设。 */
+const adminInfo = db.ensureAdmin('admin', process.env.ADMIN_PASSWORD || 'admin8888');
 
 /* 百炼（阿里云）的 API Key：后台填过就存在数据库里，开机装回内存。
    环境变量 DASHSCOPE_API_KEY 优先级更高（alitts.ts 里先看它）。
@@ -609,6 +611,6 @@ setAliKey(db.getSetting<string>('aliKey', ''));
 server.listen(PORT, () => {
   console.log(`衡之娱服务端 http://localhost:${PORT}  (web: ${WEB_DIST})`);
   console.log(`后台管理 http://localhost:${PORT}/admin  账号 ${adminInfo.username}`
-    + (adminInfo.created ? `，初始密码 ${process.env.ADMIN_PASSWORD ?? 'admin8888'}（请尽快改）` : ''));
+    + (adminInfo.created ? `，初始密码 ${process.env.ADMIN_PASSWORD || 'admin8888'}（请尽快改）` : ''));
   console.log(`报牌声在线合成：${hasAliKey() ? '百炼已配好' : '百炼还没配 Key（后台语音页填，或 DASHSCOPE_API_KEY 环境变量）'}`);
 });

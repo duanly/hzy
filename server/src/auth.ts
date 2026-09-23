@@ -21,10 +21,11 @@ function nickReject(nick: string): string | null {
  *  POST /api/auth/wechat   {code}  —— 微信 OAuth（网页授权 / 小程序 code2Session），需配置 WX_APPID / WX_SECRET
  *  POST /api/auth/logout   {token}
  */
-const WX_APPID = process.env.WX_APPID ?? '';
-const WX_SECRET = process.env.WX_SECRET ?? '';
-const WX_MP_APPID = process.env.WX_MP_APPID ?? WX_APPID;      // 小程序
-const WX_MP_SECRET = process.env.WX_MP_SECRET ?? WX_SECRET;
+const WX_APPID = process.env.WX_APPID || '';
+const WX_SECRET = process.env.WX_SECRET || '';
+// 同样用 || ：env_file 里那行空的 WX_MP_APPID= 传进来是空串，?? 就不会回落到公众号那套了
+const WX_MP_APPID = process.env.WX_MP_APPID || WX_APPID;      // 小程序
+const WX_MP_SECRET = process.env.WX_MP_SECRET || WX_SECRET;
 const DEV_MOCK_WECHAT = process.env.DEV_MOCK_WECHAT === '1' || (!WX_APPID && process.env.NODE_ENV !== 'production');
 
 const attempts = new Map<string, { n: number; until: number }>();

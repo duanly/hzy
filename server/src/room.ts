@@ -159,7 +159,7 @@ export class Room {
       this.cur = [];
       return;
     }
-    const k = Number(process.env.BOT_SPEED ?? 1);
+    const k = Number(process.env.BOT_SPEED || 1);
     // 服务端自己判完就往下走的步骤（牌没人要得起、重跑不用出牌），单独切出来多停一会儿，
     // 装成"大家在想"，别让开跑、胡牌一瞬间就完事
     const last = this.cur[this.cur.length - 1];
@@ -206,7 +206,7 @@ export class Room {
       };
     }
     // TIMER_SPEED 可整体缩放决策时限（测试用，生产保持 1）
-    const ts = Number(process.env.TIMER_SPEED ?? 1);
+    const ts = Number(process.env.TIMER_SPEED || 1);
     if (ts !== 1) {
       const t = this.rules.timers;
       // huForced 也跟着缩（测试用）：生产保持 1，它就一直是那 5 秒
@@ -617,7 +617,7 @@ export class Room {
         // 默认：机器人不"思考"，轮到它就动手。唯一要等的是这一步的动画帧发完（holdUntil），
         // 不然它会跑到画面前头去。再加一丁点随机（0~180ms），免得三家永远整齐划一地同一跳出手。
         // 后台把这一组的「机器人思考」打开之后，改成随机停一下（跟着读秒走：30 秒读秒 = 2.4~3.6 秒）。
-        const k = Number(process.env.BOT_SPEED ?? 1);
+        const k = Number(process.env.BOT_SPEED || 1);
         /* 替真人打的时候慢一点（1.5 秒）：人要是正好回来了，得给他抢回这一手的机会 */
         const wait = s.autoBot && s.client ? 1500
           : this.cfg.botThink ? this.thinkMs() : 120 + Math.random() * 180;
@@ -914,7 +914,7 @@ export class Room {
     // 从"胡牌的那一刻"起算，倒计时走完就开下一局（房主可设）
     // 从"这一局的动画全部播完"起算（holdUntil 是最后一帧发出去的时间）：
     // 黄庄那种最后几张牌连着没人要的，客户端要播好一会儿，不留时间的话结算面板一闪而过甚至看不到
-    this.nextRoundAt = Math.max(Date.now(), this.holdUntil) + (this.cfg.autoNextMs ?? 7000) * Number(process.env.BOT_SPEED ?? 1);
+    this.nextRoundAt = Math.max(Date.now(), this.holdUntil) + (this.cfg.autoNextMs ?? 7000) * Number(process.env.BOT_SPEED || 1);
     this.broadcast();
   }
 
@@ -1105,7 +1105,7 @@ export class Room {
     }
     // 胡牌、系统代做的提 / 偎 / 跑 / 龙：动作出现之前先停一下 ——
     // 摸出来的那张牌要先明给大家看清楚，再下地，别牌一摸出来手里的对子就没了
-    const k = Number(process.env.BOT_SPEED ?? 1);
+    const k = Number(process.env.BOT_SPEED || 1);
     const AUTO = new Set(['ti', 'wei', 'pao', 'long']);
     // 「没人要得起」也要停一下再揭晓：不然这张牌掉进牌池的速度比别人点过还快，
     // 等于告诉摸牌的人"这张是真没人要"，而不是"有人弃碰弃吃"
