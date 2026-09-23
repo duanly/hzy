@@ -1,0 +1,24 @@
+# 前置 Caddy 也是 Docker 跑的（比如跟在 fanly 那套 compose 里）时，追加这一份。
+#
+# 不加的话，前置那个容器要反代到本应用，只能绕一圈宿主机端口（172.17.0.1:8080 之类），
+# 既要记 IP 又得把端口开在外面。加了之后两边在同一个 docker 网里，
+# 前置直接 `reverse_proxy paohuzi-caddy:80` 就完了，按名字找，IP 变了也不用改。
+#
+# 怎么用（二选一）：
+#   docker compose -f docker-compose.yml -f docker-compose.edge.yml up -d
+# 或者在 .env 里写一行，之后照常 `docker compose up -d` 就会带上它：
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml
+#
+# EDGE_NETWORK 填前置 Caddy 所在的那个网络的**真名**（docker network ls 看）。
+# 注意那是 external —— 这份 compose 不会去建它，得前置那套先起来。
+
+services:
+  caddy:
+    # 固定容器名：前置那边的配置按名字写，不受 compose 项目名/序号影响
+    container_name: paohuzi-caddy
+    networks: [phz, edge]
+
+networks:
+  edge:
+    external: true
+    name: ${EDGE_NETWORK:?请在 .env 里填前置 Caddy 所在的网络名，docker network ls 看}

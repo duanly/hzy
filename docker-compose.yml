@@ -46,10 +46,6 @@ services:
 networks:
   phz:
 
-# 前置 Caddy 也在 Docker 里、想走容器网而不是绕一圈本机端口的话：
-# 把上面 caddy 的 networks 改成 [phz, edge]，再打开下面这段，
-# 前置那边就直接 reverse_proxy paohuzi-caddy-1:80。
-# networks:
-#   edge:
-#     external: true
-#     name: caddy_net
+# 前置 Caddy 也是 Docker 跑的？别改这个文件 —— 用 docker-compose.edge.yml 叠一层，
+# 两边并到同一个网里，前置那边就能直接 reverse_proxy paohuzi-caddy:80。
+# 见 docker-compose.edge.yml 开头的用法。

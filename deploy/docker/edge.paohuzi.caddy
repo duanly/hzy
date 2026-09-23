@@ -9,9 +9,11 @@
 paohuzi.example.com {
 	encode zstd gzip
 
-	# 应用那层 Caddy 在本机这个口上。
-	# 前置 Caddy 要是也在 Docker 里、并且跟应用共了一个 network，
-	# 这里换成容器名即可：reverse_proxy paohuzi-caddy-1:80
+	# 上游二选一：
+	#   · 前置 Caddy 装在宿主机上（systemd）→ 127.0.0.1:8080
+	#   · 前置 Caddy 也是 Docker 跑的 → 用 docker-compose.edge.yml 把两边并到同一个网里，
+	#     然后把下面这行换成  reverse_proxy paohuzi-caddy:80
+	#     （绕宿主机端口也能通，但要记 172.17.0.1 这种 IP，不如按容器名找）
 	reverse_proxy 127.0.0.1:8080 {
 		# 牌桌那条 WebSocket 一开就是几十分钟，别让它被流超时掐掉
 		transport http {
