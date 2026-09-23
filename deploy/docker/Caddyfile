@@ -29,24 +29,12 @@
 		}
 	}
 
-	# ---- 语音包：体积大、改得少，交给浏览器缓存 ----
-	@voice path /voice/*
-	handle @voice {
-		header Cache-Control "public, max-age=604800"
-		reverse_proxy app:8787
-	}
+	# 缓存策略**不在这儿管**。node 自己已经按请求带不带 ?v= 分了 immutable / no-cache，
+	# index.html 还特意设了 no-store。这一层再 header Cache-Control 会把它**覆盖**掉 ——
+	# 比如后台传了个同名的新语音包，玩家那头还抱着七天前的旧文件不放。
+	# 转发就好，别替上游拿主意。（Caddyfile 只认 # 注释，没有块注释。）
 
-	# ---- 打包出来的静态资源带哈希名，可以长缓 ----
-	@immutable path /main.js /styles.css
-	handle @immutable {
-		# 这两个名字是固定的、不带哈希，所以只缓一小会儿，发版之后玩家刷一下就更新
-		header Cache-Control "public, max-age=300"
-		reverse_proxy app:8787
-	}
-
-	# ---- 其余（/、/admin、/api/*、index.html 兜底路由）统统给 node ----
-	handle {
-		encode zstd gzip
-		reverse_proxy app:8787
-	}
+	# 压缩：node 不压，这一层补上（main.js 半兆压到一百多 K）
+	encode zstd gzip
+	reverse_proxy app:8787
 }
