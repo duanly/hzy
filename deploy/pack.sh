@@ -29,6 +29,7 @@ tar -czf "$OUT" \
   `# 实体牌的参考照（HEIC，8M）：做界面时看的，服务器上用不着` \
   --exclude='./docs/ref' \
   ./package.json ./start.sh ./README.md \
+  ./Dockerfile ./.dockerignore ./docker-compose.yml ./.env.example \
   ./deploy ./packages ./server ./web ./assets ./docs ./miniprogram ./shells
 
 echo "==> 3/3 核对"
