@@ -27,7 +27,8 @@ RUN cd web \
 FROM node:22-alpine
 # node:sqlite（DatabaseSync）和 --experimental-strip-types 都是 22.x 自带的，
 # 这个大版本**别随手往上跳** —— 跳之前先把两套测试跑一遍。
-RUN apk add --no-cache tini tzdata
+# su-exec：entrypoint 摆平 /data 的属主之后用它降权（比 gosu 小得多）
+RUN apk add --no-cache tini tzdata su-exec
 ENV TZ=Asia/Shanghai \
     NODE_ENV=production \
     PORT=8787 \
@@ -42,15 +43,19 @@ COPY server/package.json ./server/
 COPY server/src ./server/src
 COPY --from=web /src/web/dist ./web/dist
 # 数据（牌局库 + 后台传的语音包）全在 /data，挂出去才不会跟着镜像一起没
+COPY deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN mkdir -p /data/voice \
  && addgroup -S phz && adduser -S -G phz phz \
- && chown -R phz:phz /app /data
-USER phz
+ && chown -R phz:phz /app /data \
+ && chmod +x /usr/local/bin/entrypoint.sh
+# **故意不写 USER phz**：/data 基本都是 bind mount 进来的宿主机目录（属主 root），
+# 挂载会把镜像里 /data 的属主整个盖掉，构建时 chown 白做。
+# 所以以 root 进 entrypoint，chown 完 /data 再 su-exec 降到 phz 跑 node。
 VOLUME ["/data"]
 EXPOSE 8787
 # 服务端自带 /api/health，顺便报一下开着几间房
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # tini 收养僵尸进程，也让 docker stop 的 SIGTERM 真的传到 node
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["node", "--experimental-strip-types", "server/src/index.ts"]
