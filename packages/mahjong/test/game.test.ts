@@ -124,6 +124,10 @@ test('流局不算分', () => {
   const g = new MahjongGame({ dealer: 0, now: () => clock });
   g.start();
   g.wall = [];
+  /* 这张打出去**必须没人要得起**，不然进的是抢牌阶段、轮不到流局。
+     发牌是随机的，直接拿 hand[0] 打出去就会时灵时不灵 —— 这条用例之前
+     几十次里偶尔挂一次，就是这么来的。把三家的手牌清干净，谁也碰不了。 */
+  for (let s = 1; s < 4; s++) g.players[s].hand = [];
   g.act(0, 'discard', { tile: g.players[0].hand[0] });
   // 没人要 → 下家要摸牌 → 牌墙空了 → 流局
   assert.equal(g.ended, true);

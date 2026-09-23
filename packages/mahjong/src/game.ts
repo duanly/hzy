@@ -395,7 +395,16 @@ export class MahjongGame {
 
   /** 发给客户端的视角：别人的手牌看不见，暗杠只露张数 */
   view(seat: number | null) {
+    /* 把"这会儿能干什么"一起发下去。
+       字牌那边是靠 options 事件推给客户端的，麻将这套没有帧切片，
+       每次广播都是一张完整快照 —— 按钮该亮哪些直接写在快照里最省事，
+       客户端也不用自己攒状态、不会出现"重连之后按钮没了"。 */
+    const opt = seat === null ? null : this.optionsFor(seat);
     return {
+      options: opt?.options ?? [], optionsSpan: opt?.span ?? 0,
+      /** 桌上那张牌能碰 / 杠的话，按钮打在哪张牌上 */
+      claimTile: this.phase === 'claim' ? this.table?.tile ?? null : null,
+      gangTiles: seat !== null && this.phase === 'discard' && this.turn === seat ? this.selfGangTiles(seat) : [],
       phase: this.phase, turn: this.turn, dealer: this.dealer,
       wallLeft: this.wall.length, table: this.table, ma: this.ma, scores: this.scores.slice(),
       winner: this.winner, deadline: this.deadline,
