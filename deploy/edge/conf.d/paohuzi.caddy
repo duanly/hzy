@@ -1,0 +1,22 @@
+# 跑胡子 / 衡之娱。把域名换成真的，其余照抄。
+牌.example.com {
+	encode zstd gzip
+
+	# 上游是**本应用那层 Caddy 的容器名**（不是 127.0.0.1 —— 那是 edge-caddy 自己）。
+	# 靠 docker-compose.edge.yml 把两边并进 edge 这个网，才找得到这个名字。
+	reverse_proxy paohuzi-caddy:80 {
+		# 牌桌那条 WebSocket 一开就是几十分钟。
+		# 不把这两个超时关掉，打着打着连接会被反代掐断 —— 看着就是"卡住了"。
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+
+	log {
+		output file /data/log/paohuzi.log {
+			roll_size 50mb
+			roll_keep 5
+		}
+	}
+}

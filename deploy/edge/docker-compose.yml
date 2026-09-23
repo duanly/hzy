@@ -1,0 +1,43 @@
+# 全机唯一的边界 Caddy —— 只管 TLS 和按域名分发，不属于任何一个应用。
+#
+# 为什么单独一套、不塞进某个 app 的 compose：
+# 塞进去的话，那个 app 一停，别的应用的证书和域名跟着一起没。
+# 边界这层是全机共用的基础设施，生死该跟任何一个业务无关。
+#
+# 每加一个应用：conf.d/ 丢一个文件 + 把那个应用挂到 edge 这个网上，就这两步。
+#
+#   cd /opt/edge && docker compose up -d
+#
+# 放在跑胡子这个仓库里只是**暂时没别的地方搁**（它其实属于服务器，不属于这个 app）。
+# 哪天单独开个 infra 仓库，整个 deploy/edge 搬走就行。
+
+name: edge
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: edge-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"       # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./conf.d:/etc/caddy/conf.d:ro
+      # 证书在这儿。**别用匿名卷** —— 掉了就得重签，Let's Encrypt 有频率限制
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+    # 固定名字：各应用按这个名字以 external 加进来
+    name: edge

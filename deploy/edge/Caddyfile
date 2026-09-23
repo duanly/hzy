@@ -1,0 +1,7 @@
+{
+	# 证书快到期、签发出问题时 Let's Encrypt 会发邮件到这儿
+	email 你的邮箱@example.com
+}
+
+# 每加一个应用，往 conf.d/ 丢一个文件就行，这个主文件不用动
+import /etc/caddy/conf.d/*.caddy
