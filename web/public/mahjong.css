@@ -99,12 +99,15 @@
 .mj-table {
   position: relative; width: 100%; height: 100%;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  /* minmax(0, 1fr) 而不是 1fr：1fr 的隐含下限是 min-content，
+     中间这一行装不下的时候它不肯缩，整张桌子就顶出屏幕。
+     配合下面几个 min-height: 0，中间那行才真的会让步。 */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 4px; padding: 6px; box-sizing: border-box;
   background: radial-gradient(ellipse at 50% 45%, #1e5a3e 0%, #15412d 70%, #0f3122 100%);
 }
-.mj-center { grid-area: 2 / 2; position: relative; display: flex; align-items: center; justify-content: center; }
+.mj-center { grid-area: 2 / 2; position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; min-width: 0; }
 .mj-bottom { grid-area: 3 / 1 / 4 / 4; }
 /* 自己的手牌往下压一点，跟中央那块拉开距离 —— 贴太近的时候，
    刚打出去那张落到中央，看着像是从手牌里"漏"下去的 */
@@ -115,7 +118,7 @@
 .mj-right  { grid-area: 2 / 3; }
 
 /* 一方：头像在左端（＝角上），右边是牌 */
-.mj-side { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mj-side { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 0; }
 .mj-top { flex-direction: row; }
 /* 左右两方立起来：整条竖着排，头像在最上面 —— 也就是那一方的"左端"，正好落在角上。
    一开始想用 writing-mode 把一行转 90°，没用：里头的 flex 还是横着流，
@@ -137,7 +140,7 @@
 .mj-left .mj-hand .mj-tile + .mj-tile,
 .mj-right .mj-hand .mj-tile + .mj-tile,
 .mj-left .mj-meld .mj-tile + .mj-tile,
-.mj-right .mj-meld .mj-tile + .mj-tile { margin-top: -10px; }
+.mj-right .mj-meld .mj-tile + .mj-tile { margin-top: -14px; }
 .mj-left .mj-melds, .mj-right .mj-melds { gap: 4px; }
 /* 四个头像各占一角。
    "每一方的左端"要顺着绕桌子的方向转一圈才对得上四个角：
@@ -182,15 +185,20 @@
 .mj-wall-bottom { left: 50%; bottom: 0; transform: translateX(-50%); flex-direction: row; }
 .mj-wall-left   { left: 0;  top: 50%;   transform: translateY(-50%); flex-direction: column; }
 .mj-wall-right  { right: 0; top: 50%;   transform: translateY(-50%); flex-direction: column; }
-/* 一墩＝两张背面错开叠着。错开那两三个像素就是"厚度" */
-.mj-stack { position: relative; width: 13px; height: 17px; flex: none; }
-.mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 17px; height: 13px; }
+/* 一墩＝两张背面错开叠着。错开那两三个像素就是"厚度"。
+   墩跟墩之间**是挨着的** —— 真桌上牌墙就是一长溜顶着一长溜，中间不留缝。
+   所以相邻两墩压掉 1px（边框各 1px，不压的话就出现 2px 的黑缝，看着一颗一颗断开）。 */
+.mj-stack { position: relative; width: 17px; height: 22px; flex: none; }
+.mj-stack + .mj-stack { margin-left: -1px; }
+.mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 22px; height: 17px; }
+.mj-wall-left .mj-stack + .mj-stack,
+.mj-wall-right .mj-stack + .mj-stack { margin-left: 0; margin-top: -1px; }
 .mj-stack i { position: absolute; inset: 0; border-radius: 2px; display: block;
   background: linear-gradient(135deg, #2f7d52, #1d5a39 60%, #174a2f);
-  border: 1px solid rgba(0,0,0,.35); box-sizing: border-box; }
+  border: 1px solid rgba(0,0,0,.4); box-sizing: border-box; }
 /* 下面那张往下挪，露出一条边 —— 一眼看出是两层 */
-.mj-stack-b { transform: translateY(3px); filter: brightness(.72); }
-.mj-wall-left .mj-stack-b, .mj-wall-right .mj-stack-b { transform: translateX(3px); }
+.mj-stack-b { transform: translateY(4px); filter: brightness(.68); }
+.mj-wall-left .mj-stack-b, .mj-wall-right .mj-stack-b { transform: translateX(4px); }
 .mj-stack-t { box-shadow: 0 1px 1px rgba(0,0,0,.4); }
 
 /* 虚线框**裹着**弃牌堆，不写死大小 —— 牌多了框跟着长，牌少的时候不会空一大片 */
@@ -211,14 +219,27 @@
 .mj-pool { display: grid; gap: 0; align-content: center; justify-items: center; }
 /* 每张牌在自己的格子里歪一点、挪一点：乱是乱，但压不着旁边那张 */
 .mj-pool-cell { display: flex; align-items: center; justify-content: center; width: 31px; height: 39px; }
-/* 矮屏（手机横屏）：中央那堆用小一号的牌，别把上下两家挤没了 */
-@media (max-height: 420px) {
+/* 矮屏（手机横屏，375 高）装不下大牌。
+   这儿**直接改尺寸**，不靠 JS 去挑小一号的类 —— 那样两处都要记着改，
+   而且 JS 不知道屏幕多高。尺寸归 CSS 管，这一段就是唯一的真相。 */
+@media (max-height: 430px) {
   .mj-bottom .mj-row { margin-top: 8px; }
   .mj-avatar { width: 28px; height: 28px; font-size: 11px; }
+  .mj-md { width: 32px; height: 43px; }
+  /* 侧面两家：缩到最小一档，重叠也加大 */
+  .mj-left .mj-tile, .mj-right .mj-tile { width: 13px; height: 17px; border-radius: 3px; }
+  .mj-left .mj-hand .mj-tile + .mj-tile,
+  .mj-right .mj-hand .mj-tile + .mj-tile,
+  .mj-left .mj-meld .mj-tile + .mj-tile,
+  .mj-right .mj-meld .mj-tile + .mj-tile { margin-top: -9px; }
+  /* 对家横着排，宽度不紧张，只缩一点点 */
+  .mj-top .mj-tile { width: 19px; height: 25px; border-radius: 3px; }
+  /* 中央那堆和牌墙也收一档 */
   .mj-pool-cell { width: 23px; height: 29px; }
   .mj-pool-cell .mj-tile { width: 19px; height: 25px; border-radius: 3px; }
   .mj-pool-box { padding: 8px 10px; min-height: 70px; }
-  .mj-md { width: 32px; height: 43px; }
+  .mj-stack { width: 14px; height: 18px; }
+  .mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 18px; height: 14px; }
 }
 .mj-pool-cell .mj-tile { transition: none; }
 

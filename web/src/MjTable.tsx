@@ -122,7 +122,9 @@ function SeatSide({ p, rel, mine, onDiscard, picked }: {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
   /* 左右两家是**竖着**排的：13 张手牌再加下地，用 xs 一列就下去 400 多像素，
      手机横屏根本装不下。侧面用 xxs，对家（横着排）用 xs。 */
-  const size: 'xxs' | 'xs' | 'md' = mine ? 'md' : (rel === 1 || rel === 3) ? 'xxs' : 'xs';
+  /* 别家的牌也放大一档：xxs 那会儿太小了，一眼扫过去看不出有几张、下地了几组。
+     侧面（竖着排）靠加大重叠来腾地方，对家横着排、宽度够，直接给 sm。 */
+  const size: 'xs' | 'sm' | 'md' = mine ? 'md' : (rel === 1 || rel === 3) ? 'xs' : 'sm';
   return (
     <div className={`mj-side mj-${pos} ${p.isTurn ? 'mj-turn' : ''}`}>
       {/* 头像钉在这一方的左端 —— 四个人的头像就落在四个角上 */}
