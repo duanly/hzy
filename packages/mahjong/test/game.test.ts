@@ -107,6 +107,18 @@ test('杠了要从公牌补一张，手上张数不能少', () => {
   assert.equal(g.turn, 0, '杠完还是自己打');
 });
 
+test('杠分算进总计，但单独还留一份账', () => {
+  let clock = 0;
+  const g = new MahjongGame({ dealer: 0, now: () => clock });
+  g.start();
+  const W = (r: number) => tileOf('wan', r);
+  g.players[0].hand = [W(1),W(1),W(1),W(1), ...g.players[0].hand.slice(4)];
+  g.act(0, 'gang', { tile: W(1) });
+  assert.deepEqual(g.gangScores, [6,-2,-2,-2], '杠分那一笔单独记着');
+  assert.deepEqual(g.scores, [6,-2,-2,-2], '总计里已经含着它了，不是两笔钱');
+  assert.equal(g.gangScores.reduce((a,b)=>a+b,0), 0);
+});
+
 test('流局不算分', () => {
   let clock = 0;
   const g = new MahjongGame({ dealer: 0, now: () => clock });
@@ -117,4 +129,5 @@ test('流局不算分', () => {
   assert.equal(g.ended, true);
   assert.ok(g.events.some(e => e.t === 'liuju'));
   assert.deepEqual(g.scores, [0,0,0,0], '流局一分不动');
+  assert.deepEqual(g.gangScores, [0,0,0,0]);
 });

@@ -63,12 +63,18 @@ export class MahjongGame {
   players: Player[] = [];
   /** 公牌（牌墙）：从头往外摸 */
   wall: Tile[] = [];
+  /** 开局那副牌（洗好的 112 张，原样留着）。回放就靠它 + replay 重跑一遍 */
+  deck: Tile[] = [];
   dealer: number;
   turn = 0;
   phase: Phase = 'init';
   ended = false;
   winner: number | null = null;
+  /** 这一局各家的总输赢（**已经含杠分**） */
   scores = [0, 0, 0, 0];
+  /** 其中杠分那一笔单独再记一份 —— 跟字牌那边的罚分一个路子：
+      算进总计里，但纪录表和结算面板要能单独把它拎出来给人看 */
+  gangScores = [0, 0, 0, 0];
   /** 刚打出来那张、还在桌上等人要的牌 */
   table: { tile: Tile; from: number } | null = null;
   /** 刚摸上来那张（自摸判定要用它） */
@@ -79,6 +85,11 @@ export class MahjongGame {
   /** 回放用：每一步真正生效的决定 */
   replay: { s: number; t: string; c?: Tile }[] = [];
   deadline = 0;
+  /* 画面比服务端慢一拍：服务端一步算完就往下走，玩家那头还在放动画。
+     Room 会把"这一帧要播多久"塞进 lag，新开的时限从**玩家看到**那一刻起算。
+     字牌那套引擎里是同一个机制、同一个名字 —— Room 直接拿来就能用。 */
+  lag = 0;
+  private deadlineFresh = false;
   private turnMs: number;
   private claimMs: number;
   private now: () => number;
@@ -98,12 +109,25 @@ export class MahjongGame {
   }
 
   private emit(e: GameEvent) { this.events.push(e); this.onEvent?.(e); }
+  private setDeadline(span: number) { this.deadline = this.now() + span + this.lag; this.deadlineFresh = true; }
+
+  /**
+   * 这一帧要播 ms 毫秒：把**刚开出来的**那个时限整体往后推，
+   * 让玩家是从"看见"开始数秒，而不是从服务端算完开始。
+   * 只推新开的（deadlineFresh），已经在走的不动 —— 不然每来一帧都续一次，时限就没边了。
+   */
+  freshHold(ms: number) {
+    const add = this.ended ? 0 : Math.max(0, Math.min(ms, 8000));
+    if (add && this.deadlineFresh && this.deadline) this.deadline += add;
+    this.deadlineFresh = false;
+  }
   private log(seat: number, t: string, c?: Tile) { this.replay.push(c === undefined ? { s: seat, t } : { s: seat, t, c }); }
   private next(s: number) { return (s + 1) % this.n; }
 
   /** 开局。deck 不给就用内置的洗牌 */
   start(deck?: Tile[], rnd: () => number = Math.random) {
     this.wall = deck && deck.length === DECK_SIZE ? deck.slice() : shuffle(fullDeck(), rnd);
+    this.deck = this.wall.slice();
     for (let s = 0; s < this.n; s++) {
       const p = this.players[s];
       p.hand = this.wall.splice(0, 13);
@@ -126,7 +150,7 @@ export class MahjongGame {
     this.phase = 'discard';
     this.table = null;
     this.claim = null;
-    this.deadline = this.now() + this.turnMs;
+    this.setDeadline(this.turnMs);
     this.emit({ t: 'draw', seat, tile: t, left: this.wall.length });
     this.emitOptions(seat, this.turnOptions(seat));
   }
@@ -232,7 +256,7 @@ export class MahjongGame {
       if (opts.length) {
         this.claim = { seat: s, options: opts, decided: false };
         this.phase = 'claim';
-        this.deadline = this.now() + this.claimMs;
+        this.setDeadline(this.claimMs);
         this.emitOptions(s, [...opts, 'pass']);
         return;
       }
@@ -267,7 +291,7 @@ export class MahjongGame {
     this.table = null; this.claim = null; this.drawn = null;
     this.turn = seat;
     this.phase = 'discard';
-    this.deadline = this.now() + this.turnMs;
+    this.setDeadline(this.turnMs);
     this.emitOptions(seat, this.turnOptions(seat));
   }
 
@@ -302,7 +326,10 @@ export class MahjongGame {
 
   private payGang(seat: number, kind: 'ming' | 'an' | 'bu') {
     const { perPlayer } = scoreGang(kind, this.n - 1, this.rules);
-    for (let s = 0; s < this.n; s++) if (s !== seat) { this.scores[s] -= perPlayer; this.scores[seat] += perPlayer; }
+    for (let s = 0; s < this.n; s++) if (s !== seat) {
+      this.scores[s] -= perPlayer; this.scores[seat] += perPlayer;
+      this.gangScores[s] -= perPlayer; this.gangScores[seat] += perPlayer;
+    }
   }
 
   private doHu(seat: number) {
@@ -344,6 +371,26 @@ export class MahjongGame {
       if (t !== undefined) { this.act(this.turn, 'discard', { tile: t }); return true; }
     }
     return false;
+  }
+
+  /**
+   * 这个座位这会儿能干什么（Room 拿它排机器人、也发给客户端画按钮）。
+   * 形状照着字牌那套来，Room 那边的调度代码不用改。
+   */
+  optionsFor(seat: number | null): { options: ActionType[]; deadline: number; span?: number } | null {
+    if (seat === null || this.ended) return null;
+    if (this.phase === 'discard' && seat === this.turn)
+      return { options: this.turnOptions(seat), deadline: this.deadline, span: this.turnMs };
+    if (this.phase === 'claim' && this.claim && this.claim.seat === seat && !this.claim.decided)
+      return { options: [...this.claim.options, 'pass'], deadline: this.deadline, span: this.claimMs };
+    return null;
+  }
+
+  /** 超时 / 托管时替他挑一张打出去。挑的是最没用的那张，但绝不打红中 */
+  autoDiscardCard(seat: number): Tile {
+    const h = this.players[seat].hand;
+    for (let i = h.length - 1; i >= 0; i--) if (h[i] !== HONG) return h[i];
+    return h[h.length - 1];       // 满手红中这种事不会发生，兜个底
   }
 
   /** 发给客户端的视角：别人的手牌看不见，暗杠只露张数 */
