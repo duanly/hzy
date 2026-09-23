@@ -73,8 +73,12 @@ export class MahjongRoom {
   totals = new Map<number, number>();
   users = new Map<number, PublicUser>();
   private nameBook = new Map<number, string>();
-  spectators = new Set<number>();
+  spectators = new Map<number, Client>();
   nextRoundAt: number | null = null;
+  pausedReason: string | null = null;
+  /** Lobby 靠它回收空房（跟 Room 同名同义） */
+  lastActivity = Date.now();
+  onClosed?: (r: MahjongRoom) => void;
   private db: DB;
   private now: () => number;
   /** 这一局的座位上都坐过谁（中途换人时纪录表要看得出来） */
@@ -368,17 +372,123 @@ export class MahjongRoom {
       ledger: this.ledger.slice(-20), ledgerCount: this.ledger.length,
       name: this.cfg.name,
       nextRoundAt: this.nextRoundAt,
+      pausedReason: this.pausedReason,
+      canResume: true,
       config: { turnSec: this.cfg.turnSec ?? 15, autoNextSec: Math.round((this.cfg.autoNextMs ?? 7000) / 1000), swingCap: 0 },
     };
   }
 
+  private touch() { this.lastActivity = this.now(); }
+
   broadcast() {
+    this.touch();
     for (const s of this.seats) if (s.client) s.client.send({ type: 'room.state', room: this.view(s.userId) } as any);
-    for (const uid of this.spectators) {
-      const c = this.seats.find(s => s.userId === uid)?.client;
-      c?.send({ type: 'room.state', room: this.view(uid) } as any);
-    }
+    for (const [uid, c] of this.spectators) c.send({ type: 'room.state', room: this.view(uid) } as any);
   }
 
-  close() { this.status = 'closed'; this.broadcast(); }
+  // ---------- index.ts 会调的那几个：方法名跟 Room 对齐，不然路由那边要为两种房间各写一遍 ----------
+
+  setReady(userId: number, ready: boolean) {
+    const i = this.seatOf(userId);
+    if (i < 0) return;
+    this.seats[i].ready = ready;
+    this.broadcast();
+  }
+
+  /** 断线重连要不要把他送回这一桌 —— 语义照 Room 来 */
+  resumable(userId: number) {
+    if (this.status === 'closed') return false;
+    const i = this.seatOf(userId);
+    if (i < 0 || this.seats[i].stood) return false;
+    if (this.status === 'playing' && this.game && !this.game.ended) return true;
+    return !this.cfg.isPrivate;
+  }
+
+  spectate(user: UserRow, client: Client): string | null {
+    if (this.status === 'closed') return '房间已关闭';
+    if (this.cfg.hostId !== user.id) return '只有房主可以观战';
+    if (this.seatOf(user.id) >= 0) return '你已经在座位上了';
+    this.spectators.set(user.id, client);
+    this.remember(this.publicUser(user));
+    client.send({ type: 'room.state', room: this.view(user.id) } as any);
+    return null;
+  }
+  unspectate(userId: number) { this.spectators.delete(userId); }
+
+  canResume(userId: number) { return this.cfg.hostId === userId || this.captainId() === userId; }
+  /** 桌长：桌上最早坐下的那个真人 */
+  captainId(): number | null {
+    const live = this.seats.filter(s => s.userId !== null && s.userId > 0 && !s.isBot);
+    if (!live.length) return null;
+    return live.sort((a, b) => (a.seatedAt ?? 0) - (b.seatedAt ?? 0))[0].userId;
+  }
+
+  hostPause(reason = '房主暂停了牌局') { this.pausedReason = reason; this.status = 'paused'; this.broadcast(); }
+  hostResume(userId: number): string | null {
+    if (!this.canResume(userId)) return '只有房主或桌长可以继续';
+    this.pausedReason = null;
+    if (this.status === 'paused') this.status = this.game && !this.game.ended ? 'playing' : 'waiting';
+    this.broadcast();
+    return null;
+  }
+
+  /** 房主强行把这一局作废（不算分），直接开下一局 */
+  abortRound(userId: number): string | null {
+    if (this.cfg.hostId !== userId) return '只有房主可以作废这一局';
+    if (!this.game || this.game.ended) return '这会儿没在打牌';
+    this.settledRound = this.roundNo;   // 别让它再结算一次
+    this.game = null;
+    this.status = 'waiting';
+    this.nextRoundAt = null;
+    if (this.canStart()) this.startRound(); else this.broadcast();
+    return null;
+  }
+
+  setName(name: string) { this.cfg.name = name.trim().slice(0, 16) || undefined; this.broadcast(); }
+  /** 房主在「我的房间」里点开始 */
+  hostStart() { this.pausedReason = null; if (this.status === 'paused') this.status = 'waiting'; if (this.canStart()) this.startRound(); else this.broadcast(); }
+
+  setTurnSec(sec: number) { this.cfg.turnSec = Math.max(5, Math.min(120, Math.floor(sec))); this.broadcast(); }
+
+  /** 清空这个房间的账（纪录表、总计一起清） */
+  clearData() {
+    this.ledger = [];
+    this.totals = new Map([...this.totals.keys()].map(k => [k, 0]));
+    this.roundNo = 0;
+    this.settledRound = -1;
+    this.broadcast();
+  }
+
+  bots(add: boolean, seat?: number): string | null {
+    if (this.status === 'playing') return '牌局进行中，等这一局打完';
+    if (add) {
+      if (seat !== undefined) { if (this.seats[seat]?.userId !== null) return '这个位子有人'; this.addBot(seat); }
+      else this.fillBots();
+    } else {
+      for (let i = 0; i < 4; i++) {
+        if (seat !== undefined && i !== seat) continue;
+        const s = this.seats[i];
+        if (s.isBot && (s.userId ?? 0) < 0) this.seats[i] = { userId: null, isBot: false, ready: false, client: null };
+      }
+    }
+    this.broadcast();
+    return null;
+  }
+
+  kick(byUserId: number, seatIdx: number): string | null {
+    if (this.cfg.hostId !== byUserId) return '只有房主可以请人下桌';
+    const s = this.seats[seatIdx];
+    if (!s || s.userId === null) return '这个位子没人';
+    if (this.status === 'playing') return '牌局进行中，等这一局打完';
+    this.seats[seatIdx] = { userId: null, isBot: false, ready: false, client: null };
+    this.broadcast();
+    return null;
+  }
+
+  close(force = false) {
+    if (!force && this.status === 'playing') return;
+    this.status = 'closed';
+    this.broadcast();
+    this.onClosed?.(this);
+  }
 }

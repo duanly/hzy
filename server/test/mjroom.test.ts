@@ -108,3 +108,26 @@ test('中途退出：位子留着，机器人替他打完', () => {
   while (r.game && !r.game.ended && guard++ < 20000) { r.tick(); ck.advance(200); }
   assert.ok(r.game?.ended, '托管之后也能把这一局打完');
 });
+
+test('大厅里两种房间并存：开一间麻将房，跑胡子那半边看不见它', async () => {
+  const { Lobby, isMj } = await import('../src/lobby.ts');
+  const { DB } = await import('../src/db.ts');
+  const lobby = new Lobby(new DB(':memory:'));
+  const before = lobby.rooms.size;
+
+  const mj = lobby.createMahjong(7, 2, '', { name: '红中局', turnSec: 20, claimSec: 10 });
+  assert.ok(isMj(mj), 'createMahjong 出来的得是麻将房');
+  assert.equal(lobby.rooms.size, before + 1);
+  assert.equal(lobby.rooms.get(mj.cfg.id), mj, '按房号找得到');
+  assert.equal(mj.cfg.turnSec, 20);
+  assert.equal(mj.view(7).variantName, '红中麻将');
+
+  // 大厅的固定桌列表是跑胡子专属的，不该混进麻将房
+  for (const v of lobby.tables(7)) for (const t of v.tables) assert.notEqual(t.id, mj.cfg.id);
+  // 场次统计也一样
+  for (const t of lobby.tiers()) assert.ok(t.online >= 0);
+
+  // 关掉之后从 rooms 里摘掉（onClosed 接上了）
+  mj.close(true);
+  assert.equal(lobby.rooms.has(mj.cfg.id), false, 'onClosed 该把它摘掉');
+});

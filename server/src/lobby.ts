@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { Room } from './room.ts';
+import { MahjongRoom } from './mjroom.ts';
 import type { DB } from './db.ts';
 import type { TierInfo, LobbyVariant } from './protocol.ts';
 import { getRules, type VariantId } from '../../packages/engine/src/index.ts';
@@ -54,8 +55,17 @@ export function tierSettings(v: TableConfig, t: TierConfig) {
   };
 }
 
+/** 大厅里两种房间并存：跑胡子的 Room 和红中麻将的 MahjongRoom。
+    它们是**并列的两套**（见 mjroom.ts 开头），只在这儿和路由那儿碰面。 */
+export type AnyRoom = Room | MahjongRoom;
+/** 是不是麻将房 —— 路由里要分流的地方都用它判，别去比 cfg 里的字段 */
+export function isMj(r: AnyRoom): r is MahjongRoom { return r instanceof MahjongRoom; }
+
 export class Lobby {
-  rooms = new Map<string, Room>();
+  rooms = new Map<string, AnyRoom>();
+  /** 只要跑胡子那些房 —— 大厅固定桌、场次、快速加入都只涉及跑胡子，
+      麻将现在只有私人房。少了这个过滤，下面每一处都要写 instanceof。 */
+  private phz(): Room[] { return [...this.rooms.values()].filter((r): r is Room => !isMj(r)); }
   private db: DB;
   constructor(db: DB) { this.db = db; this.ensureTables(); }
 
@@ -124,7 +134,9 @@ export class Lobby {
           const name = `${plan.name.slice(-2)} ${String(n).padStart(2, '0')}`;
           const turnMs = st.turnSec * 1000;
           const ruleOverride = { timers: { ...rules.timers, drawerDecide: turnMs, claimChi: turnMs, discard: turnMs, claimPeng: Math.round(turnMs / 2) } };
-          const exist = this.rooms.get(id);
+          const got = this.rooms.get(id);
+          // 固定桌只可能是跑胡子的（麻将现在只有私人房）；万一撞上同名的麻将房，当没有、重新建
+          const exist = got && !isMj(got) ? got : undefined;
           if (exist) {
             if (!reconfigure) continue;
             // 改配置：底分 / 读秒 / 自动开局立刻生效（牌局进行中的那一桌下一局才变）
@@ -151,7 +163,8 @@ export class Lobby {
     }
     // 桌子数量调少了：把多出来的空桌撤掉（有人在打的留着）
     if (reconfigure) {
-      for (const [id, r] of [...this.rooms]) {
+      for (const r of this.phz()) {
+        const id = r.cfg.id;
         if (!r.cfg.fixed || wanted.has(id)) continue;
         if (r.status === 'playing' || r.humanCount() > 0) continue;
         r.close(true);
@@ -165,7 +178,7 @@ export class Lobby {
     const cfg = this.tableConfig();
     return TABLE_PLAN.map(v => ({
       variant: v.variant, name: v.name, open: cfg.find(c => c.variant === v.variant)?.open ?? v.open,
-      tables: [...this.rooms.values()].filter(r => r.cfg.fixed && r.cfg.variant === v.variant)
+      tables: this.phz().filter(r => r.cfg.fixed && r.cfg.variant === v.variant)
         .sort((a, b) => a.cfg.id.localeCompare(b.cfg.id))
         .map(r => ({
           id: r.cfg.id, name: r.cfg.name ?? r.cfg.id, baseScore: r.cfg.baseScore,
@@ -177,14 +190,14 @@ export class Lobby {
   }
 
   tiers(): TierInfo[] {
-    return TIERS.map(t => ({ ...t, online: [...this.rooms.values()].filter(r => r.cfg.tier === t.id).reduce((a, r) => a + r.humanCount(), 0) }));
+    return TIERS.map(t => ({ ...t, online: this.phz().filter(r => r.cfg.tier === t.id).reduce((a, r) => a + r.humanCount(), 0) }));
   }
 
   /** 快速加入：找到该场次有空位且未开局的房间，否则新建 */
   quickJoin(tierId: string): Room | null {
     const tier = TIERS.find(t => t.id === tierId);
     if (!tier) return null;
-    for (const r of this.rooms.values()) {
+    for (const r of this.phz()) {
       if (r.cfg.tier === tierId && r.status === 'waiting' && r.filledCount() < r.seats.length) return r;
     }
     const room = new Room({ id: 'L' + randomInt(100000, 999999), isPrivate: false, variant: tier.variant, baseScore: tier.baseScore, tier: tier.id, botFillDelayMs: 4000 }, this.db);
@@ -208,6 +221,21 @@ export class Lobby {
     return room;
   }
 
+  /** 开一间红中麻将的私人房 */
+  createMahjong(hostId: number, baseScore: number, password = '',
+                opt: { turnSec?: number; claimSec?: number; name?: string; autoNextMs?: number; botStrength?: number } = {}): MahjongRoom {
+    let id: string;
+    do { id = String(randomInt(100000, 999999)); } while (this.rooms.has(id));
+    const room = new MahjongRoom({
+      id, isPrivate: true, baseScore, password, hostId,
+      name: opt.name, turnSec: opt.turnSec, claimSec: opt.claimSec,
+      autoNextMs: opt.autoNextMs, botStrength: opt.botStrength,
+    }, this.db);
+    this.rooms.set(id, room);
+    room.onClosed = r => this.rooms.delete(r.cfg.id);
+    return room;
+  }
+
   private register(room: Room) {
     this.rooms.set(room.cfg.id, room);
     room.onClosed = r => this.rooms.delete(r.cfg.id);
@@ -217,7 +245,8 @@ export class Lobby {
     for (const r of this.rooms.values()) {
       try { r.tick(); } catch (e) { console.error('room tick error', r.cfg.id, e); }
       // 私人房 2 小时无活动自动关闭
-      if (!r.cfg.fixed && r.status !== 'closed' && Date.now() - r.lastActivity > 2 * 3600 * 1000) r.close();
+      const fixed = !isMj(r) && r.cfg.fixed;
+      if (!fixed && r.status !== 'closed' && Date.now() - r.lastActivity > 2 * 3600 * 1000) r.close();
     }
   }
 }

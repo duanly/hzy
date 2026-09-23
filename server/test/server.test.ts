@@ -313,8 +313,10 @@ test('断线重连：回到原房间，不会被旧连接踢出', async () => {
 
 test('牌桌配置：读秒 / 自动开局 / 机器人思考能分组配，留空的跟玩法默认', async () => {
   const { DB } = await import('../src/db.ts');
-  const { Lobby } = await import('../src/lobby.ts');
+  const { Lobby, isMj } = await import('../src/lobby.ts');
   const lobby = new Lobby(new DB(':memory:'));
+  /** 大厅里现在两种房间并存，固定桌那部分只看跑胡子的 */
+  const phz = () => [...lobby.rooms.values()].filter(r => !isMj(r)) as import('../src/room.ts').Room[];
   const cfg = lobby.tableConfig();
   const hh = cfg.find(c => c.variant === 'hy_honghei')!;
   lobby.saveTableConfig([{
@@ -324,7 +326,7 @@ test('牌桌配置：读秒 / 自动开局 / 机器人思考能分组配，留�
       { baseScore: 5, count: 2, turnSec: 20, autoNextSec: 8, botThink: true },  // 这一组自己说了算
     ],
   }]);
-  const rooms = [...lobby.rooms.values()].filter(r => r.cfg.variant === 'hy_honghei' && r.cfg.fixed)
+  const rooms = phz().filter(r => r.cfg.variant === 'hy_honghei' && r.cfg.fixed)
     .sort((a, b) => a.cfg.id.localeCompare(b.cfg.id));
   assert.equal(rooms.length, 4, `这个玩法应当建 4 桌，实际 ${rooms.length}`);
   const [a1, a2, b1, b2] = rooms;
@@ -350,7 +352,7 @@ test('牌桌配置：读秒 / 自动开局 / 机器人思考能分组配，留�
   assert.equal(back.tiers[1].botThink, true);
   // 改玩法默认：留空的那一组跟着变，配了的那一组不动
   lobby.saveTableConfig([{ ...back, turnSec: 45 }]);
-  const now = [...lobby.rooms.values()].filter(r => r.cfg.variant === 'hy_honghei' && r.cfg.fixed)
+  const now = phz().filter(r => r.cfg.variant === 'hy_honghei' && r.cfg.fixed)
     .sort((a, b) => a.cfg.id.localeCompare(b.cfg.id));
   assert.equal(now[0].cfg.turnSec, 45, '跟默认的那一组跟着改了');
   assert.equal(now[3].cfg.turnSec, 20, '单独配过的那一组不受影响');

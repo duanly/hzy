@@ -3,15 +3,17 @@ import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DB } from './db.ts';
-import { Lobby } from './lobby.ts';
+import { type AnyRoom, isMj, Lobby } from './lobby.ts';
 import { acceptUpgrade, WebSocketConn } from './ws.ts';
 import { handleAdmin } from './admin.ts';
 import { setAliKey, hasAliKey } from './alitts.ts';
 import { handleAuth } from './auth.ts';
 import { badWord, badWordMsg } from './badwords.ts';
 import { json } from './util.ts';
-import type { ClientMsg, ServerMsg, ProfileView, PublicUser } from './protocol.ts';
+import type { HostedRoom, ClientMsg, ServerMsg, ProfileView, PublicUser } from './protocol.ts';
 import type { Room } from './room.ts';
+import { MJ_VARIANT_ID } from './protocol.ts';
+
 import { lookup as ipLookup, cachedLoc, seed as ipSeed } from './iploc.ts';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -169,7 +171,8 @@ const server = createServer(async (req, res) => {
           // 月卡：到期时间 + 还剩几天（快到期了页面上提前提醒续卡）
           cardUntil: until, cardLeft: Math.max(0, Math.ceil((until - Date.now()) / 86400000)),
           cardValid: !!u.vip || until > Date.now(),
-          rooms: mine().map(viewOf),
+          // 麻将房的后台详情还没做（roomStats 这些是跑胡子专属的），先只列跑胡子的
+          rooms: mine().filter((r): r is Room => !isMj(r)).map(viewOf),
         });
       }
       if (req.method !== 'POST') return json(res, 405, { error: 'method' });
@@ -193,7 +196,9 @@ const server = createServer(async (req, res) => {
         case 'close': r.close(true); break;
         default: return json(res, 400, { error: '不认识的操作' });
       }
-      return json(res, 200, { ok: true, room: r.status === 'closed' ? null : viewOf(r) });
+      // 麻将房没有跑胡子那套后台详情，回个精简的就行
+      if (isMj(r)) return json(res, 200, { ok: true, room: r.status === 'closed' ? null : { id: r.cfg.id, name: r.cfg.name ?? r.cfg.id, status: r.status, rounds: r.ledger.length } });
+      return json(res, 200, { ok: true, room: (r.status as string) === 'closed' ? null : viewOf(r) });
     }
     if (url.pathname === '/api/health') return json(res, 200, { ok: true, rooms: lobby.rooms.size });
     // 自录方言语音包清单：客户端一次问清楚有哪些录音，不用逐个探测
@@ -341,7 +346,7 @@ const server = createServer(async (req, res) => {
 });
 
 // ---------- WebSocket ----------
-interface Session { conn: WebSocketConn; userId: number | null; room: Room | null; superseded?: boolean; ip?: string }
+interface Session { conn: WebSocketConn; userId: number | null; room: AnyRoom | null; superseded?: boolean; ip?: string }
 const sessions = new Set<Session>();
 
 server.on('upgrade', (req, socket) => {
@@ -437,7 +442,8 @@ server.on('upgrade', (req, socket) => {
         const uid = sess.userId;
         const back = uid === null ? undefined : [...lobby.rooms.values()].find(r => r.resumable(uid));
         const mine = uid === null ? [] : [...lobby.rooms.values()].filter(r => r.cfg.isPrivate && r.cfg.hostId === uid && r.status !== 'closed')
-          .map(r => ({ id: r.cfg.id, name: r.cfg.name ?? `房 ${r.cfg.id}`, variant: r.cfg.variant, status: r.status,
+          .map((r): HostedRoom => ({ id: r.cfg.id, name: r.cfg.name ?? `房 ${r.cfg.id}`,
+            variant: isMj(r) ? MJ_VARIANT_ID : r.cfg.variant, status: r.status,
             players: r.seats.filter(x => x.userId !== null).length, seats: r.seats.length, seated: r.seatOf(uid) >= 0 }));
         return send({ type: 'lobby.tables', variants: lobby.tables(uid), resume: back?.cfg.id, hosted: mine });
       }
@@ -502,8 +508,16 @@ server.on('upgrade', (req, socket) => {
           redBlack: bool(pm.redBlack), huCardDun: bool(pm.huCardDun),
           deal: pm.deal === 'big' ? 'big' as const : pm.deal === 'fresh' ? 'fresh' as const : undefined,
         };
-        const room = lobby.createPrivate(u.id, msg.variant, Math.max(1, Math.min(1000, Math.floor(msg.baseScore || 1))), pass,
-          { turnMs, name, autoNextMs, swingCap, pauseEvery, play });
+        const base = Math.max(1, Math.min(1000, Math.floor(msg.baseScore || 1)));
+        const room = msg.game === 'mahjong'
+          ? lobby.createMahjong(u.id, base, pass, {
+              name, autoNextMs,
+              turnSec: turnMs ? Math.round(turnMs / 1000) : undefined,
+              // 抢牌（碰 / 杠）给出牌读秒的一半，跟跑胡子"快碰慢吃"一个思路
+              claimSec: turnMs ? Math.max(5, Math.round(turnMs / 2000)) : undefined,
+            })
+          : lobby.createPrivate(u.id, msg.variant, base, pass,
+              { turnMs, name, autoNextMs, swingCap, pauseEvery, play });
         /* 开好就完事，不自动把房主拽进牌桌 —— 他多半还要接着开下一间，
            或者回「我的房间」看一眼。想打就自己点「进去打」，跟别的玩家一样入座。 */
         send({ type: 'room.created', roomId: room.cfg.id, name: room.cfg.name ?? room.cfg.id });
@@ -558,7 +572,11 @@ server.on('upgrade', (req, socket) => {
       case 'room.state': { if (sess.room && sess.userId !== null) send({ type: 'room.state', room: sess.room.view(sess.userId) }); return; }
       case 'game.act': {
         if (!sess.room || sess.userId === null) { send({ type: 'room.left' }); return send({ type: 'error', message: '已不在房间，已返回大厅' }); }
-        const err = sess.room.act(sess.userId, msg.action, { card: msg.card, combo: msg.combo, lay: msg.lay });
+        /* 两种玩法的动作参数不一样：跑胡子是 card/combo/lay，麻将是 tile。
+           客户端那边发的字段名也各发各的，这儿按房间类型分流就行。 */
+        const err = isMj(sess.room)
+          ? sess.room.act(sess.userId, msg.action as any, { tile: (msg as any).tile ?? msg.card })
+          : sess.room.act(sess.userId, msg.action, { card: msg.card, combo: msg.combo, lay: msg.lay });
         if (err) send({ type: 'error', message: err });
         return;
       }
@@ -569,15 +587,17 @@ server.on('upgrade', (req, socket) => {
       case 'chat': {
         const u = requireUser(); if (!sess.room) return;
         const text = String(msg.text ?? '').slice(0, 200);
+        if (isMj(sess.room)) return;   // 麻将房的聊天还没做
         sess.room.chat(publicUser(u.id)!, { type: 'chat', from: publicUser(u.id)!, text, time: Date.now() }); return;
       }
       case 'voice': {
         const u = requireUser(); if (!sess.room) return;
         if (typeof msg.data !== 'string' || msg.data.length > 600000) throw new Error('语音过长');
+        if (isMj(sess.room)) return;   // 同上
         sess.room.chat(publicUser(u.id)!, { type: 'voice', from: publicUser(u.id)!, data: msg.data, mime: msg.mime, durationMs: msg.durationMs }); return;
       }
       case 'profile.get': {
-        const p = msg.userId < 0 ? botProfile(msg.userId, sess.room) : profile(msg.userId);
+        const p = msg.userId < 0 ? botProfile(msg.userId, sess.room && !isMj(sess.room) ? sess.room : null) : profile(msg.userId);
         if (p) send({ type: 'profile', profile: p }); else send({ type: 'error', message: '用户不存在' });
         return;
       }

@@ -1,6 +1,12 @@
 /** 客户端 ↔ 服务端 WebSocket 协议（前后端共用类型） */
 import type { VariantId, ActionType, Kind, GameEvent } from '../../packages/engine/src/index.ts';
 
+/* 红中麻将是**另一套引擎**（packages/mahjong），它的玩法 id 不在字牌那个 VariantId 里。
+   协议层要同时装得下两边，所以这儿放宽一档。
+   注意：拿 variant 去查字牌规则表（RULES[...]）的地方要先判一下，别直接索引。 */
+export const MJ_VARIANT_ID = 'mj_hongzhong';
+export type AnyVariantId = VariantId | typeof MJ_VARIANT_ID;
+
 export interface PublicUser {
   id: number;
   code?: string;          // 账号 ID：7~9 位字母，给玩家看的那个
@@ -40,7 +46,7 @@ export interface SeatView {
 export interface RoomView {
   id: string;
   isPrivate: boolean;
-  variant: VariantId;
+  variant: AnyVariantId;
   variantName: string;
   baseScore: number;
   hostId: number | null;
@@ -72,12 +78,12 @@ export interface RoomView {
 /** 大厅：一种玩法下的固定桌 */
 export interface LobbyTable { id: string; name: string; baseScore: number; variantName?: string; turnSec?: number; seats: number; humans: number; bots: number; status: 'waiting' | 'playing' | 'paused' | 'closed'; mine?: boolean }
 /** 我开的私人房（大厅里给房主用：进去打 / 观战） */
-export interface HostedRoom { id: string; name: string; variant: VariantId; status: string; players: number; seats: number; seated: boolean }
+export interface HostedRoom { id: string; name: string; variant: AnyVariantId; status: string; players: number; seats: number; seated: boolean }
 export interface LobbyVariant { variant: VariantId; name: string; open: boolean; tables: LobbyTable[] }
 
 export interface LedgerEntry {
   round: number;
-  variant: VariantId;
+  variant: AnyVariantId;
   winner: number | null;     // userId
   deltas: Record<number, number>; // userId → delta
   time: number;
@@ -141,7 +147,9 @@ export type ClientMsg =
   | { type: 'lobby.tables' }                        // 大厅：按玩法列出固定桌
   | { type: 'room.bots'; add: boolean; seat?: number }   // seat = 只补这一个空位（点空位请机器人）
   | { type: 'room.kick'; seat: number }             // 桌上真人：一键请机器人 / 把机器人请出去
-  | { type: 'room.create'; variant: VariantId; baseScore: number; password: string; turnMs?: number;
+  /* game 不填 = 跑胡子（老客户端就是这么发的）；填 'mahjong' 就开红中麻将的房。
+     麻将没有 variant 这一说，服务端会忽略它带上来的那个值。 */
+  | { type: 'room.create'; game?: 'phz' | 'mahjong'; variant: VariantId; baseScore: number; password: string; turnMs?: number;
       name?: string; autoNextSec?: number; swingCap?: number; pauseEvery?: number; play?: PlayOpts }
   | { type: 'room.spectate'; roomId: string }      // 房主观战（不坐下）
   | { type: 'room.resume' }                        // 房主解除封顶暂停

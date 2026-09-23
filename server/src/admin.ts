@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync, unlinkSync, statSync
 import { join } from 'node:path';
 import { DB } from './db.ts';
 import type { Lobby } from './lobby.ts';
+import { isMj } from './lobby.ts';
+import type { Room } from './room.ts';
 import { EDGE_VOICES, edgeTTS, isEdgeVoice } from './edgetts.ts';
 import { GOOGLE_VOICES, googleTTS, isGoogleVoice, isAutoVoice } from './gtts.ts';
 import { ALI_VOICES, aliTTS, isAliVoice, setAliKey, hasAliKey } from './alitts.ts';
@@ -134,7 +136,9 @@ export async function handleAdmin(
 
   switch (path) {
     case 'overview': {
-      const rooms = [...lobby.rooms.values()];
+      // 后台这一版的统计和房间列表都是照跑胡子写的（fixed / variant / swingCap 这些字段）。
+      // 麻将房先不在这儿露面，等后台单独做一页再说。
+      const rooms = [...lobby.rooms.values()].filter((r): r is Room => !isMj(r));
       const online = new Set<number>();
       for (const r of rooms) for (const s of r.seats) if (s.client && s.userId && s.userId > 0) online.add(s.userId);
       const dayAgo = Date.now() - 86400000;
@@ -240,7 +244,7 @@ export async function handleAdmin(
       return json(res, 200, { tables: lobby.tableConfig() });
     }
     case 'rooms': {
-      const rooms = [...lobby.rooms.values()].map(r => ({
+      const rooms = [...lobby.rooms.values()].filter((r): r is Room => !isMj(r)).map(r => ({
         id: r.cfg.id, name: r.cfg.name ?? r.cfg.id, isPrivate: r.cfg.isPrivate, fixed: !!r.cfg.fixed,
         variant: r.cfg.variant, baseScore: r.cfg.baseScore, status: r.status, roundNo: r.roundNo,
         hostId: r.cfg.hostId ?? null, pausedReason: r.pausedReason,
@@ -257,7 +261,7 @@ export async function handleAdmin(
       const r = lobby.rooms.get(String(body.id));
       if (!r) return json(res, 404, { error: '房间不存在' });
       if (body.action === 'resume') { r.pausedReason = null; r.broadcast(); }
-      if (body.action === 'close') { r.close(!r.cfg.fixed); }
+      if (body.action === 'close') { r.close(isMj(r) ? true : !r.cfg.fixed); }
       /* 跟房主管自己私人房的那一套对齐：大厅的固定桌在后台也能调读秒、暂停 / 开始、清空这一桌的账。
          读秒是"单桌临时扳一下"，分组配置重建时会跟回「牌桌配置」里的设置。 */
       if (body.action === 'turnSec') r.setTurnSec(Number(body.value));
@@ -267,7 +271,8 @@ export async function handleAdmin(
       // 机器人节奏：单桌临时扳一下（固定桌按分组配置重建时会跟回分组设置）
       if (body.action === 'botThink') { r.cfg.botThink = !!body.value; r.broadcast(); }
       // 几局一歇：单桌临时扳一下（固定桌按分组配置重建时会跟回分组设置）
-      if (body.action === 'pauseEvery') { r.cfg.pauseEvery = Math.max(0, Math.min(999, Math.floor(Number(body.value) || 0))); r.broadcast(); }
+      // 「几局一歇」是跑胡子那套的配置，麻将房还没有
+      if (body.action === 'pauseEvery' && !isMj(r)) { r.cfg.pauseEvery = Math.max(0, Math.min(999, Math.floor(Number(body.value) || 0))); r.broadcast(); }
       return json(res, 200, { ok: true });
     }
     /* 语音包：后台传 mp3，传了就优先放录音（没传的那条自动退回 TTS / 音效）。
