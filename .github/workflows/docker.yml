@@ -12,7 +12,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ${{ github.repository_owner }}/paohuzi
+  # 跟仓库同名（duanly/hzy）：GHCR 会自动把这个包挂到本仓库名下，
+  # GITHUB_TOKEN 的 packages:write 也就直接够用，不用另外配权限。
+  IMAGE: ${{ github.repository }}
 
 jobs:
   test:

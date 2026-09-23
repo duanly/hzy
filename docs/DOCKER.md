@@ -22,12 +22,12 @@
 
 ```bash
 # 1. 拉仓库（只用到 compose 和两个 Caddyfile，代码本身在镜像里）
-git clone https://github.com/<你>/paohuzi.git /opt/paohuzi
-cd /opt/paohuzi
+git clone https://github.com/duanly/hzy.git /opt/hzy
+cd /opt/hzy
 
 # 2. 配置
 cp .env.example .env
-vi .env            # 至少改 GHCR_OWNER；镜像是私有的话先 docker login ghcr.io
+vi .env            # 默认值就能用；镜像是私有的话先 docker login ghcr.io -u duanly
 
 # 3. 起
 docker compose pull
@@ -53,7 +53,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```bash
 git push                                   # Actions 自动构建、推 GHCR
 # 服务器上：
-cd /opt/paohuzi && docker compose pull && docker compose up -d
+cd /opt/hzy && docker compose pull && docker compose up -d
 ```
 
 镜像 tag 有四种：`latest`（main 分支）、`main`、`sha-xxxxxxx`（每次提交）、`v1.2.3`（打了
@@ -87,7 +87,7 @@ new DatabaseSync('/data/paohuzi.db').exec(\"VACUUM INTO '/data/backup-$(date +%F
 
 | 变量 | 说明 |
 |---|---|
-| `GHCR_OWNER` | 你的 GitHub 用户名 / 组织名，拼出 `ghcr.io/<它>/paohuzi` |
+| `IMAGE` | 镜像名，默认 `ghcr.io/duanly/hzy`（跟仓库同名） |
 | `TAG` | 镜像版本。生产别留 `latest` |
 | `HTTP_PORT` | 对外的明文端口，默认 8080 |
 | `ADMIN_PASSWORD` | 后台 admin 的初始密码。**留空就是 `admin8888`**，上线前务必改。只在第一次建账号时生效，之后改这里没用，要去后台改 |

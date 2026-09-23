@@ -12,7 +12,7 @@ name: paohuzi
 
 services:
   app:
-    image: ghcr.io/${GHCR_OWNER}/paohuzi:${TAG:-latest}
+    image: ${IMAGE:-ghcr.io/duanly/hzy}:${TAG:-latest}
     restart: unless-stopped
     env_file: [.env]
     environment:
