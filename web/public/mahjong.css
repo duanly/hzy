@@ -93,3 +93,110 @@
   content: '马'; position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
   font-size: 11px; font-weight: 900; color: var(--gold, #d6b76a); text-shadow: 0 1px 3px #000;
 }
+
+/* ========== 牌桌 ========== */
+/* 四家围着中间那块，各占一方。用 grid 摆：中间是 center，四周是四方。 */
+.mj-table {
+  position: relative; width: 100%; height: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  gap: 4px; padding: 6px; box-sizing: border-box;
+  background: radial-gradient(ellipse at 50% 45%, #1e5a3e 0%, #15412d 70%, #0f3122 100%);
+}
+.mj-center { grid-area: 2 / 2; position: relative; display: flex; align-items: center; justify-content: center; }
+.mj-bottom { grid-area: 3 / 1 / 4 / 4; }
+.mj-top    { grid-area: 1 / 1 / 2 / 4; }
+.mj-left   { grid-area: 2 / 1; }
+.mj-right  { grid-area: 2 / 3; }
+
+/* 一方：头像在左端（＝角上），右边是牌 */
+.mj-side { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mj-top { flex-direction: row; }
+/* 左右两方立起来：整条竖着排，头像在最上面 —— 也就是那一方的"左端"，正好落在角上。
+   一开始想用 writing-mode 把一行转 90°，没用：里头的 flex 还是横着流，
+   牌照样铺满整个宽度。老老实实把每一层都改成 column 才对。 */
+.mj-left, .mj-right { flex-direction: column; align-items: flex-start; }
+.mj-left .mj-row, .mj-right .mj-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+.mj-left .mj-hand, .mj-left .mj-melds,
+.mj-right .mj-hand, .mj-right .mj-melds { flex-direction: column; align-items: flex-start; }
+.mj-left .mj-meld, .mj-right .mj-meld { flex-direction: column; }
+/* 左右两家**叠着排**。
+   手机横屏才 375 高，13 张手牌加上下地竖着一列要 400 多像素，怎么都装不下。
+   真麻将 App 也是这么处理的：侧面那两家的牌是叠着的，只露一条边。
+   叠掉大半张，一列 13 张只占一百来像素；反正侧面是背面，露多少都一样。
+   下地的牌组也叠 —— 一组本来就是同一张牌，看清一张就够了。 */
+.mj-left .mj-hand .mj-tile + .mj-tile,
+.mj-right .mj-hand .mj-tile + .mj-tile,
+.mj-left .mj-meld .mj-tile + .mj-tile,
+.mj-right .mj-meld .mj-tile + .mj-tile { margin-top: -10px; }
+.mj-left .mj-melds, .mj-right .mj-melds { gap: 4px; }
+/* 四个头像各占一角。
+   "每一方的左端"要顺着绕桌子的方向转一圈才对得上四个角：
+     我（下）→ 左下    上家（左）→ 左上    对家（上）→ 右上    下家（右）→ 右下
+   一开始四方都按"从起点开始排"，结果上方和左方的头像挤在同一个左上角。 */
+.mj-top   { flex-direction: row-reverse; }      /* 头像甩到右上 */
+.mj-right { flex-direction: column-reverse; align-items: flex-end; }   /* 头像沉到右下 */
+.mj-right .mj-row, .mj-right .mj-hand, .mj-right .mj-melds { align-items: flex-end; }
+.mj-top .mj-row { flex-direction: row-reverse; }
+.mj-top .mj-hand, .mj-top .mj-melds { flex-direction: row-reverse; }
+
+.mj-row { display: flex; align-items: flex-end; gap: 12px; min-width: 0; }
+.mj-hand { display: flex; gap: 2px; align-items: flex-end; }
+.mj-melds { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; }
+.mj-meld { display: flex; gap: 1px; }
+
+/* 轮到谁：那一方描一圈 */
+.mj-side.mj-turn .mj-avatar { box-shadow: 0 0 0 2px var(--gold, #d6b76a), 0 0 12px rgba(214,183,106,.6); }
+
+/* 头像 —— 钉在四个角上 */
+.mj-who { display: flex; align-items: center; gap: 6px; flex: none; }
+.mj-avatar {
+  width: 34px; height: 34px; border-radius: 8px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(#2c5f45, #1d4531); color: #f2e6c4;
+  font-size: 13px; font-weight: 700; border: 1px solid rgba(214,183,106,.45);
+}
+.mj-who-txt { display: flex; flex-direction: column; font-size: 11px; line-height: 1.25; color: #e8ddc0; }
+.mj-who-txt b { font-weight: 700; white-space: nowrap; }
+.mj-who-txt .pos { color: #7ee6a4; } .mj-who-txt .neg { color: #ff9b7a; }
+.mj-zhuang {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 4px; border-radius: 50%;
+  background: #c8322b; color: #fff; font-size: 9px; font-style: normal; font-weight: 900;
+  vertical-align: middle;
+}
+
+/* ---- 中央：牌墙一圈 ---- */
+/* 虚线框**裹着**弃牌堆，不写死大小 —— 牌多了框跟着长，牌少的时候不会空一大片 */
+.mj-pool-box {
+  position: relative; padding: 12px 14px;
+  border: 2px dashed rgba(214,183,106,.22); border-radius: 10px;
+  min-width: 180px; min-height: 90px;
+  display: flex; align-items: center; justify-content: center;
+}
+.mj-wall-left {
+  position: absolute; left: 50%; top: -9px; transform: translateX(-50%);
+  font-size: 10px; color: rgba(242,230,196,.75); background: #17452f; padding: 0 6px; white-space: nowrap;
+}
+
+/* ---- 中央：弃牌堆。横七竖八，但每张都露着面 ---- */
+.mj-pool { display: grid; gap: 0; align-content: center; justify-items: center; }
+/* 每张牌在自己的格子里歪一点、挪一点：乱是乱，但压不着旁边那张 */
+.mj-pool-cell { display: flex; align-items: center; justify-content: center; width: 31px; height: 39px; }
+/* 矮屏（手机横屏）：中央那堆用小一号的牌，别把上下两家挤没了 */
+@media (max-height: 420px) {
+  .mj-pool-cell { width: 23px; height: 29px; }
+  .mj-pool-cell .mj-tile { width: 19px; height: 25px; border-radius: 3px; }
+  .mj-pool-box { padding: 8px 10px; min-height: 70px; }
+  .mj-md { width: 32px; height: 43px; }
+}
+.mj-pool-cell .mj-tile { transition: none; }
+
+/* 刚打出来那张：从堆里拎出来单独亮着 */
+.mj-just { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; }
+.mj-ma-box { position: absolute; right: 6px; bottom: 6px; z-index: 3; }
+
+/* 自己的手牌点得动 */
+.mj-bottom .mj-hand .mj-tile { cursor: pointer; }
+.mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }

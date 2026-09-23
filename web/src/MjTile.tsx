@@ -116,13 +116,14 @@ export function MjFace({ tile }: { tile: Tile }) {
  * 一张牌。size 跟字牌那套对齐：xxs 复盘用、xs 别人的弃牌、sm 下地、md 自己的手牌。
  * back = 背面（别人的手牌）。
  */
-export function MjTile({ tile, size = 'md', back, className, onClick, selected, dim }: {
+export function MjTile({ tile, size = 'md', back, className, onClick, selected, dim, style }: {
   tile?: Tile; size?: 'xxs' | 'xs' | 'sm' | 'md'; back?: boolean;
   className?: string; onClick?: () => void; selected?: boolean; dim?: boolean;
+  style?: React.CSSProperties;
 }) {
   const cls = `mj-tile mj-${size}${selected ? ' mj-sel' : ''}${dim ? ' mj-dim' : ''}${back ? ' mj-back' : ''}${className ? ' ' + className : ''}`;
   return (
-    <div className={cls} onClick={onClick} title={back || tile === undefined ? undefined : mjName(tile)}>
+    <div className={cls} style={style} onClick={onClick} title={back || tile === undefined ? undefined : mjName(tile)}>
       {!back && tile !== undefined && <MjFace tile={tile} />}
     </div>
   );
