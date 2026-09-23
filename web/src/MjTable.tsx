@@ -25,6 +25,10 @@ export interface MjSeatView {
   total: number;
   isDealer?: boolean;
   isTurn?: boolean;
+  /** 手里还剩几张延时卡（麻将引擎现在还没这套，给了就显示） */
+  delay?: number;
+  /** 违规罚分次数 */
+  fouls?: number;
 }
 
 export interface MjTableView {
@@ -49,6 +53,29 @@ function jitter(seed: number) {
   return { rot: (r1 - 0.5) * 44, dx: (r2 - 0.5) * 9, dy: (r3 - 0.5) * 9 };
 }
 
+/**
+ * 牌墙：**两张一叠**码在四边 —— 就是真桌上那个样子。
+ * 112 张全码起来是 56 墩、四面各 14 墩；摸一张就从最前头少半墩，摸两张少一整墩。
+ * 这儿按还剩多少张算出还剩几墩，平摊到四边画出来。
+ * 只画背面，一墩就是两张背面错开几个像素叠着 —— 侧面看过去那点厚度就是靠这个。
+ */
+function Wall({ left }: { left: number }) {
+  const stacks = Math.ceil(left / 2);                 // 剩几墩（最后一墩可能只剩一张）
+  const per = [0, 1, 2, 3].map(i => Math.floor(stacks / 4) + (i < stacks % 4 ? 1 : 0));
+  const sides = ['top', 'right', 'bottom', 'left'] as const;
+  return <>
+    {sides.map((side, i) => (
+      <div key={side} className={`mj-wall mj-wall-${side}`}>
+        {Array.from({ length: per[i] }, (_, k) => (
+          <span key={k} className="mj-stack">
+            <i className="mj-stack-b" /><i className="mj-stack-t" />
+          </span>
+        ))}
+      </div>
+    ))}
+  </>;
+}
+
 /** 中央那一堆弃牌：按格子铺开，每张在自己格子里歪一点、挪一点 —— 乱但不互相压 */
 function DiscardPool({ tiles }: { tiles: { tile: Tile; from: number; i: number }[] }) {
   // 每行放几张：牌多了就铺宽一点，始终塞得进中央那块地方
@@ -68,6 +95,25 @@ function DiscardPool({ tiles }: { tiles: { tile: Tile; from: number; i: number }
   );
 }
 
+/**
+ * 头像旁边那排状态标识，样式沿用跑胡子那套（.st / .st-delay / .st-foul）——
+ * 两个玩法摆在一起看的时候，同样的东西长得一样，玩家不用重新认。
+ *   杠（金）按次数 · 延时卡（绿）按张数 · 罚（红）按次数
+ */
+function MjTags({ p }: { p: MjSeatView }) {
+  const gangs = p.melds.filter(m => m.type === 'gang').length;
+  const items: React.ReactNode[] = [];
+  const tag = (key: string, cls: string, text: string, n: number) => {
+    if (n <= 0) return;
+    items.push(<b key={key} className={`st ${cls}${n > 1 ? ' has-n' : ''}`}>{text}{n > 1 && <i className="st-n">{n}</i>}</b>);
+  };
+  tag('g', 'st-gang', '杠', gangs);
+  tag('t', 'st-delay', '延', p.delay ?? 0);
+  tag('f', 'st-foul', '罚', p.fouls ?? 0);
+  if (!items.length) return null;
+  return <div className="st-row mj-tags">{items}</div>;
+}
+
 /** 一方：头像在角上，手牌在左，下地在右 */
 function SeatSide({ p, rel, mine, onDiscard, picked }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
@@ -83,8 +129,10 @@ function SeatSide({ p, rel, mine, onDiscard, picked }: {
       <div className="mj-who">
         <div className="mj-avatar">{p.name.slice(0, 2)}</div>
         <div className="mj-who-txt">
-          <b>{p.name}{p.isDealer && <i className="mj-zhuang">庄</i>}</b>
-          <span className={p.total > 0 ? 'pos' : p.total < 0 ? 'neg' : ''}>{p.total > 0 ? `+${p.total}` : p.total}</span>
+          {/* 昵称给足四个字，跟跑胡子那边一个规矩（再长就截断） */}
+          <b className="mj-nick">{p.name.slice(0, 4)}{p.isDealer && <i className="mj-zhuang">庄</i>}</b>
+          <span className={`mj-total ${p.total > 0 ? 'pos' : p.total < 0 ? 'neg' : ''}`}>{p.total > 0 ? `+${p.total}` : p.total}</span>
+          <MjTags p={p} />
         </div>
       </div>
       <div className="mj-row">
@@ -133,8 +181,9 @@ export function MjTable({ v, onDiscard, picked }: {
     <div className="mj-table">
       {/* 中央：牌墙一圈 + 弃牌一堆 */}
       <div className="mj-center">
+        <Wall left={v.wallLeft} />
         <div className="mj-pool-box">
-          <span className="mj-wall-left">公共牌剩 {v.wallLeft} 张</span>
+          <span className="mj-wall-count">剩 {v.wallLeft} 张</span>
           <DiscardPool tiles={pool} />
         </div>
         {/* 刚打出来那张：亮一下，让人看清是哪一张 */}

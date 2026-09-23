@@ -106,6 +106,10 @@
 }
 .mj-center { grid-area: 2 / 2; position: relative; display: flex; align-items: center; justify-content: center; }
 .mj-bottom { grid-area: 3 / 1 / 4 / 4; }
+/* 自己的手牌往下压一点，跟中央那块拉开距离 —— 贴太近的时候，
+   刚打出去那张落到中央，看着像是从手牌里"漏"下去的 */
+.mj-bottom .mj-row { margin-top: 14px; }
+.mj-bottom { align-items: flex-end; padding-bottom: 2px; }
 .mj-top    { grid-area: 1 / 1 / 2 / 4; }
 .mj-left   { grid-area: 2 / 1; }
 .mj-right  { grid-area: 2 / 3; }
@@ -117,6 +121,10 @@
    一开始想用 writing-mode 把一行转 90°，没用：里头的 flex 还是横着流，
    牌照样铺满整个宽度。老老实实把每一层都改成 column 才对。 */
 .mj-left, .mj-right { flex-direction: column; align-items: flex-start; }
+/* 对家和左右两家的牌**居中**摆（头像还是钉在角上）：
+   牌少的时候不会缩在一头，四方看着是对称的 */
+.mj-left .mj-row, .mj-right .mj-row { justify-content: center; flex: 1; }
+.mj-top .mj-row { justify-content: center; flex: 1; }
 .mj-left .mj-row, .mj-right .mj-row { flex-direction: column; align-items: flex-start; gap: 8px; }
 .mj-left .mj-hand, .mj-left .mj-melds,
 .mj-right .mj-hand, .mj-right .mj-melds { flex-direction: column; align-items: flex-start; }
@@ -168,6 +176,23 @@
 }
 
 /* ---- 中央：牌墙一圈 ---- */
+/* ---- 牌墙：两张一叠，四边各码一溜 ---- */
+.mj-wall { position: absolute; display: flex; pointer-events: none; z-index: 1; }
+.mj-wall-top    { left: 50%; top: 0;    transform: translateX(-50%); flex-direction: row; }
+.mj-wall-bottom { left: 50%; bottom: 0; transform: translateX(-50%); flex-direction: row; }
+.mj-wall-left   { left: 0;  top: 50%;   transform: translateY(-50%); flex-direction: column; }
+.mj-wall-right  { right: 0; top: 50%;   transform: translateY(-50%); flex-direction: column; }
+/* 一墩＝两张背面错开叠着。错开那两三个像素就是"厚度" */
+.mj-stack { position: relative; width: 13px; height: 17px; flex: none; }
+.mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 17px; height: 13px; }
+.mj-stack i { position: absolute; inset: 0; border-radius: 2px; display: block;
+  background: linear-gradient(135deg, #2f7d52, #1d5a39 60%, #174a2f);
+  border: 1px solid rgba(0,0,0,.35); box-sizing: border-box; }
+/* 下面那张往下挪，露出一条边 —— 一眼看出是两层 */
+.mj-stack-b { transform: translateY(3px); filter: brightness(.72); }
+.mj-wall-left .mj-stack-b, .mj-wall-right .mj-stack-b { transform: translateX(3px); }
+.mj-stack-t { box-shadow: 0 1px 1px rgba(0,0,0,.4); }
+
 /* 虚线框**裹着**弃牌堆，不写死大小 —— 牌多了框跟着长，牌少的时候不会空一大片 */
 .mj-pool-box {
   position: relative; padding: 12px 14px;
@@ -175,7 +200,9 @@
   min-width: 180px; min-height: 90px;
   display: flex; align-items: center; justify-content: center;
 }
-.mj-wall-left {
+/* 「剩 N 张」这个角标原先也叫 .mj-wall-left，跟西边那道牌墙撞了名 ——
+   后面那条把前面的覆盖掉，西墙被拽到正中间去了。改叫 count，别再撞。 */
+.mj-wall-count {
   position: absolute; left: 50%; top: -9px; transform: translateX(-50%);
   font-size: 10px; color: rgba(242,230,196,.75); background: #17452f; padding: 0 6px; white-space: nowrap;
 }
@@ -186,6 +213,8 @@
 .mj-pool-cell { display: flex; align-items: center; justify-content: center; width: 31px; height: 39px; }
 /* 矮屏（手机横屏）：中央那堆用小一号的牌，别把上下两家挤没了 */
 @media (max-height: 420px) {
+  .mj-bottom .mj-row { margin-top: 8px; }
+  .mj-avatar { width: 28px; height: 28px; font-size: 11px; }
   .mj-pool-cell { width: 23px; height: 29px; }
   .mj-pool-cell .mj-tile { width: 19px; height: 25px; border-radius: 3px; }
   .mj-pool-box { padding: 8px 10px; min-height: 70px; }
@@ -196,6 +225,18 @@
 /* 刚打出来那张：从堆里拎出来单独亮着 */
 .mj-just { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; }
 .mj-ma-box { position: absolute; right: 6px; bottom: 6px; z-index: 3; }
+
+/* 头像旁边那排标识：样式跟跑胡子那套对齐，两个玩法长一个样 */
+.mj-tags { margin-top: 2px; gap: 3px; }
+.mj-tags .st { font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 4px;
+  white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.45); position: relative; }
+.mj-tags .st.has-n { padding-right: 11px; }
+.mj-tags .st-n { position: absolute; right: 2px; top: 0; font-size: 8px; font-style: normal; }
+.mj-tags .st-gang  { background: #d6b76a; color: #3a2a06; }
+.mj-tags .st-delay { background: #34c77b; color: #10331f; }
+.mj-tags .st-foul  { background: #d9443b; color: #fff; }
+.mj-nick { font-size: 12px; }
+.mj-total { font-size: 11px; }
 
 /* 自己的手牌点得动 */
 .mj-bottom .mj-hand .mj-tile { cursor: pointer; }
