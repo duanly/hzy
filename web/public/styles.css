@@ -1,0 +1,2016 @@
+:root {
+  --felt: #0f3d2e; --felt2: #155a43; --ink: #1a1a1a; --red: #c8232c; --gold: #f2c14e; --paper: #fbf6e6;
+  --panel: rgba(0,0,0,.45); --text: #f4f1e8; --muted: #b9c7bf; --accent: #ffb347; --danger: #ff5b5b; --ok: #4cd97b;
+  --edge: 14px;   /* 牌桌四周统一的边距：退出 / 纪录表按钮、两侧玩家、行动按钮都对齐到这条线 */
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { height: 100%; margin: 0; }
+/* 用"动态视口"(dvh)：只占看得见的那一块。
+   （Safari 底部工具栏那一条不是我们的画布，转屏之后它出现在右边，看着像白边 —— 
+     把页面加到主屏幕 / 用 App 壳打开就没有工具栏了。） */
+@supports (height: 100dvh) { html, body, #root { height: 100dvh; } }
+body { font-family: var(--ui-font, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif); color: var(--text); background: radial-gradient(ellipse at center, var(--felt2), var(--felt) 70%); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 10px 16px; color: #222; background: linear-gradient(#ffe9a8, var(--gold)); font-weight: 700; box-shadow: 0 2px 0 #b58a1a, 0 4px 10px rgba(0,0,0,.3); }
+button:active { transform: translateY(2px); box-shadow: 0 0 0 #b58a1a; }
+button.ghost { background: rgba(255,255,255,.12); color: var(--text); box-shadow: none; border: 1px solid rgba(255,255,255,.25); }
+button.danger { background: linear-gradient(#ff8a8a, var(--danger)); color: #fff; box-shadow: 0 2px 0 #a52020; }
+button:disabled { opacity: .45; cursor: default; }
+input, select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.95); color: #222; width: 100%; }
+.screen { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; display: flex; flex-direction: column; padding: calc(var(--sat) + 10px) calc(var(--sar) + 12px) calc(var(--sab) + 10px) calc(var(--sal) + 12px); overflow: auto; }
+.center { display: flex; align-items: center; justify-content: center; }
+.panel { background: var(--panel); border-radius: 16px; padding: 16px; backdrop-filter: blur(6px); }
+.title { font-size: 34px; font-weight: 900; letter-spacing: 6px; color: var(--gold); text-shadow: 0 2px 0 #7a5a10, 0 6px 16px rgba(0,0,0,.5); }
+.row { display: flex; gap: 10px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 10px; }
+.muted { color: var(--muted); font-size: 13px; }
+.tabs { display: flex; gap: 6px; }
+.tabs button { flex: 1; padding: 8px; }
+.tabs button.off { background: rgba(255,255,255,.15); color: var(--text); box-shadow: none; }
+.toast { position: fixed; top: calc(var(--sat) + 14px); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.8); color: #fff; padding: 10px 18px; border-radius: 10px; z-index: 100; pointer-events: none; animation: fade 2.4s forwards; }
+@keyframes fade { 0%,70% { opacity: 1 } 100% { opacity: 0 } }
+/* ---- 老内核兼容：`inset` 一律配一份 top/right/bottom/left 的长写法 ----
+   微信安卓用的 X5 内核有不少停在 Chrome 84～86，那几版**还不认 `inset`**：
+   简写被整条忽略，`position: fixed` 就成了"定位了但没给位置"，元素停在原地、
+   尺寸由内容决定 —— 在整页转了 90° 的坐标系里，多半就跑到屏幕外去了。
+   表现就是"选吃牌 / 选下伙的框根本没弹出来"。长写法在前、简写在后，新内核照旧用简写。 */
+.modal-bg { position: fixed; top: 0; right: 0; bottom: 0; left: 0; inset: 0; background: rgba(0,0,0,.6); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal { background: #1f2a26; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; padding: 18px; min-width: 280px; max-width: 92vw; max-height: 88vh; overflow: auto; }
+
+/* ---------- 大厅 ---------- */
+.tiers { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tier { background: linear-gradient(160deg, #2a6b52, #123f2f); border: 1px solid rgba(255,255,255,.15); border-radius: 14px; padding: 14px; cursor: pointer; }
+.tier:active { transform: scale(.98); }
+.tier h4 { margin: 0 0 6px; color: var(--gold); }
+.avatar { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; border: 2px solid rgba(255,255,255,.7); overflow: hidden; flex: none; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- 牌面（仿实物：细长白牌，上下各一字，中间小印；牌背玫红框 + 黄底团花） ---------- */
+.card { position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: space-between; background: #fdfdfb; border: 1px solid #c9c2b0; border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.4) inset; flex: none; transition: transform .12s, box-shadow .12s; }
+.card-xl { width: 48px; height: 169px; padding: 7px 0; } .card-xl .card-ch { font-size: 40px; } .card-xl .card-seal { font-size: 16px; }
+.card-lg { width: 44px; height: 152px; padding: 6px 0; } .card-lg .card-ch { font-size: 33px; } .card-lg .card-seal { font-size: 13px; }
+.card-md { width: 37px; height: 130px; padding: 5px 0; } .card-md .card-ch { font-size: 30px; } .card-md .card-seal { font-size: 11px; }
+.card-sm { width: 25px; height: 88px; padding: 3px 0; } .card-sm .card-ch { font-size: 19px; } .card-sm .card-seal { font-size: 8px; }
+.card-xs { width: 22px; height: 75px; padding: 2px 0; } .card-xs .card-ch { font-size: 16px; } .card-xs .card-seal { display: none; }
+.card-xxs { width: 16px; height: 54px; padding: 1px 0; border-radius: 4px; } .card-xxs .card-ch { font-size: 12px; } .card-xxs .card-seal { display: none; }
+/* 牌面字体：具体哪一款由 cardfont.ts 在开机时实测这台机器装了什么，再写到 <html> 的
+   --card-font / --card-wide 上；这里只留一个保底值。 */
+:root { --card-font: "Baoli SC", "STLiti", "LiSu", "STKaiti", "KaiTi", "Noto Serif SC", "Songti SC", serif; --card-wide: 1.05; --card-weight: 900; }
+/* 描出来的那套字：牌面画 SVG，大小跟着原来的字号走（1em 见方） */
+.card-ch.card-ch-svg { display: inline-flex; align-items: center; justify-content: center; }
+.card-ch.card-ch-svg svg { width: 1.06em; height: 1.06em; display: block; }
+.card-ch { font-family: var(--card-font);
+  line-height: 1; font-weight: var(--card-weight, 900); transform: scaleX(var(--card-wide)); }
+.card-ch.big { font-family: var(--card-font); }
+.card-ch.bottom { transform: rotate(180deg) scaleX(calc(var(--card-wide) + .03)); }
+/* 牌面中间那个小红印：衡阳玩法印「衡」，耒阳玩法印「耒」（--seal 由客户端按玩法设置） */
+.card-seal { color: #c8232c; border: 1px solid #c8232c; border-radius: 50%; line-height: 1; padding: 2px 3px; opacity: .85; font-weight: 800; text-align: center; transform: scale(.95); }
+.card-seal::after { content: var(--seal, "衡"); }
+.card-back { background: #fafafa; border-color: #d8d2c4; padding: 3px; justify-content: stretch; }
+.card-back-inner { flex: 1; width: 100%; border: 1.5px solid #d2286e; outline: 1px solid #d2286e; outline-offset: -3.5px; border-radius: 2px; }
+/* 小牌上那两圈品红挨得太近会糊成一条，只留一圈 */
+.card-sm .card-back-inner { outline: none; }
+.card-xs .card-back-inner { border-width: 1px; outline: none; }
+.card-xxs .card-back-inner { border-width: 1px; outline: none; }
+
+/* ---- 牌背花纹：全场就这一套 ----
+   手牌背面、偎 / 提那几张暗牌、别家手里那一摞、公共牌堆、摸牌时盖着的那层 ——
+   以前各写各的（tile 5 / 7 / 8 / 10 / 12 / 14 / 16 都有，圆环半径还是写死的绝对值），
+   于是大牌花纹又大又稀、小牌又密，公共牌堆跟牌背也对不上，看着根本不像一副牌。
+   现在只有这一处定义，靠 --u 整体缩放（圆环半径跟着一起缩，不是把图案裁小），
+   各处只按自己多宽设一个 --u：**一律是公共牌堆那个比例**（牌宽 ÷ 46）。 */
+.card-back-inner, .deck-head, .mini-back, .face-veil {
+  --u: var(--card-u, 1);               /* 1 = 公共牌堆那一档（46px 宽，一格 10px） */
+  --t: calc(10px * var(--u));          /* 一格多大 */
+  background-color: #f6e27a;
+  background-image:
+    radial-gradient(circle, #8a1a12 0 calc(1.2px * var(--u)), transparent calc(1.4px * var(--u))),
+    radial-gradient(circle, transparent 0 calc(2.2px * var(--u)), #d9412b calc(2.4px * var(--u)) calc(3.2px * var(--u)), transparent calc(3.4px * var(--u)) calc(4.2px * var(--u)), #6d8f2a calc(4.4px * var(--u)) calc(5.2px * var(--u)), transparent calc(5.4px * var(--u))),
+    radial-gradient(circle, transparent 0 calc(2.2px * var(--u)), #d9412b calc(2.4px * var(--u)) calc(3.2px * var(--u)), transparent calc(3.4px * var(--u)) calc(4.2px * var(--u)), #6d8f2a calc(4.4px * var(--u)) calc(5.2px * var(--u)), transparent calc(5.4px * var(--u)));
+  background-size: var(--t) var(--t);
+  background-position: 0 0, 0 0, calc(var(--t) / 2) calc(var(--t) / 2);
+}
+/* 各档位的缩放：自己多宽 ÷ 46（公共牌堆的宽度），花纹就跟公共牌堆是同一副牌的。
+   写在牌本身上（不是写在牌背那层里），这样牌背和"摸牌时盖着的那层"都跟着同一档走。 */
+.card-xl  { --card-u: 1.04; }   /* 48px */
+.card-lg  { --card-u: .96; }    /* 44px */
+.card-md  { --card-u: .80; }    /* 37px */
+.card-sm  { --card-u: .54; }    /* 25px */
+.card-xs  { --card-u: .48; }    /* 22px */
+.card-xxs { --card-u: .35; }    /* 16px */
+.mini-back { --card-u: .65; }   /* 30px */
+/* 选中的牌：抬起半个头 + 自己这一张描一圈亮边（别去框别的牌组，容易看岔）。
+   抬半个头（同列里一张牌露出来的高度的一半）：看得出被选中，又不至于把上面那张的头盖掉太多。
+   整个头那么高就挡得太狠了。 */
+.card-selected { transform: translateY(calc(var(--card-lift, 16px) * -1)); box-shadow: inset 0 0 0 3px var(--gold), inset 0 0 10px rgba(242,193,78,.5); }
+.card-click { cursor: pointer; }
+.card-dim { opacity: .55; }
+.card-hl { box-shadow: 0 0 0 2px var(--ok), 0 0 12px var(--ok); }
+/* 一组牌：纵向错落叠放 */
+.stack { position: relative; width: 31px; flex: none; }
+.stack .card { width: 100%; }
+.stack-lg { width: 44px; } .stack-sm { width: 25px; } .stack-xs { width: 22px; }
+
+/* ---------- 牌桌 ---------- */
+/* 底边不留安全区：牌桌底部要跟浏览器里一样贴着屏幕下边缘（iOS 的 home 横条在正中间，压不到右下角的按钮） */
+/* 左右不整体让安全区：只有顶栏、两侧玩家那一行躲刘海就够了 ——
+   App（全屏 WebView）里 env() 两边各有 59px，整体让开的话按钮就离边太远了 */
+.table { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; display: grid; grid-template-rows: auto 1fr auto; padding: var(--sat) 0 4px 0; }
+.table-top { display: flex; justify-content: space-between; align-items: center; padding: 5px var(--edge); font-size: 19px; gap: 8px; }
+.table-top > * { white-space: nowrap; }
+.table-top > :first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.table-top button { padding: 5px 12px !important; font-size: 19px; white-space: nowrap; border-radius: 12px; }
+.table-mid { position: relative; display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: start; min-height: 0; overflow: visible; padding-left: var(--edge); padding-right: var(--edge); }
+.seat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; min-width: 0; width: 100%; }
+.seat-head { display: flex; align-items: center; gap: 6px; }
+.seat-body { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 6px; max-width: 100%; }
+.seat-body .backs { flex-wrap: nowrap; gap: 6px; align-items: center; }
+.backs { display: flex; align-items: center; } .backs .card + .card { margin-left: -8px; }
+.seat-h { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.seat .name { font-size: 15px; font-weight: 700; max-width: 148px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat .score { font-size: 13px; color: var(--gold); }
+.seat.turn .avatar { box-shadow: 0 0 0 3px var(--accent), 0 0 14px var(--accent); }
+.badge { font-size: 11px; background: var(--danger); color: #fff; padding: 1px 6px; border-radius: 8px; }
+.badge.dealer { background: var(--gold); color: #222; }
+.center-area { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 7; }
+.pool { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; max-width: 320px; }
+.discards { display: flex; flex-wrap: wrap; gap: 1px; align-items: center; max-width: 200px; padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,.18); }
+.meld-dark { background: rgba(60,20,20,.45); }
+.melds { display: flex; flex-wrap: wrap; gap: 1px; justify-content: center; max-width: 100%; }
+.meld { display: flex; gap: 1px; padding: 4px 3px 2px; border-radius: 4px; background: rgba(0,0,0,.25); position: relative; }
+.meld .tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); font-size: 10px; background: var(--gold); color: #222; padding: 0 5px; border-radius: 6px; white-space: nowrap; }
+.table-bottom { display: flex; flex-direction: column; gap: 2px; padding: 2px 8px 16px; }
+.hand.fan { position: relative; overflow: visible; padding: 0; margin: 2px 0 0; z-index: 5; }
+/* 平排：每列底边对齐在同一条线上（跑胡子实体牌就是这么码的） */
+.hand.fan.flat { display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding-bottom: 14px; }
+.hand.fan.flat .hand-col { position: relative; overflow: visible; }
+.hand.fan.flat .hand-col .stack { position: absolute; left: 0; bottom: calc(var(--fan-trim, 0px) * -1); width: 100%; }
+.hand.fan .hand-col { padding: 0; background: none; box-shadow: none; }
+.hand.fan .hand-col.drop-target .stack::after { content: ''; position: absolute; top: -2px; right: -2px; bottom: calc(var(--fan-trim, 0px) - 2px); left: -2px; inset: -2px -2px calc(var(--fan-trim, 0px) - 2px) -2px; border-radius: 6px; pointer-events: none; }
+.hand.fan .hand-col.drop-target .stack::after { top: -2px; right: -2px; bottom: calc(var(--fan-trim, 0px) - 2px); left: -2px; inset: -2px -2px calc(var(--fan-trim, 0px) - 2px) -2px; box-shadow: 0 0 0 3px var(--accent); }
+/* 理牌时那圈高亮要把上面补的虚位一起框进去，不然框只有一张牌高，看着像没对准 */
+.hand.dragging .hand-col.drop-target .stack::after { top: calc(-1 * var(--slot-up, 0px) - 2px); }
+
+/* 不足三张的那一列，上面补的虚位：平时不显形（只占着位子好让判定量得到），
+   一上手理牌就亮出来 —— 每一列看着都是三张那么高，拖过去好瞄 */
+/* 手牌末尾那个**虚拟组**：只在理牌（拖牌 / 选中一张准备搬家）的时候出现，
+   摆在最右边那一组外面、跟它一样高。平时只露一个「＋」，
+   牌真拖到这儿了才把虚线框亮出来 —— 跟拖到别的牌组上高亮是一回事。 */
+.hand-col.ghost-col { pointer-events: auto; }
+/* 默认不显形。注意要压过 `.hand.dragging .col-slot { opacity: 1 }`（同级但在后面），
+   所以这儿多带一层 .hand.fan 抬一档权重。 */
+.hand.fan .hand-col.ghost-col .col-slot { opacity: 0; border-style: dashed; }
+.hand.fan .hand-col.ghost-col.drop-target .col-slot { opacity: 1; border-color: var(--accent);
+  border-style: dashed; border-width: 2px; background: rgba(59,130,246,.25); }
+.hand-col.ghost-col .ghost-plus { position: absolute; left: 0; width: 100%; text-align: center;
+  font-size: 22px; line-height: 1; font-weight: 700; color: var(--gold); opacity: .6;
+  text-shadow: 0 1px 3px rgba(0,0,0,.7); pointer-events: none; z-index: 2; }
+.hand-col.ghost-col.drop-target .ghost-plus { opacity: 1; color: var(--accent); }
+.col-slot { position: absolute; left: 0; width: 100%; border-radius: 6px; z-index: 0;
+  border: 2px dashed rgba(255,255,255,.3); background: rgba(255,255,255,.05);
+  opacity: 0; transition: opacity .12s; pointer-events: none; }
+.hand.dragging .col-slot { opacity: 1; }
+/* 虚位长在牌的上方，那一片正好是邻列压过来的地方 —— 拖到哪一列就把哪一列提到最前，
+   免得虚位被旁边的牌盖掉半截（zIndex 是内联写的，只能 !important 压过去） */
+.hand.dragging .hand-col.drop-target { z-index: 150 !important; }
+.hand.dragging .hand-col.drop-target .col-slot { border-color: var(--accent); background: rgba(59,130,246,.2); }
+.hand-col { padding: 3px 3px 0; border-radius: 6px 6px 0 0; transform-origin: 50% 100%; transition: transform .15s; }
+.hand-col.group { background: rgba(76,217,123,.16); box-shadow: 0 0 0 1px rgba(76,217,123,.45) inset; }
+.hand-col.pair { background: rgba(255,179,71,.14); box-shadow: 0 0 0 1px rgba(255,179,71,.4) inset; }
+.hand-col.drop-target { box-shadow: 0 0 0 2px var(--accent) inset; }
+.hand-tools { display: flex; gap: 6px; align-items: center; }
+.hand-tools button { padding: 4px 10px; font-size: 12px; }
+.actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; min-height: 40px; align-items: center; }
+.actions button { font-size: 17px; padding: 7px 16px; }
+.actions .hand-tools button { font-size: 12px; padding: 4px 8px; }
+/* 半程那几个（胡 / 碰 / 跑）：酒红 */
+.actions .hu { background: linear-gradient(#c2465a, #8c1f2e); color: #ffe9ec; box-shadow: 0 2px 0 #5e1420; }
+.countdown { display: inline-flex; width: 34px; height: 34px; border-radius: 50%; background: rgba(0,0,0,.5); color: var(--accent); align-items: center; justify-content: center; font-weight: 800; border: 2px solid var(--accent); }
+.drawn { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.drawn .label { font-size: 12px; color: var(--gold); }
+/* 报牌的冒泡：做成**吹气球**的样子 —— 鼓起来、轻轻晃一下、最后"啵"地炸开。
+   以前是"唰"地弹出来又直接消失，看着突兀；现在起手慢、收尾快，中间还飘一点。
+   气球本体：白底 + 一点点上亮下暗的渐变和内高光，边上一圈软阴影；
+   下面一个小尖角指着头像（.bubble::before），炸开时那圈涟漪是 .bubble::after。 */
+.bubble { position: absolute; z-index: 10;
+  background: radial-gradient(120% 90% at 30% 22%, #ffffff 0%, #fdf7f4 55%, #f3e6e2 100%);
+  /* 一律一个字：宽高写死，气泡就永远在同一个位置、同一个大小 */
+  color: #c8232c; font-weight: 900; font-size: 26px; line-height: 1.15;
+  width: 52px; height: 40px; padding: 0; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.95), inset 0 -3px 6px rgba(190,140,140,.22);
+  transform-origin: 50% 100%;
+  animation: balloon var(--bub-d, 1.15s) cubic-bezier(.22,.9,.3,1) forwards; }
+/* 指向头像的小尖角，跟着气球一起缩放 */
+.bubble::before { content: ''; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px;
+  transform: translateX(-50%) rotate(45deg); border-radius: 0 0 3px 0;
+  background: #f5e9e5; box-shadow: 2px 2px 5px rgba(0,0,0,.18); }
+/* 炸开时扩散的那圈涟漪 */
+.bubble::after { content: ''; position: absolute; top: -4px; right: -4px; bottom: -4px; left: -4px; inset: -4px; border-radius: 20px;
+  border: 2px solid rgba(255,255,255,.85); opacity: 0; pointer-events: none;
+  animation: balloon-ring var(--bub-d, 1.15s) cubic-bezier(.22,.9,.3,1) forwards; }
+@keyframes balloon {
+  0%   { transform: scale(.28) translateY(6px); opacity: 0 }
+  22%  { transform: scale(1.04) translateY(0);  opacity: 1 }   /* 吹起来，鼓过头一点点 */
+  32%  { transform: scale(.97)  translateY(-1px) }             /* 回弹，气球晃一下 */
+  46%  { transform: scale(1.01) translateY(-3px) }
+  72%  { transform: scale(1)    translateY(-5px); opacity: 1 } /* 轻轻往上飘 */
+  86%  { transform: scale(1.14) translateY(-6px); opacity: 1 } /* 最后再鼓一下 —— 要炸了 */
+  100% { transform: scale(1.55) translateY(-10px); opacity: 0 }/* 啵 */
+}
+@keyframes balloon-ring {
+  0%, 82% { opacity: 0; transform: scale(.7) }
+  88%     { opacity: .55; transform: scale(1) }
+  100%    { opacity: 0; transform: scale(1.7) }
+}
+/* 手机上省点电：系统开了"减少动态效果"就只做淡入淡出 */
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: balloon-soft var(--bub-d, 1.15s) ease-out forwards; }
+  .bubble::after { animation: none; opacity: 0; }
+  @keyframes balloon-soft { 0% { opacity: 0 } 15%, 80% { opacity: 1 } 100% { opacity: 0 } }
+}
+.chatpanel { position: absolute; right: var(--edge); top: calc(var(--sat) + 44px); width: min(320px, 80vw); background: rgba(0,0,0,.75); border-radius: 10px; padding: 8px; z-index: 20; display: flex; flex-direction: column; gap: 6px; }
+.chatlog { max-height: 120px; overflow: auto; font-size: 12px; background: rgba(0,0,0,.35); border-radius: 8px; padding: 6px; }
+.talk { background: linear-gradient(#8fd3ff, #2f8fdc); color: #fff; box-shadow: 0 2px 0 #1c5f96; user-select: none; -webkit-user-select: none; touch-action: none; }
+.talk.on { background: linear-gradient(#ffb3b3, #e03131); }
+.side-btns { position: absolute; right: var(--edge); top: calc(var(--sat) + 40px); display: flex; flex-direction: column; gap: 6px; z-index: 5; }
+.side-btns button { padding: 6px 10px; font-size: 12px; }
+table.ledger { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.ledger th, table.ledger td { border-bottom: 1px solid rgba(255,255,255,.15); padding: 6px; text-align: center; }
+.pos { color: var(--ok); } .neg { color: var(--danger); }
+.big-msg { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: 28px; font-weight: 900; color: var(--gold); text-shadow: 0 2px 8px #000; z-index: 6; }
+
+/* 公共牌堆、常驻按钮、拖动 */
+.act-btn { opacity: .55; font-size: 15px !important; padding: 6px 12px !important; }
+.act-btn.avail { opacity: 1; box-shadow: 0 0 0 2px var(--accent), 0 2px 0 #b58a1a; }
+.drag-ghost { position: fixed; z-index: 90; pointer-events: none; transform: rotate(-4deg) scale(1.08); }
+.drop-hint { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); padding: 8px 16px; border-radius: 10px; background: rgba(0,0,0,.55); color: var(--muted); z-index: 89; pointer-events: none; border: 1px dashed rgba(255,255,255,.35); }
+.drop-hint.on { color: #222; background: var(--gold); border-color: var(--gold); font-weight: 800; }
+.hand-col.drop-target { box-shadow: 0 0 0 2px var(--accent) inset; background: rgba(255,179,71,.25); }
+.hand .card { touch-action: none; }
+
+/* 新牌 / 打出的牌高亮呼吸 */
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 2px var(--ok), 0 0 8px var(--ok); } 50% { box-shadow: 0 0 0 3px #fff, 0 0 18px var(--ok); } }
+.card-new { animation: glow 1.1s ease-in-out infinite; }
+.drawn .label { font-weight: 700; }
+/* 牌桌中央倒计时圆环 */
+@keyframes pop-num { 0% { transform: scale(1.5); opacity: .4; } 100% { transform: scale(1); opacity: 1; } }
+/* 浏览器里强制横屏：竖着拿手机时把整个页面旋转 90° */
+@media (orientation: portrait) and (max-width: 900px) {
+  #root { position: absolute; top: 0; left: 0; width: 100vh; height: 100vw; transform: rotate(90deg) translateY(-100vw); transform-origin: top left; overflow: hidden; }
+  /* 同上：横过来之后，"宽"是可见高度、"高"是可见宽度 */
+  @supports (height: 100dvh) {
+    #root { width: 100dvh; height: 100dvw; transform: rotate(90deg) translateY(-100dvw); }
+  }
+  /* 要打字的页面（登录、开房）不旋转：不然手机弹出来的输入法跟页面是横竖反的 */
+  /* 竖屏页面（主页 / 牌桌列表…）：**一定**按屏幕本身的大小来，不许带着牌桌那套尺寸。
+     这几条得 !important —— 牌桌那边是把宽高、缩放**写在 style 属性上**的（要按窄边算），
+     内联样式压过普通 CSS 规则，只要有一次没清干净，列表页就会按牌桌的画布宽度去排：
+     容器一下子宽出一截，卡片自然就从一行两张挤成三张、个个都变小。 */
+  #root.upright { position: static; width: 100% !important; height: 100% !important;
+    transform: none !important; overflow: auto; }
+  /*
+   * 页面转了 90°，但 env(safe-area-inset-*) 说的还是手机本来的四条边，得跟着转一圈：
+   * 页面上 = 机身右、页面右 = 机身下（home 横条）、页面下 = 机身左、页面左 = 机身上（刘海）。
+   * 不转的话，34px 的 home 横条会被当成"页面底部"，把手牌整体顶高一截 —— iOS 上就是这么歪的。
+   */
+  #root:not(.upright) {
+    --sat: env(safe-area-inset-right, 0px);
+    /* 页面右 = 机身下那条 home 横条。**不按它整条 34px 让**，只留一点点：
+       那条横条是半透明贴着屏幕边的，牌桌的东西可以铺到跟前，
+       整条让出来的话按钮、头像、弃牌区全往里缩一大截 —— 桌面明明铺到了屏幕边上，
+       它们却停在离边一指宽的地方，看着就是"没跟着填过去"。
+       12px 够让开手势条的热区，又不至于空出一道。 */
+    --sar: 12px;
+    --sab: env(safe-area-inset-left, 0px);
+    --sal: env(safe-area-inset-top, 0px);
+  }
+  /*
+   * 加到主屏幕、以「网页 App」方式打开时，如果手机开了方向锁，iOS 只会给我们竖屏，
+   * 上面那条状态栏（时间 / 信号 / 电量）就压在页面的**左**边 —— 退出按钮正好在那儿，点不动。
+   * 所以转过来之后，页面左右两边要把安全区让出来（App 外壳是真横屏，走不到这个分支）。
+   */
+  /* 注意：这里要挪的是牌桌整块的左右边界（left/right），不能用 padding ——
+     我的头像、行动按钮、打出的牌都是相对牌桌绝对定位的，padding 对它们不起作用。 */
+  #root:not(.upright) .table { left: var(--sal); right: var(--sar); }
+  /* 状态栏是半透明盖上来的：老机型（没刘海）env() 给 0，兜底留 22px */
+  @media (display-mode: standalone), (display-mode: fullscreen) {
+    #root:not(.upright) { --sal: max(env(safe-area-inset-top, 0px), 22px); }
+  }
+  .table-mid { grid-template-columns: 1fr 1.4fr 1fr; grid-template-rows: none; }
+  .table-mid > .seat:first-child, .table-mid > .seat:last-child, .table-mid > .center-area { grid-column: auto; grid-row: auto; }
+}
+.card-new-wrap .card { animation: glow 1.1s ease-in-out infinite; }
+
+/* ---------- 公共牌堆（只露字头）+ 围绕它的倒计时圆环 ---------- */
+.deck-wrap { position: relative; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; margin: -12px auto 0; }
+.deck-ring { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; transform: rotate(-90deg); }
+.deck-head { width: 46px; height: 46px; border-radius: 9px 9px 5px 5px; border: 2px solid #fafafa; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,.5), 0 0 0 1px #d2286e inset; }
+.deck-head span { font-size: 19px; font-weight: 900; color: #3a1212; background: rgba(255,255,255,.86); border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+.deck-num { position: absolute; font-size: 40px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #000, 0 0 24px #000; animation: pop-num .5s ease-out; pointer-events: none; }
+/* 刚出现的牌：偏向出牌者方向 */
+.float-card { position: absolute; left: 50%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: 2px; z-index: 30;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,.55)); }
+.float-card .label { font-size: 12px; font-weight: 700; color: var(--gold); white-space: nowrap; text-shadow: 0 1px 3px #000; }
+.card-headonly { height: auto !important; justify-content: center; padding: 6px 0 !important; }
+.card-headonly .card-ch.top { transform: scaleX(1.08); }
+/* 轮到谁：头像外圈倒计时 */
+.ava-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.turn-ring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); pointer-events: none; }
+.seat.turn .name, .me-info.turn .name { color: var(--accent); font-weight: 800; }
+/* 底区：下地牌左上、打出的牌右上、按钮右下 */
+.table-bottom { position: relative; }
+/* 我的头像：跟上家对齐（往右让开刘海），名字摆在头像下面 */
+.me-bar { position: absolute; left: 8%; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 8px; z-index: 3; }
+.me-info { flex-direction: column !important; padding: 0 !important; gap: 3px; align-items: center; text-align: center; }
+.my-melds { position: absolute; bottom: 10px; display: flex; flex-wrap: wrap-reverse; align-items: flex-end; justify-content: flex-end; gap: 1px; max-width: 34%; z-index: 3; }
+.my-discards { position: absolute !important; right: 10px; top: 0; z-index: 1; }
+/* 行动按钮：横屏时横着一排放在手牌右下角 */
+.actions { position: absolute; bottom: 15px; display: flex; flex-direction: row; align-items: flex-end; gap: 6px; z-index: 4; }
+.actions .act-btn { font-size: 19px !important; padding: 7px 0 !important; width: 62px; text-align: center; }
+.act-sub { position: absolute; left: 0; bottom: 100%; margin-bottom: 6px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; white-space: nowrap; }
+.act-sub button { font-size: 12px !important; padding: 4px 9px !important; }
+
+/* 手牌：只有"正要放进去的那一组"才亮边框（拖到哪儿亮哪儿）；扇柄处的叠压方向切换钮 */
+.fan-pivot { display: none; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 44px; height: 26px; padding: 0 !important;
+  border-radius: 13px; font-size: 13px; line-height: 1; background: rgba(0,0,0,.5) !important; color: var(--gold) !important;
+  border: 1px solid rgba(255,255,255,.28); box-shadow: none !important; z-index: 200; }
+
+.hand-count { font-size: 20px; font-weight: 900; color: var(--gold); text-shadow: 0 1px 3px #000; }
+.meld-bare { background: none; padding: 0; }
+
+/* 其他玩家的手牌：只画一个牌背字头 + 张数 */
+.mini-back { width: 30px; height: 34px; border-radius: 7px 7px 4px 4px; border: 2px solid #fafafa; display: inline-block;
+  box-shadow: 0 2px 5px rgba(0,0,0,.45), 0 0 0 1px #d2286e inset; }
+
+/* 拖动出牌的虚线 */
+/* 出牌线的锚点：钉在手牌层里那个"扇柄"上（left:50% = 扇形的对称轴）。
+   线本身画在它周围，所以线永远跟扇形同心 —— 不经过任何 JS 坐标换算。 */
+.arc-anchor { position: absolute; left: 50%; width: 0; height: 0; z-index: 95; pointer-events: none; }
+.discard-arc { position: absolute; overflow: visible; z-index: 95; pointer-events: none; }
+.discard-arc circle, .discard-arc line { fill: none; stroke: rgba(255,255,255,.5); stroke-width: 2; stroke-dasharray: 10 8; }
+.discard-arc.on circle, .discard-arc.on line { stroke: var(--gold); stroke-width: 3; }
+.arc-tip { position: absolute; left: 0; transform: translate(-50%, -50%); z-index: 96; pointer-events: none;
+  background: rgba(0,0,0,.65); color: var(--muted); font-size: 12px; padding: 3px 12px; border-radius: 10px; white-space: nowrap; }
+.arc-tip.on { background: var(--gold); color: #222; font-weight: 800; }
+.drag-ghost { transform: translate(-50%, -55%) rotate(-4deg) scale(1.06); }
+/* 选中牌后的出牌按钮 */
+/* 「打出」按钮：阴影这里不能写 !important —— 写了动画就压不过它，呼吸效果会被吃掉 */
+.discard-big { font-size: 17px !important; padding: 8px 16px !important; background: linear-gradient(#ffe9a8, var(--gold)) !important; color: #222 !important; box-shadow: 0 2px 0 #b58a1a; }
+/* 出牌堆：只露字头，后打的压在上面 */
+/* 打出的牌：横着排，从自己一侧往公共牌方向延伸，排满换行 */
+.discard-pile { position: relative; display: flex; flex-direction: row; flex-wrap: wrap; gap: 0; flex: none; z-index: 1;
+  padding: 2px; border: 1px dashed rgba(220,60,60,.75); border-radius: 5px; background: rgba(120,20,20,.15);
+  max-width: 132px; align-content: flex-start; }
+.discard-pile .card { margin: 0; }
+/* 整块弃牌区的记号：右下角一个「弃」字。
+   几条都试过，最后落在这个做法上：
+     · 排在流里（当最后一个 flex 项）—— 一行排满时它自己占一整行，框白白高出一截；
+     · 挂到框外面（像 fieldset 的图例）—— 我方那一摞外头套着 .discard-band
+       （overflow: hidden），出了框就被切掉；
+     · 留出 padding —— pile-xs / pile-sm 后面各自把 padding 又覆盖了一遍，按不住。
+   所以钉在右下角，但**不做成色块**：只留红字加一圈暗描边，压在牌上也只遮住
+   字头的一个角（字头本来是居中的，角上是空的），不占地方也不改布局。
+   这一摞从左上往右排、排满换行，最后一行多半没排满 —— 多数时候角上压根是空的。 */
+/* 样子照胡牌那枚大印来：圆的、半透、红底描边 —— 一眼认得出是"盖上去的戳"。
+   半透是要紧的：它压在最后一张牌的角上，实心的话就把那个角遮死了。 */
+.pile-tag { position: absolute; right: 0; bottom: 0; z-index: 2; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%;
+  font-style: normal; font-size: 8px; line-height: 1; font-weight: 900;
+  color: rgba(255,240,226,.95);
+  background: radial-gradient(circle at 40% 34%, rgba(216,70,79,.72), rgba(140,22,32,.78) 72%);
+  border: 1px solid rgba(255,190,170,.75);
+  box-shadow: 0 1px 3px rgba(0,0,0,.55);
+  text-shadow: 0 1px 2px rgba(0,0,0,.75); }
+.big-ui .pile-tag { width: 16px; height: 16px; font-size: 10px; }
+/* 座位：右边玩家 手牌在右、下地牌在左 */
+.seat-body.rev { flex-direction: row-reverse; }
+
+/* 可碰 / 可吃提示 */
+.card-hint { box-shadow: 0 0 0 2px var(--ok), 0 0 14px rgba(76,217,123,.85) !important; }
+.card-hint-tag { position: absolute; top: 1px; left: 1px; z-index: 3;
+  background: rgba(76,217,123,.42); color: #06320f; font-size: 9px; font-weight: 900; line-height: 1;
+  padding: 1px 2px; border-radius: 3px; }
+/* 拖到最右边 → 单独成一列 */
+.new-col-zone { position: fixed; right: 6px; bottom: 14px; width: 40px; height: 96px; border: 2px dashed rgba(255,255,255,.5);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center; z-index: 120; pointer-events: auto; }
+.new-col-zone span { font-size: 11px; color: var(--muted); line-height: 1.25; text-align: center; }
+
+/* 摸牌 / 打牌飞行动画 */
+.float-card.fly-draw { animation: fly-in .42s cubic-bezier(.2,.8,.3,1) both; }
+.float-card.fly-play { animation: fly-in .32s cubic-bezier(.25,.9,.35,1) both; }
+@keyframes fly-in {
+  0%   { transform: translate(calc(-50% + var(--fx0)), calc(-50% + var(--fy0))) scale(.55); opacity: .35; }
+  70%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--fx1)), calc(-50% + var(--fy1))) scale(1); opacity: 1; }
+}
+.float-inner { position: relative; }
+/* 摸牌时先盖着，到位后再翻出牌面 */
+.face-veil { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; border-radius: 5px; animation: veil-off .42s steps(1, end) both;
+  box-shadow: 0 0 0 2px #fafafa inset; }
+@keyframes veil-off { 0%, 74% { opacity: 1; } 75%, 100% { opacity: 0; } }
+
+/* 已表态（碰/吃/过）后的等待提示 */
+.decided-tip { font-size: 12px; color: var(--accent); background: rgba(0,0,0,.35); padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.act-btn.locked { opacity: .35; pointer-events: none; }
+
+/* 修复：扇形手牌容器是整行宽的空盒子，会挡住右侧行动按钮 / 左侧下地牌的点击 */
+.hand.fan { pointer-events: none; }
+.hand.fan .hand-col, .hand.fan .fan-pivot { pointer-events: auto; }
+.actions, .my-melds, .my-discards { z-index: 8; }
+
+/* 打出的牌：区分「摸上来直接打出」和「从手里打出」 */
+.pile-item { position: relative; line-height: 0; }
+/* 「摸上来直接打出」的标记点已按要求去掉（来源仍可在悬停提示里看到） */
+/* 出牌弧线要能画到容器外面 */
+
+
+/* 打出的牌：缩小版，贴在扇形右上角 */
+/* 下地牌 / 废牌整体放大一档：两处用同一个变量，要调就调这一个数。
+   用 zoom 而不是 transform：zoom 会把**布局**一起放大，所以换行、间距、
+   以及"明牌飞过去落在哪儿"那一套按 getBoundingClientRect 量出来的坐标全都自动对得上；
+   transform 只改画面不改布局，量出来的落点就会差一截。 */
+:root { --meld-zoom: 1.2; }
+/* 下地牌还是用 zoom（它的落点是照头像算的，从不去量里面的牌）。
+   **弃牌堆不用 zoom** —— 飞牌落点要去量那一摞里的牌，而 Safari 对 zoom 里面的元素
+   调 getBoundingClientRect() 返回的是**放大之前**的盒子（实测大字版一张弃牌
+   量出来 22×31，真身是 31.7×44）。试过在外面补这道账，可竖屏整桌转了 90°，
+   包围盒的最小角并不是容器的布局原点，按它缩放会平移出去几十像素 —— 越补越歪。
+   干脆把这一摞的放大写成实打实的尺寸：量出来是多少就是多少，两种引擎都一样。 */
+.meld { zoom: var(--meld-zoom); }
+
+/* ---- 大字版 ----
+   牌桌设置里那个「大 / 小版」：整桌的牌和按钮一起放大两成（默认小版）。
+   一样用 zoom —— 布局跟着一起放大，所以落点、换行、点击判定全都自动对得上。
+   只放"看牌和动手"的那几处：手牌、下地、弃牌、行动按钮、打出按钮。
+   背景、头像、顶上那条不动 —— 那些放大了只会把屏幕挤满，并不更好认。 */
+.table.big-ui { --meld-zoom: 1.44; }                 /* 1.2 × 1.2 */
+/* 手牌那一档由脚本给（放不下就自动收一点，见 HAND_ZOOM） */
+.hand.fan { zoom: var(--hand-zoom, 1); }
+/* 摸牌 / 打牌亮出来的那张：大版里也放大一档。
+   只缩放画面（transform），不碰它的定位 —— 位置是按出牌弧线的顶点算好的，
+   用 zoom 会把那套坐标一起放大，牌就飞出去了。 */
+.table.big-ui .float-inner { transform: scale(1.2); transform-origin: 50% 50%; }
+/* 缩放的是**整个 act-wrap**（按钮 + 倒计时圈），不是只缩放按钮 ——
+   那个圈是量着按钮画出来的一张 svg，跟按钮是兄弟、不在按钮里面；
+   只给按钮套 zoom 的话，圈还按原尺寸画，就对不上了（按钮大一圈、圈还是小的）。 */
+.table.big-ui .actions .act-wrap,
+.table.big-ui .actions > .act-btn,
+.table.big-ui .discard-big,
+.table.big-ui .hand-tools button { zoom: 1.2; }
+
+/* 废牌堆的牌跟下地牌一样大：原来整摞 `zoom: .75` 压小了四分之一，看着像另一副牌，
+   现在去掉缩放，自己这一摞也从 xs 提到 sm（跟自己的下地牌同档）。 */
+.discard-pile.pile-xs { padding: 1px; max-width: 200px; }
+.discard-pile.pile-sm { padding: 1px; max-width: 224px; }
+
+/* 「这张牌是我这边出去的」：牌头右上角一个红点。
+   自己那一摞废牌全是自己的，所以整摞都点；别家下地的组合里只点被要走的那一张
+   （引擎在 meld.fromCid 里记着是哪一张 —— 碰的三张同字，光看牌面分不出来）。 */
+.card.card-src::before { content: ''; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px;
+  border-radius: 50%; background: #e23b3b; box-shadow: 0 0 0 1px rgba(255,255,255,.85); z-index: 3; }
+.card-xs.card-src::before, .card-xxs.card-src::before { width: 4px; height: 4px; top: 1.5px; right: 1.5px; }
+/* 我自己的：贴在扇形右上角，与手牌上沿齐平，新的一行往上长（朝公共牌方向） */
+.my-discards { top: 0 !important; bottom: auto !important; right: auto; flex-wrap: wrap-reverse; align-content: flex-end; }
+
+/* 纪录表换人之后是**竖着往下长**的：当下这一段在最上面，往下一段一段是之前那几批。
+   每一段前面插一条分隔 + 自己的表头，看着就知道"这几局是那三个人打的"。 */
+tr.lg-sep td { padding-top: 14px; padding-bottom: 4px; font-size: 12px; color: var(--gold);
+  border-top: 1px solid rgba(242,193,78,.35); text-align: left; }
+tr.lg-head2 td { font-size: 12px; color: var(--muted); font-weight: 700;
+  border-bottom: 1px solid rgba(255,255,255,.18); }
+tr.lg-total.lg-sub td { font-size: 13px; }
+/* 离桌的人：账一直留着，等他回来接着算 */
+tr.lg-gone td { background: rgba(255,255,255,.05); font-size: 12px; }
+.lg-batch-item { display: inline-block; margin-right: 10px; white-space: nowrap; }
+.lg-batch-item b { margin-left: 4px; }
+
+/* 房间二维码：白底 + 一圈白边，暗底子上也扫得动 */
+.room-qr { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.room-qr .qr-box { background: #fff; padding: 8px; border-radius: 10px; line-height: 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.room-qr .qr-box svg { display: block; }
+.room-qr .muted { max-width: 240px; text-align: center; }
+
+/* 纪录表：可点开某一局的胡牌详情 */
+tr.row-pick { cursor: pointer; }
+tr.row-pick:hover td { background: rgba(255,255,255,.12); }
+
+/* 行动按钮横排后，"打出 X" 这类副按钮排在正上方 */
+.act-sub { flex-direction: row; align-items: center; }
+.actions { flex-wrap: nowrap !important; }
+
+/* 结算：算分过程一行一行列出来 */
+.hu-calc { display: flex; flex-direction: column; gap: 3px; align-self: stretch; font-size: 14px;
+  background: rgba(0,0,0,.28); border-radius: 8px; padding: 8px 12px; }
+.hu-calc div { display: flex; justify-content: space-between; gap: 12px; }
+
+/* 下地牌：只露字头，省地方，别压到昵称上 */
+.stack.stack-heads { overflow: hidden; border-radius: 6px; }
+/* 我方下地牌：从靠近手牌的一侧往外排 */
+.my-melds { flex-direction: row-reverse; }
+/* 弃牌**不压暗** —— 压暗之后字头本来就小，再一暗就看不清打过什么了。
+   跟手牌 / 下地区分开靠的是那一圈红虚线框 + 角上的「弃」标，不靠亮度。 */
+/* 行动按钮靠右排，别超出屏幕（右边还有一列侧边按钮） */
+/* 行动按钮 / 打出 / 胡：统一以同一条竖线（离右边 128px）居中，三者看起来是对齐的 */
+.actions { left: auto !important; right: 128px; transform: translateX(50%); justify-content: center; }
+.actions .act-btn { width: 54px !important; font-size: 17px !important; }
+
+/* 弹窗靠上摆（吃牌组合），别盖住手牌 */
+/* 吃牌组合 / 下伙选择：摆在出牌线附近，手指够得着，别飘到最上面 */
+.modal-bg.at-top { align-items: flex-end; padding-bottom: min(150px, 40%); }
+.chi-opt { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.15); border-radius: 8px; padding: 6px 8px; }
+.chi-opt:hover { background: rgba(76,217,123,.2); border-color: var(--accent); }
+
+/* “打出 X”：跟手牌上沿齐平，高度与行动按钮相当、宽一倍 */
+.discard-slot { position: absolute; top: 0; z-index: 9; display: flex; align-items: center; }
+.discard-slot .discard-big { width: 140px; font-size: 18px !important; padding: 6px 0 !important; text-align: center;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+/* 按钮里那张牌：一个圆头，白底红/黑字，一眼看清选的是哪一张 */
+.btn-card { flex: none; width: 32px !important; height: 32px !important; border-radius: 50% !important;
+  padding: 0 !important; display: flex; align-items: center; justify-content: center;
+  border: 0 !important; box-shadow: 0 1px 3px rgba(0,0,0,.45), inset 0 0 0 1.5px rgba(0,0,0,.12); }
+.btn-card .card-ch { font-size: 21px !important; line-height: 1; transform: none !important; }
+/* 打出的牌堆挪到右上角，给出牌按钮让位 */
+.my-discards { left: auto !important; right: 22px; }
+
+/* 只有"页面被转了 90°"的牌桌里 vw/vh 才要换过来；主页 / 登录这些 upright 页面照常 */
+@media (orientation: portrait) and (max-width: 900px) {
+  #root:not(.upright) .modal { max-width: 92vh; max-height: 84vw; }
+  #root:not(.upright) .modal-bg { padding: 8px; }
+}
+
+/* 结算：把胡的那个字高亮出来 */
+.card-mark { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(255,200,80,.8) !important; z-index: 40; }
+
+/* 「打出 X」挪到行动按钮正上方；打出的牌堆与行动按钮左右对齐，不再贴着右边玩家 */
+.discard-slot { top: auto; bottom: 60px; right: 128px; transform: translateX(50%); left: auto;
+  justify-content: flex-end; }
+/* 打出的牌：右边界与行动按钮对齐的一条带，牌堆在带内靠左、宽度按牌数自适应 */
+.discard-band { position: absolute; display: flex; justify-content: flex-start; overflow: hidden; z-index: 8; }
+.my-discards { position: static !important; width: auto; max-width: 100%; justify-content: flex-start; }
+
+/* 右边玩家：下地的牌组也从右往左排（贴着他自己的手牌那一侧起排） */
+.seat-body.rev .melds, .seat-body.rev .discard-pile { flex-direction: row-reverse; }
+
+
+/* 其他玩家：下地的牌在上，打出的牌在下方，中间留一点间隔 */
+.seat-cards { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; min-width: 0; }
+.seat-body.rev .seat-cards { align-items: flex-end; }
+.seat-cards .melds { justify-content: flex-start; }
+.seat-body.rev .seat-cards .melds { justify-content: flex-end; }
+
+
+/* 行动按钮变大、间距三倍 */
+.actions { gap: 18px !important; }
+.actions .act-btn { width: 68px !important; font-size: 21px !important; padding: 10px 0 !important; }
+
+/* 手牌：扇形照旧张开，只把每列最下面那张的底部剪掉一截 */
+.hand.fan .hand-col { overflow: visible; }
+/* 手牌整体再往下坐一点 */
+.table-bottom { padding-bottom: 2px; }
+
+/* 一局结束后亮牌 */
+.melds.open-hand { max-width: 150px; gap: 1px; margin-left: 14px; padding-left: 10px;
+  border-left: 1px dashed rgba(255,255,255,.28); }
+.seat-body.rev .melds.open-hand { margin: 0 14px 0 0; padding: 0 10px 0 0;
+  border-left: none; border-right: 1px dashed rgba(255,255,255,.28); }
+.pile-rest { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
+  display: flex; flex-wrap: wrap; gap: 1px; width: 250px; max-height: 150px; overflow: auto;
+  justify-content: center; padding: 4px; border-radius: 8px; background: rgba(0,0,0,.45); z-index: 7; }
+.pile-rest-item { position: relative; line-height: 0; }
+/* 底牌到此为止：最后摆一张牌背，标「底」 */
+.pile-rest-item.end::after { content: '底'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 9px; color: #222; background: var(--gold); border-radius: 4px; padding: 0 3px; font-weight: 800; z-index: 1; }
+
+/* 下一局倒计时：只给一个数字 */
+/* 开下一局的倒计时：绿数字 + 绿圈，跟百家乐一个样 */
+/* 开下一局的倒计时：摆在画面正中央，绿数字 + 绿圈 */
+.next-count { font-size: 38px; font-weight: 900; color: var(--ok); text-shadow: 0 2px 6px #000;
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9;
+  width: 112px; height: 112px; display: flex; align-items: center; justify-content: center;
+  border: 5px solid var(--ok); border-radius: 50%; background: rgba(0,0,0,.42);
+  box-shadow: 0 0 14px rgba(76,217,123,.55), inset 0 0 12px rgba(76,217,123,.25); animation: count-pop .9s ease-out infinite; }
+/* 开局面板里的倒计时圈：要回到文档流里（不再绝对定位到牌桌中央），但**不能写 static** ——
+   它身上挂着一层 ::after（呼吸的光晕，inset:0 + 圆角 50%）。父元素一旦是 static，
+   这层 ::after 就找不到定位参照，直接跑去撑满整个面板，变成一个椭圆的黑块罩在上面。
+   用 relative：一样在流里，又能当自己 ::after 的参照。 */
+.panel .next-count { position: relative; left: 0; top: 0; transform: none; }   /* relative 之下 left/top 仍然生效，得一起清掉 */
+@keyframes count-pop { 0% { box-shadow: 0 0 6px rgba(76,217,123,.35), inset 0 0 8px rgba(76,217,123,.2); }
+  50% { box-shadow: 0 0 20px rgba(76,217,123,.75), inset 0 0 16px rgba(76,217,123,.35); }
+  100% { box-shadow: 0 0 6px rgba(76,217,123,.35), inset 0 0 8px rgba(76,217,123,.2); } }
+
+/* ---------- 阶段横幅（开始打牌 / 暂停游戏） ----------
+   一条横向拉开的色带。三件事（展开 → 停住 → 淡出）全交给一条 1.4s 的 keyframes，
+   JS 只负责挂节点、到点摘节点。只动 opacity 和 transform —— 这两个属性走合成层，
+   不触发重排重绘，iPhone 15 这种不那么快的机器上也稳得住。
+   字号一律写死 px：我们这块画布是转过 90°、按设计高 460 缩放的，vh 在竖屏是手机长边，
+   照参考稿写 clamp(..., 4vh, ...) 会把字算飞。 */
+.phase-banner {
+  --pb-open:  38, 176, 100;          /* 开始（绿）：写成 R,G,B，方便就地调透明度 */
+  --pb-close: 214, 52, 52;           /* 暂停（红） */
+  --pb-alpha: .92;                   /* 色带太实会把牌桌整个糊住 */
+  --pb-dur:   1.4s;                  /* 跟 Table.tsx 的 BANNER_MS 对齐 */
+  /* 只占屏宽的三分之二、居中 —— 整条横跨到底会把两边的头像、下地牌全糊住，
+     中间这一段足够看清字了。两端仍然是透明渐变，边界不会切出硬线。 */
+  position: absolute; left: 50%; width: 66%; top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  text-align: center;
+  padding: 10px 0;
+  color: #fff;
+  pointer-events: none;              /* 横幅横跨整个屏幕中部，正压在手牌上：这一行绝不能少 */
+  animation: pb-in var(--pb-dur) cubic-bezier(.2, .8, .3, 1) forwards;
+}
+/* 两端透明 = 色带像从屏幕中间拉开的，不会在左右切出两条生硬的直边 */
+.phase-banner.open {
+  background: linear-gradient(90deg, transparent,
+    rgba(var(--pb-open), var(--pb-alpha)) 25%, rgba(var(--pb-open), var(--pb-alpha)) 75%, transparent); }
+.phase-banner.close {
+  background: linear-gradient(90deg, transparent,
+    rgba(var(--pb-close), var(--pb-alpha)) 25%, rgba(var(--pb-close), var(--pb-alpha)) 75%, transparent); }
+.phase-banner .pb-main { font-size: 34px; font-weight: 900; letter-spacing: 8px; line-height: 1.15;
+  text-shadow: 0 2px 10px rgba(0,0,0,.75); }
+.phase-banner .pb-sub { font-size: 12px; letter-spacing: 4px; opacity: .85; margin-top: 2px; }
+.big-ui .phase-banner .pb-main { font-size: 42px; letter-spacing: 10px; }
+.big-ui .phase-banner .pb-sub { font-size: 14px; }
+
+@keyframes pb-in {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scaleX(.2); }   /* 从中间一道窄缝开始 */
+  18%  { opacity: 1; transform: translate(-50%, -50%) scaleX(1); }    /* 0.25s 甩开 */
+  80%  { opacity: 1; transform: translate(-50%, -50%) scaleX(1); }    /* 停约 0.9s，让人看清 */
+  100% { opacity: 0; transform: translate(-50%, -50%) scaleX(1); }    /* 0.28s 淡出 */
+}
+
+/* 系统开了「减弱动态效果」：只留淡入淡出 */
+@media (prefers-reduced-motion: reduce) {
+  .phase-banner { animation: pb-fade var(--pb-dur) linear forwards; }
+  @keyframes pb-fade { 0%, 10% { opacity: 0 } 20%, 80% { opacity: 1 } 100% { opacity: 0 } }
+}
+
+/* 倒计时指针：指向正在行动的那一家 */
+/* 指针：底边是跟圆环同心的一段弧，正好贴住环的外沿，尖端朝外 */
+.deck-pointer { position: absolute; left: 50%; top: 50%; z-index: 8; transform-origin: 50% 50%; }
+.deck-pointer.down  { transform: translate(-50%, -50%) rotate(180deg) translateY(-42px); }
+.deck-pointer.left  { transform: translate(-50%, -50%) rotate(-90deg) translateY(-42px); }
+.deck-pointer.right { transform: translate(-50%, -50%) rotate(90deg) translateY(-42px); }
+
+/* 手里三张同字：标一个"坎" */
+.tag-kan { background: #7a1f22 !important; color: #ffd98a !important; }
+
+/* 右边玩家：头像放右边，跟左边镜像 */
+.seat.seat-r .seat-head { flex-direction: row-reverse; }
+.seat.seat-r .seat-head > div { text-align: right; }
+/* 亮牌时，手里的牌用红实线框，和下地的牌区分开 */
+.hand-meld { box-shadow: 0 0 0 1.5px var(--danger); border-radius: 5px; }
+
+/* 延时卡：头像旁边标一个「延N」 */
+.delay-card { display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 4px; font-size: 11px;
+  font-weight: 800; color: #1b1b1b; background: linear-gradient(180deg, #ffe9a8, #f0c250); }
+
+/* 纪录表里回看某一局的亮牌 */
+.reveal-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.reveal-name { min-width: 64px; font-size: 12px; font-weight: 700; opacity: .9; }
+
+/* 亮牌时标在胡牌那家名字下面 */
+.hu-tag { font-size: 11px; font-weight: 800; color: #1b1b1b; background: var(--gold);
+  border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
+
+/* 做不了的动作：灰着但点得动（点了说明原因） */
+.act-btn.blocked { opacity: .38; filter: grayscale(1); }
+
+/* 亮牌：下地的牌和手里剩的牌中间留一道缝，一眼分得开 */
+.reveal-gap { display: inline-block; width: 14px; align-self: stretch; margin: 0 4px;
+  border-left: 1px dashed rgba(255,255,255,.28); }
+
+/* 偎 / 提 / 跑 之后正好成胡：胡牌按钮闪一闪，别让人以为卡住了 */
+.act-btn.pulse { animation: hu-pulse .7s ease-in-out infinite alternate; }
+@keyframes hu-pulse { from { box-shadow: 0 0 0 0 rgba(255,210,90,.7); } to { box-shadow: 0 0 0 10px rgba(255,210,90,0); } }
+
+/* 只剩「胡」的时候，按钮摆到「打出 X」那个位置（两者不会同时出现） */
+.actions.at-discard { bottom: 60px !important; right: 128px !important; }
+.actions.at-discard .act-btn { width: 124px !important; font-size: 21px !important; }
+
+/* 只露字头的牌背（底牌那张）：给个和字头一样的高度，别塌成一条线 */
+.card-back.card-headonly .card-back-inner { min-height: 22px; }
+.card-xs.card-back.card-headonly .card-back-inner { min-height: 20px; }
+
+/* 纪录表里回看：弃胡记录 */
+.decline-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,.2); }
+.decline-row { font-size: 13px; color: var(--gold); }
+
+/* 局数：左下角 */
+
+
+/* 手牌（扇形）里的牌：小红印不再居中，紧跟在上面那个字下面 5px —— 这样可以剪得更短 */
+.card.card-fan { justify-content: flex-start; }
+.card.card-fan .card-seal { margin-top: 5px; }
+/* 手牌只露到小红印下面一点，下半截（倒过来的那个字）本来就会被裁掉，直接不画 —— 
+   不画的话裁剪线以下就是干净的空白，圆角也做得出来 */
+.card.card-fan .card-ch.bottom { display: none; }
+
+/* 点完动作等服务端揭晓：按钮留着不收走，选中的那个亮着、其余的灰掉 */
+.act-btn.chosen { opacity: 1 !important; box-shadow: 0 0 0 3px var(--ok), 0 0 14px rgba(76,217,123,.7); animation: wait-blink 1s ease-in-out infinite; }
+.act-btn.idle { opacity: .35 !important; }
+@keyframes wait-blink { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.25); } }
+
+/* 回放 */
+.replay-step { font-size: 14px; font-weight: 700; color: var(--gold); }
+.replay-active { box-shadow: inset 0 0 0 2px rgba(76,217,123,.6); border-radius: 6px; }
+.replay-discards { font-size: 11px; color: var(--muted); align-self: center; }
+.replay-seats { gap: 4px; }
+.replay-seat { border-top: 1px solid rgba(255,255,255,.12); padding-top: 4px; }
+.replay-name { font-size: 13px; font-weight: 700; }
+.replay-cards { display: flex; flex-wrap: wrap; gap: 1px; align-items: flex-start; margin-top: 2px; }
+.replay-group { display: inline-flex; gap: 1px; margin-right: 5px; }
+.replay-box { max-width: min(92vw, 520px); }
+.replay-seat { min-width: 0; }
+.replay-meld { display: inline-flex; gap: 1px; margin-right: 5px; padding: 1px; border-radius: 4px; background: rgba(255,255,255,.10); }
+
+/* ---------- 主页（竖屏）：玩法入口 + 固定桌 ---------- */
+.home { gap: 14px; }
+.home-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+button.ghost.sq { padding: 8px 10px; font-size: 13px; white-space: nowrap; }
+.home-logo { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 6px 0 2px; }
+.home-seal { width: 62px; height: 62px; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--red); color: var(--paper); border-radius: 12px; font-size: 40px; font-weight: 900;
+  font-family: "Noto Serif SC", "Songti SC", serif; box-shadow: 0 3px 10px rgba(0,0,0,.45); }
+.home-title { font-size: 34px; font-weight: 900; letter-spacing: 6px; color: var(--gold); text-shadow: 0 2px 0 #7a5a10, 0 6px 16px rgba(0,0,0,.5); line-height: 1.1; }
+.resume-bar { width: 100%; text-align: left; background: linear-gradient(#ffe9a8, var(--gold)); }
+
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tile { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 2px;
+  min-height: 138px; padding: 12px 14px; border-radius: 16px; color: var(--text); position: relative; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.18); box-shadow: 0 4px 14px rgba(0,0,0,.35); text-align: left; }
+.tile:active { transform: scale(.98); }
+/* 卡片上的点缀画：压在底色上面、文字下面 */
+.tile-svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: .85; }
+.tile-off .tile-svg { opacity: .5; }
+.tile-art { position: absolute; right: 6px; top: -6px; font-size: 62px; font-weight: 900; line-height: 1;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif; opacity: .2; letter-spacing: -4px; pointer-events: none; }
+.tile-name, .tile-sub { position: relative; }
+.tile-name { font-size: 18px; font-weight: 800; letter-spacing: 1px; }
+.tile-sub { font-size: 12px; color: rgba(255,255,255,.75); }
+/* 红黑：红到黑一路渐变（不再是一刀切的斜分），中间那道暗红是过渡 */
+.tile-hh { background: linear-gradient(135deg, #d2323c 0%, #b3202a 34%, #5e1216 62%, #1c1c1c 100%); }
+/* 提龙：深浅绿渐变，中间透一点亮，衬得住盘龙 */
+.tile-tl { background: linear-gradient(150deg, #2a9068 0%, #1d6b4f 42%, #124a37 70%, #0b3325 100%); }
+.tile-lh { background: linear-gradient(150deg, #3a4a55, #1b2329); }
+.tile-pw { background: linear-gradient(150deg, #6b4a1d, #3a2a10); }
+.tile-my { background: linear-gradient(150deg, #1d5a6b, #102c3a); }
+.tile-off { opacity: .55; }
+
+.tables { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; overflow-y: auto; padding-bottom: 8px; }
+/* 桌子卡片跟外面那张玩法卡是同一套素材：类名里直接带 .tile（底色 + 那幅画都从它来），
+   这里只管"小一号"和"能不能进"，不再另起一套底色。 */
+.table-name { font-size: 16px; font-weight: 800; color: var(--gold); }
+.table-base, .table-seat, .table-sub { font-size: 12px; color: var(--muted); }
+.table-state { font-size: 12px; font-weight: 700; }
+.table-state.waiting { color: var(--ok); }
+.table-state.playing { color: var(--accent); }
+.table-state.paused { color: var(--danger); }
+.table-row1 { display: flex; width: 100%; justify-content: space-between; align-items: baseline; gap: 6px; }
+.no-take { margin-left: 6px; padding: 0 5px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #2a1010; background: #ff9a9a; }
+.table-card.mine { outline: 2px solid var(--gold); }
+.table-state.mine { color: var(--gold); }
+.hosted { background: rgba(0,0,0,.3); border-radius: 12px; padding: 10px 12px; gap: 6px; }
+.hosted-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+
+/* ---------- 封顶暂停横幅 / 房主观战 ---------- */
+/* 歇一歇这一屏：原来是顶上一条窄横幅，字小得要凑近看。
+   这会儿本来就没在打牌，摆开就是了 —— 挪到屏幕正中，做成跟胡牌详情差不多大的一块牌子。 */
+.pause-banner { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40;
+  display: flex; flex-direction: column; align-items: stretch; gap: 14px;
+  width: min(560px, 92vw); max-height: 84vh; overflow: auto; padding: 18px 20px 16px; border-radius: 16px;
+  background: linear-gradient(#e04a4a, #b81e1e); color: #fff; font-weight: 700; font-size: 20px; text-align: center;
+  box-shadow: 0 10px 34px rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.22); }
+.pause-banner button { align-self: center; padding: 9px 42px; font-size: 17px; flex: none; }
+/* 歇一歇的时候顺带把账摆出来：这一轮几局的输赢 + 房间总输赢 */
+.pause-banner .pb-col { display: flex; flex-direction: column; gap: 12px; align-items: stretch; min-width: 0; }
+.pause-sum { font-size: 17px; background: rgba(0,0,0,.24); border-radius: 12px; width: 100%; }
+.pause-sum th, .pause-sum td { padding: 7px 10px; white-space: nowrap; }
+.pause-sum th { color: #ffe0e0; font-weight: 700; font-size: 15px; }
+.pause-sum td:first-child, .pause-sum th:first-child { text-align: left; color: #ffd9d9; font-size: 15px; }
+/* 红底子上原来那套红绿看不清，换成亮一点的对比色 */
+.pause-sum .pos { color: #b8ffcf; } .pause-sum .neg { color: #ffd0a8; }
+/* 总输赢那一行是这一屏真正要看的东西：加粗加大，跟上面几局的小计拉开 */
+.pause-sum tr.lg-total td { border-top: 1px solid rgba(255,255,255,.35); font-weight: 900; font-size: 23px; padding-top: 9px; }
+.pause-sum tr.lg-total td:first-child { font-size: 16px; }
+/* 「导出截图」：跟「继续」分开 —— 它是次要动作，做成描边的小按钮挂在表格下面 */
+.pause-shot { align-self: center; padding: 6px 18px; font-size: 14px; }
+/* 账单图预览：图按宽度铺满，长按就能存 */
+.shot-modal .modal { max-width: 94vw; }
+.shot-img { display: block; width: min(360px, 78vw); height: auto; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45); margin: 0 auto; }
+.big-ui .pause-banner { font-size: 23px; width: min(620px, 94vw); }
+.big-ui .pause-sum { font-size: 20px; }
+.big-ui .pause-sum tr.lg-total td { font-size: 27px; }
+@media (max-height: 460px) { .pause-banner { gap: 10px; padding: 12px 14px 10px; font-size: 17px; }
+  .pause-sum { font-size: 15px; } .pause-sum th, .pause-sum td { padding: 4px 8px; }
+  .pause-sum tr.lg-total td { font-size: 19px; } }
+.spectate { gap: 10px; }
+.sp-seat { background: rgba(0,0,0,.32); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 8px 10px; }
+.sp-seat.sp-turn { border-color: var(--ok); }
+.sp-cards { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: 4px; }
+.sp-meld { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
+.sp-tag { font-size: 10px; color: var(--gold); }
+.sp-hand { align-self: center; }
+.sp-discards { font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+.stack-xxs { width: 16px; }
+/* 开房面板：一屏放下 */
+.create-room { gap: 8px; min-width: 300px; }
+.variant-pick { gap: 8px; }
+.vbtn { flex: 1; padding: 8px 6px; font-size: 14px; }
+.form2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.form2 label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.form2 input, .form2 select { padding: 8px 10px; font-size: 14px; }
+
+/* ---------- 牌桌：两侧玩家 / 行动按钮的新排法（看得更清楚） ---------- */
+/* 上家整体靠左、下家整体靠右，左右边缘正好跟顶栏的「退出」「纪录表」按钮对齐 */
+.table-mid > .seat:first-child { align-items: flex-start; padding-left: 0; }
+.table-mid > .seat.seat-r { align-items: flex-end; padding-right: 0; }
+/* 头像方形；名字、分数摆到头像下面 */
+.avatar.avatar-sq { border-radius: 10px; }
+.seat .seat-head { display: flex; align-items: center; gap: 5px; }
+.seat.seat-r .seat-head { flex-direction: row-reverse; }
+.seat .seat-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; margin-top: 3px; max-width: 100%; }
+.seat.seat-r .seat-meta { align-items: flex-end; text-align: right; }
+.seat .seat-meta .name { max-width: 150px; }
+.seat-h .seat-meta { align-items: center; }
+/* 手里剩几张：数字压在牌背上（跟公共牌堆一个样） */
+.seat .mini-back { position: relative; width: 28px; height: 33px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.seat .mini-back .hand-count { font-size: 12px; font-weight: 900; color: #3a1212; background: rgba(255,255,255,.92);
+  border-radius: 9px; width: 22px; height: 18px; display: flex; align-items: center; justify-content: center; text-shadow: none; }
+/* 行动按钮：竖着排在右下角，右端跟「纪录表」对齐 */
+.actions { flex-direction: column !important; align-items: flex-end !important; gap: 8px !important;
+  right: var(--edge) !important; left: auto !important; transform: none !important; }
+.actions .act-btn { width: 86px !important; font-size: 21px !important; padding: 9px 0 !important; }
+/* 「过」离上面那几个按钮远一倍（间距 8px → 16px）：手一抖把该碰的牌过掉就亏了 */
+.actions .act-wrap.act-pass { margin-top: 8px !important; }
+.actions:not([style*="column"]) .act-wrap.act-pass { margin-left: 8px; }   /* 万一哪天改回横排 */
+.actions.at-discard { right: var(--edge) !important; }
+.actions.at-discard .act-btn { width: 86px !important; }
+.act-sub { flex-direction: column; align-items: flex-end; left: auto; right: 100%; bottom: auto; top: 0; margin: 0 6px 0 0; }
+/* 「打出 X」：跟行动按钮同一条右边线 */
+.discard-slot { right: var(--edge) !important; transform: none !important; left: auto !important; }
+
+
+/* ---------- 我的头像：方形，贴左下角；昵称在头像上面 ---------- */
+.me-bar { left: var(--edge) !important; right: auto; top: auto !important; bottom: 13px; transform: none !important; align-items: flex-start; }
+.me-info { align-items: flex-start !important; text-align: left !important; gap: 2px; }
+.me-info .name { font-size: 15px; font-weight: 700; }
+.me-info .score { font-size: 13px; color: var(--gold); }
+/* 两侧玩家：头像那一行往里接下地牌，弃牌摆在下地牌下面 */
+.seat .seat-body { flex-wrap: nowrap; align-items: flex-start; justify-content: flex-start; width: 100%; }
+.seat.seat-r .seat-body { justify-content: flex-end; }
+.seat .seat-cards { gap: 4px; width: 100%; }
+.seat .seat-cards .melds { display: flex; flex-wrap: wrap; gap: 3px; }
+/* 弃牌不留缝（牌组之间还是要分开，不然分不清是几组） */
+.seat .seat-cards .discard-pile { display: flex; flex-wrap: wrap; gap: 0; }
+.seat.seat-r .seat-cards .melds, .seat.seat-r .seat-cards .discard-pile { justify-content: flex-end; }
+
+/* 两侧玩家：头像那一行往里接下地牌，弃牌摆在下地牌下面 */
+.seat-row { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.seat.seat-r .seat-row { flex-direction: row-reverse; }
+.seat-id { display: flex; flex-direction: column; align-items: flex-start; flex: none; }
+.seat.seat-r .seat-id { align-items: flex-end; }
+.seat .seat-body { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; }
+.seat.seat-r .seat-body { align-items: flex-end; }
+.seat .seat-cards { width: 100%; }
+
+
+/* 两侧玩家的下地 / 弃牌：跟着头像那一行往里排，宽度用满这一列，别挤成竖条 */
+.seat .seat-cards .melds { max-width: 100%; }
+.seat .seat-cards .discard-pile { max-width: 100% !important; width: max-content; }
+.seat .seat-body .melds { display: flex; flex-wrap: wrap; gap: 3px; }
+/* 我自己的弃牌：上沿跟手牌上沿齐平，从手牌右边缘往右排，牌堆自己多高就多高 */
+.discard-band { align-items: flex-start !important; }
+.discard-band .discard-pile { align-self: flex-start; max-width: 100% !important; }
+
+/* 亮牌：胡的那张摆在公共牌堆上面 */
+.deck-hu { position: absolute; left: -86px; top: 64%; transform: translateY(-50%); z-index: 12;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; filter: drop-shadow(0 4px 10px rgba(0,0,0,.55)); }
+.deck-hu .card { width: 34px !important; height: 118px !important; }
+.deck-hu .card .card-ch { font-size: 28px !important; }
+.deck-hu-tag { font-size: 12px; font-weight: 800; color: #1b1b1b; background: var(--gold); border-radius: 5px; padding: 0 6px; white-space: nowrap; }
+
+
+/* ---------- 这一版的微调 ---------- */
+/* 两侧玩家：下地牌一行要放得下 7 组、弃牌一行放得下 10 张，所以两边的列宽给足，且不换行 */
+.table-mid { grid-template-columns: 1.25fr 1fr 1.25fr; }
+.seat .seat-cards .melds { flex-wrap: nowrap !important; }
+.seat .seat-cards .discard-pile { flex-wrap: nowrap !important; max-width: none !important; width: max-content; }
+.seat .seat-body { overflow: visible; }
+/* 摸牌 / 打牌亮出来的那张：盖在下地牌上面，别被挡住 */
+.float-card { z-index: 60 !important; }
+.float-card .label { font-size: 14px; }
+/* 亮牌时没翻出来的公共牌：小一点，并且盖在玩家的牌上面 */
+.pile-rest { z-index: 40 !important; width: 210px !important; gap: 0 !important; padding: 3px !important; }
+.pile-rest .card { transform: scale(.82); transform-origin: center; margin: -1px; }
+/* 胡的那张牌：右上角一个红圈「胡」（亮牌、纪录表、胡牌详情都一样） */
+.card-mark { position: relative; }
+.card-mark::after { content: '胡'; position: absolute; right: -6px; top: -6px; z-index: 5;
+  width: 17px; height: 17px; line-height: 15px; text-align: center; font-size: 11px; font-weight: 900;
+  color: var(--red); background: #fff; border: 1.5px solid var(--red); border-radius: 50%; }
+/* 挑吃法的时候：吃进来的那一张，右上角一个绿圈「吃」（跟「胡」一个样式，换个字换个色） */
+.card-mark.card-mark-chi::after { content: '吃'; color: #2f7d4f; border-color: #2f7d4f; }
+/* 亮牌时那张单独摆出来的胡牌 */
+.deck-hu { gap: 0 !important; }
+/* 我自己的昵称那一行：别被裁掉（延时卡跟在后面） */
+.me-info .name { max-width: none !important; overflow: visible !important; text-overflow: clip !important; }
+.seat .seat-meta .name { max-width: 170px; }
+
+/* 我的下地牌：跟上家一样从左往右排，起点在自己头像右边 */
+.my-melds { left: 0 !important; right: auto !important;
+  flex-direction: row !important; flex-wrap: wrap-reverse; justify-content: flex-start !important;
+  align-items: flex-end; max-width: 42% !important; }
+
+
+/* ---------- 又调的一版 ---------- */
+/* 我的气泡：跟上下家一样，冒在头像上面 */
+.me-bar { position: absolute; }
+.me-bubble { position: absolute !important; left: 0; bottom: 100%; margin-bottom: 6px; white-space: nowrap; }
+
+/* 指针换人：沿着出牌顺序（逆时针）转过去，别瞬移 */
+.deck-pointer { transition: transform .5s cubic-bezier(.32,.9,.3,1); }
+.deck-ring { transition: transform .5s cubic-bezier(.32,.9,.3,1); }
+
+/* 亮牌：下地牌靠着玩家、亮出来的手牌接在外侧，同一行 */
+.seat .seat-cards .meld-row { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 8px; width: 100%; }
+.seat.seat-r .seat-cards .meld-row { flex-direction: row-reverse; }
+.seat .seat-cards .meld-row .melds { flex-wrap: nowrap !important; }
+.seat .seat-cards .melds.open-hand { max-width: none !important; margin: 0 !important; padding: 0 0 0 8px !important;
+  border-left: 1px dashed rgba(255,255,255,.28); border-right: none; }
+.seat.seat-r .seat-cards .melds.open-hand { padding: 0 8px 0 0 !important;
+  border-right: 1px dashed rgba(255,255,255,.28); border-left: none; }
+
+/* 亮牌那一条（胡的牌 + 没翻出来的公共牌）：摆到我手牌的底端，正好盖在「衡 / 耒」那一排小红印上 */
+.reveal-strip { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 55;
+  display: flex; align-items: flex-end; gap: 8px; max-width: 74%; }
+.reveal-strip .deck-hu { position: static !important; transform: none !important; left: auto !important; top: auto !important;
+  display: inline-flex; align-items: flex-end; }
+.reveal-strip .deck-hu .card { width: 25px !important; height: auto !important; }
+.reveal-strip .deck-hu .card .card-ch { font-size: 19px !important; }
+/* 亮牌那一条里的牌跟**下地牌一样大**：共用 --meld-zoom，大字版也自动跟着。
+   缩放加在里面那两块上，不加在 .reveal-strip 本身 —— 那一条是 fixed + translateX(-50%) 居中的，
+   给它套 zoom 会把定位一起放大，整条就跑偏了。
+   顺带把原来那个 .82 的缩小去掉：留着的话永远比下地牌小一圈，对不齐。 */
+.reveal-strip .deck-hu, .reveal-strip .pile-rest { zoom: var(--meld-zoom); }
+.reveal-strip .pile-rest .card { transform: none; }
+.reveal-strip .pile-rest { position: static !important; transform: none !important; width: max-content !important;
+  max-width: none; flex-wrap: nowrap; justify-content: center; }
+
+/* 下一局的倒计时：摆在公共牌堆原来的位置，跟倒计时环一样大 */
+.deck-count { position: absolute !important; left: 50%; top: 50%; transform: translate(-50%, -50%) !important;
+  width: 66px !important; height: 66px !important; font-size: 26px !important; border-width: 3px !important; z-index: 14; }
+
+
+/* ---------- 再一版 ---------- */
+/* 扇形摆法：牌宽也要跟着放大（原来只长了个儿，宽还是默认的 31px） */
+.hand.fan .hand-col .stack { width: 48px; }
+
+/* 庄 / 延时卡：贴在头像里面的下沿，不再占昵称那一行 */
+.ava-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.ava-tags { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); display: flex; gap: 2px;
+  width: max-content; white-space: nowrap; pointer-events: none; z-index: 3; }
+.ava-tags .badge, .ava-tags .delay-card { font-size: 10px; font-weight: 800; padding: 0 3px; margin: 0;
+  line-height: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+
+/* 吃牌 / 下伙的选择：摆到手牌上方，别把手牌盖住。
+   牌样和间距比原先大了一半 —— 原来那个尺寸在手机上要眯着眼才看得清是哪几张。 */
+.modal-bg.chi-modal { align-items: flex-start; padding: 26px 8px 0; background: rgba(0,0,0,.12); }
+.modal-bg.chi-modal .modal { padding: 10px 14px; min-width: 0; background: rgba(23,32,29,.86); backdrop-filter: blur(3px);
+  border-color: rgba(255,255,255,.22); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+.modal-bg.chi-modal .modal b { font-size: 16px; }
+.modal-bg.chi-modal .chi-opt { padding: 6px 9px; gap: 5px; }
+.modal-bg.chi-modal .chi-opt:active { background: rgba(76,217,123,.28); border-color: var(--accent); }
+
+
+/* ---------- 又一版的零碎 ---------- */
+/* 开局倒计时：最后 5 秒也跳一下数字（跟对局倒计时一个动画） */
+.deck-count .tick { display: inline-block; animation: pop-num .5s ease-out; }
+
+/* 庄 / 延时卡：小角标，庄在头像右上、延时卡在头像右下 */
+.ava-tag { position: absolute; z-index: 4; pointer-events: none; font-size: 9px !important; font-weight: 800;
+  line-height: 13px; padding: 0 3px !important; margin: 0 !important; border-radius: 4px;
+  white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.55); }
+.ava-tag.tag-tr { top: -3px; right: -5px; }
+.ava-tag.tag-br { bottom: -3px; right: -5px; }
+.ava-tag.tag-bl { bottom: -3px; left: -5px; }
+.ava-tag.tag-tl { top: -3px; left: -5px; }
+/* 托管中：头像上挂的那个机器人标 */
+.ava-tag.bot-tag { background: #4a5568; color: #e8eef5; display: inline-flex; align-items: center;
+  line-height: 1; padding: 1px 3px !important; }
+.ava-tag.bot-tag svg { width: 12px; height: 12px; display: block; }
+
+/* 我的下地牌：横向起点跟上家的下地牌对齐，底端跟手牌底端齐平 */
+.my-melds { left: 0 !important; }
+
+/* 牌组之间不留缝：平铺的手牌、下地牌、亮牌都贴着排（只有"下地牌 / 亮出来的手牌"之间留一条分隔） */
+.hand.fan.flat { gap: 0; }
+.melds, .my-melds, .seat .seat-cards .melds, .seat .seat-body .melds { gap: 0 !important; }
+.seat .seat-cards .meld-row { gap: 10px; }
+.reveal-row .row { gap: 0 !important; }
+.reveal-row .reveal-gap { margin: 0 7px; }
+
+
+/* ---------- 这一版 ---------- */
+/* 亮牌：胡的那一句摆到下地那一头，描一圈金边 */
+.hu-meld { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(242,193,78,.5); border-radius: 5px; }
+
+/* 选中的牌**不再**跳到最上面：以前一点就整张浮到所有牌前头，位置感一下就乱了，
+   看着像牌自己飞走了。现在层级照旧（还是下面的牌压着上面的牌），
+   只靠抬起半个头 + 金边呼吸来表示"选中的是这一张"。 */
+
+/* 碰 / 跑 / 胡 按钮：外面套一圈倒计时（读秒的一半）—— 用 conic-gradient 画，贴着按钮的圆角走 */
+.act-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+/* 倒计时的圈：细一点（原来 7px 太粗，像给按钮镶了个边框） */
+/* 倒计时的圈：从**左上角**起步顺时针走（-135°＝圆角矩形的左上那个角） */
+/* 倒计时不再镶在按钮外面（跟"呼吸"的光晕混在一起看不清），改成围着那个字转的一圈 */
+.act-wrap.timed { overflow: visible; }
+/* 圈贴着按钮内沿走：走过的那一截不画（透出按钮本身的颜色），没走的按剩余时间由绿转橙转红 */
+.act-ring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; z-index: 3; }
+.act-wrap .act-btn { position: relative; z-index: 2; }
+
+/* 顶栏开关：开着的时候亮一点 */
+.table-top button.ghost.on { background: rgba(242,193,78,.28); border-color: var(--gold); color: var(--gold); }
+
+/* 大厅的桌子：就是一张小号的玩法卡 —— 底色、那幅画、排版全跟外面一样，
+   只在边框和状态字上区分能不能进（绿边＝可进，金边＝满） */
+.tables { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; gap: 10px !important; }
+.table-card { min-height: 92px !important; padding: 10px 12px !important; border-radius: 14px; gap: 1px !important; }
+/* 读秒跟在桌名后面（「红黑 01 · 30s」）：金色、小一号，挑桌子时一眼就看到。
+   这一行做成 flex：**读秒不许被挤掉**，桌名太长就自己截断。
+   压在画上那一截靠深色投影托住（不再空出 padding —— 那样窄屏上「s」会被卡掉）。 */
+.table-card .table-name { display: flex; align-items: baseline; gap: 2px; min-width: 0; width: 100%; max-width: 100%;
+  text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.7); }
+.table-card .table-name .tc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
+.table-card .table-name .tc-sec { flex: none; font-style: normal; font-size: 13px; font-weight: 700;
+  color: var(--gold); margin-left: 4px; letter-spacing: 0; }
+/* 玩法那幅画只在**右上角**露一个四分之一圆的小角：认得出是哪个玩法就够了。
+   （放左边会跟桌名撞在一起。）
+   整张铺满时一屏十几张桌子，画叠着字，又乱又挤。 */
+.table-card .tc-art { position: absolute; right: 0; top: 0; width: 58px; height: 58px; overflow: hidden;
+  pointer-events: none; z-index: 0;
+  border-radius: 0 14px 0 100%;                       /* 右上跟卡片圆角一致，左下切成 1/4 圆 */
+  box-shadow: -1px 1px 0 rgba(255,255,255,.12); }
+.table-card .tc-art .tile-svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; opacity: .7; }
+.table-card.full .tc-art { opacity: .5; }
+/* 底部压一层暗色：桌名、人数才浮得上来 */
+.table-card::after { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,.42) 0%, rgba(0,0,0,.12) 40%, transparent 70%); }
+.table-card > :not(.tc-art) { position: relative; z-index: 1; }
+/* ---- 桌上有几个人：中间盖一个戳 ----
+   满＝金色的「满」，空＝绿色的「空」，其余是个表盘（圆周按座位分段，中间写真人数）。
+   戳压在卡片正中间，微微歪一点、边上一圈双线，看着像真盖上去的。 */
+/* 戳占卡片中间那一行（原来写「1 人+1 机 / 3」的地方）：不用绝对定位压在字上 ——
+   卡片才 92px 高，压上去正好糊住桌名和读秒。 */
+.table-card .tc-stamp { position: relative; align-self: center; margin: 1px 0;
+  transform: rotate(-11deg);
+  width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 17px; letter-spacing: 0; pointer-events: none; z-index: 2; flex: none;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif; }
+.table-card .tc-stamp.st-full { color: #f2c14e; border: 2.5px solid rgba(242,193,78,.85);
+  box-shadow: 0 0 0 1.5px rgba(242,193,78,.35), 0 2px 8px rgba(0,0,0,.5);
+  background: rgba(60,44,10,.5); text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+.table-card .tc-stamp.st-empty { color: #4cd97b; border: 2.5px solid rgba(76,217,123,.8);
+  box-shadow: 0 0 0 1.5px rgba(76,217,123,.3), 0 2px 8px rgba(0,0,0,.5);
+  background: rgba(10,48,26,.45); text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+/* 表盘：不要那圈戳的边，圆周本身就是"边" */
+.table-card .tc-stamp.st-dial { transform: none; background: rgba(0,0,0,.34);
+  border: none; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+.table-card .tc-stamp.st-dial svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; }
+.table-card .tc-stamp.st-dial b { position: relative; font-size: 15px; font-weight: 900; color: #eaf3ec;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+.dial-seg.dial-hu { stroke: #4cd97b; }                    /* 真人 */
+.dial-seg.dial-bot { stroke: rgba(255,255,255,.34); }     /* 机器人 */
+.dial-seg.dial-none { stroke: rgba(255,255,255,.13); }    /* 空位 */
+.table-card.full .tc-stamp { opacity: .95; }
+
+.table-card.open { border-color: rgba(76,217,123,.55); }
+.table-card.full { border-color: rgba(242,193,78,.55); opacity: .82; filter: saturate(.75); }
+.table-card .table-name { font-size: 15px; }
+.table-card .table-sub { font-size: 11px; color: rgba(255,255,255,.78);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.table-card .table-name { white-space: nowrap; }
+.table-card .table-state { font-size: 12px; margin-top: 2px; }
+.table-card.open .table-state { color: var(--ok); }
+.table-card.full .table-state { color: var(--gold); }
+
+/* 头像旁的状态标识：罚（红）· 放跑 · 贪 · 延（绿）· 提龙的那张；点号隔开 */
+.st-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; max-width: 190px; line-height: 1; }
+.st { font-size: 10px; font-weight: 800; padding: 1px 4px; border-radius: 4px; white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,.45); }
+.st-dot { color: rgba(255,255,255,.45); font-style: normal; font-size: 10px; }
+.st-foul { background: var(--danger); color: #fff; }
+.st-notake { background: #8a3b1f; color: #ffe0cf; }
+.st-greedy { background: #7a3f9c; color: #f2e2ff; }
+.st-delay { background: var(--ok); color: #10331f; }
+.st-long { background: var(--gold); color: #3a2a06; }
+.me-info .st-row { justify-content: flex-start; }
+
+/* 状态标识的计数：一个不写数字，两个及以上在右上角挂一个小数字（挤在标识里面，不占地方） */
+.st { position: relative; padding-right: 4px; }
+.st.has-n { padding-right: 12px; }
+.st-n { position: absolute; top: 0; right: 1px; font-style: normal; font-size: 8px; line-height: 8px;
+  font-weight: 900; color: currentColor; }
+
+/* 加宽的头像框：昵称直接写在框里（最多三个字），外面不再挂一行昵称 */
+.avatar.avatar-wide { letter-spacing: -.5px; font-weight: 800; padding: 0 2px; border-width: 1.5px; border-radius: 10px; }
+/* 头像框里的字：四个字也得排得下，别撑破框 */
+.avatar { line-height: 1; white-space: nowrap; }
+
+/* 加宽的头像：倒计时框是长方形，不能跟方头像那样整体转 -90° */
+.turn-ring.turn-ring-wide { transform: translate(-50%, -50%); }
+
+
+/* ---------- 顶栏与牌桌底图 ---------- */
+/* 顶栏三段式：左退出、中间标题、右边按钮 —— 标题正好落在正中 */
+.table-top { display: grid !important; grid-template-columns: 1fr 50% 1fr; align-items: start; }
+/* 左右两组按钮跟中间那段屋檐一样贴着上边沿。
+   `.table-top` 自己有 5px 的上内边距（屋檐是靠 margin-top:-5px 抵掉的），
+   这里也照抵一次 —— 三样东西的上沿这才在同一条线上。 */
+.tt-left { justify-self: start; display: flex; align-items: center; margin-top: -5px; }
+.tt-right { justify-self: end; display: flex; align-items: center; gap: 8px; margin-top: -5px; }
+.tt-title { justify-self: stretch; text-align: center; }
+/* 退出 / 纪录表 / ▾ 跟音量按钮一样大，四个方块看着齐整 */
+.table-top .sq-exit, .table-top .sq-icon, .table-top .tt-more {
+  /* 比最早那一版大（小圆钮太容易按空），又比上一版收了两成；
+     形状跟行动按钮统一成**圆角矩形**，一眼看过去是同一套东西。 */
+  min-width: 60px; height: 43px; padding: 0 !important; line-height: 1; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; }
+.table-top .sq-exit { font-size: 30px; letter-spacing: -2px; }
+.table-top .tt-more { font-size: 22px; }
+.table-top .tt-more svg { width: 23px; height: 23px; }   /* 齿轮：跟旁边那两个方块图标一样大 */
+.table-top .sq-icon svg { width: 24px; height: 24px; }
+
+/* 摆牌 / 理牌收进一个 ▾ 里，点开才露出来 */
+.tt-tools { position: relative; }
+
+.tt-tools.open .tt-more { background: rgba(242,193,78,.28); border-color: var(--gold); color: var(--gold); }
+/* 一块按钮板：**一排四个**。
+   原来是一条竖排，设置项一多就拖成长长一溜，底下那几个都快掉出屏幕了。
+   每一项改成"上图标、下两个字"的方块，横着铺，两行就摆得下。 */
+.tt-pop { position: absolute; top: 100%; right: 0; margin-top: 6px; z-index: 30;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 9px;
+  background: rgba(20,28,25,.94); border: 1px solid rgba(255,255,255,.2); border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.5); }
+.tt-pop button { white-space: nowrap; font-size: 15px; padding: 7px 8px !important; text-align: center; }
+/* 菜单项：一个图标 + 一个词，竖着摞，整体比原来大一半 */
+.tt-item { display: flex !important; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; min-width: 78px; padding: 10px 6px !important; }
+.tt-item b { font-size: 20px; font-weight: 800; }
+.tt-item svg { width: 26px; height: 26px; }
+.tt-item .tt-ico { flex: none; }
+.table-top .tt-pop button.ghost.on, .tt-item.on { background: rgba(76,217,123,.18);
+  border-color: rgba(76,217,123,.7); color: #d8ffe6; }
+/* 理牌开关：机器人脑袋当滑块，左右拨 */
+.tt-sw, .tt-item .sw { position: relative; flex: none; width: 38px; height: 21px; border-radius: 999px;
+  background: rgba(255,255,255,.16); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); transition: background .18s; }
+.tt-item.on .sw { background: rgba(76,217,123,.45); box-shadow: inset 0 0 0 1px rgba(76,217,123,.8); }
+.tt-item .sw-knob { position: absolute; top: 1.5px; left: 1.5px; width: 18px; height: 18px; border-radius: 50%;
+  background: #f1f1f1; color: #2a2a2a; display: flex; align-items: center; justify-content: center;
+  transition: left .18s cubic-bezier(.3,.9,.3,1); }
+.tt-item.on .sw-knob { left: 18.5px; background: #b8f5cd; }
+/* 「大厅」「起立」单独一档：跟上面几个设置项用一条线分开，颜色也不一样。
+   两个走法不一样 —— 「大厅」是暂时走开，位子留着；「起立」是不再回这一桌，位子让出去，
+   所以起立那个更红一点。 */
+/* 排成网格之后那条分隔线没地方画了，改成底色 + 字色区分（这两个是"走人"的操作） */
+.tt-pop .tt-leave { color: #ffd9a8; background: rgba(242,193,78,.12); }
+.tt-pop .tt-stand { color: #ff9b9b; background: rgba(255,107,107,.12); }
+
+/* 牌桌底图：手绘 + 玩法水印，都压得很淡，不抢牌面 */
+/* 牌桌底图**铺满整个屏幕**，不跟着 `.table` 一起让安全区。
+   `.table` 的左右是按刘海 / home 横条让进来的（那是给按钮、头像用的"别被挡住"的边距），
+   可**画面**没道理跟着缩：让出来的那一条里没有底图，就剩 #root 那层纯渐变，
+   跟旁边有底图的地方一比是两种绿，屏幕边上硬生生多出一道边（竖屏时在屏幕最下面那条）。
+   这儿用负的外延把它顶回屏幕边缘 —— 只动这一层画，牌桌里所有定位一个都不碰。 */
+.table-art { position: absolute; top: 0; bottom: 0;
+  left: calc(-1 * var(--sal)); right: calc(-1 * var(--sar));
+  pointer-events: none; overflow: hidden; }
+/* opacity 封顶是 1：想再亮就只能接着往上加 brightness（「亮」那一档给到 1.55）。
+   再叠一层柔光把整块桌面托起来 —— 不然只有线条亮了，底色还是原来那么暗。 */
+.table-art svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%;
+  opacity: min(1, var(--art-dim, .72)); filter: brightness(max(1, var(--art-dim, .72))); }
+.table-art::before { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 74% 66% at 50% 46%,
+    rgba(255, 252, 235, var(--art-glow, 0)), rgba(255, 252, 235, 0) 72%); }
+.table-mark { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  font-family: "Baoli SC", "STLiti", "LiSu", "HYLiShuJ", "STKaiti", "KaiTi", serif;
+  font-size: 84px; font-weight: 400; letter-spacing: 14px; white-space: nowrap;
+  color: rgba(255,255,255,.022); }
+/* 牌桌本身：整体提亮一点，中间比四周更亮。
+   底色画在 #root 上、底图用 z-index:-1 垫在它上面 —— 这样不用去动牌桌里各块的定位，
+   （给 .table 的子元素统一加 position:relative 会把 .me-bar 的"贴底"参照系搞乱） */
+#root { isolation: isolate; background:
+  radial-gradient(ellipse 70% 62% at 50% 46%, rgba(255,255,255,.15), rgba(255,255,255,0) 70%),
+  radial-gradient(ellipse at center, #1a6b4f, #10452f 78%); }
+/* 兜底：页面盖不到的那一条（浏览器工具栏让出的空档、回弹留白）也涂成牌桌色，不要露白 */
+html, body { background-color: #10452f; }
+.table-art { z-index: -1; }
+
+/* 顶栏中间的"刘海框"：一段瓦房屋檐，占屏宽的一半，标题挂在檐下 */
+.tt-title { width: 100%; max-width: 100%; overflow: visible; }
+.eave { position: relative; width: 100%; height: 46px; margin-top: -5px; cursor: pointer;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+.eave svg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; width: 100%; height: 100%; }
+.eave-text { position: absolute; left: 0; right: 0; top: 6px; text-align: center;
+  font-size: 17px; font-weight: 700; color: #f6f1e2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 18px; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+
+/* 纪录表：回放在最左、放大镜在最右、合计那一行单独描出来 */
+.ledger .lg-replay { width: 1%; white-space: nowrap; padding-right: 10px; }
+.ledger .lg-replay button { padding: 3px 10px !important; font-size: 12px; }
+.ledger .lg-look { width: 1%; text-align: right; padding-left: 10px; }
+.ledger .lg-eye { font-size: 20px; line-height: 1; cursor: pointer; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.ledger tr.lg-total { font-weight: 900; background: rgba(242,193,78,.14); }
+.ledger tr.lg-total td { border-top: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
+  font-size: 15px; padding-top: 7px; padding-bottom: 7px; }
+.ledger tr.lg-total td:first-child, .ledger tr.lg-total td:nth-child(2) { color: var(--gold); letter-spacing: 1px; }
+
+/* 回放：每家固定三行 —— 手牌 / 下地 / 弃牌，位置不跳 */
+.replay-line { display: flex; align-items: flex-start; gap: 6px; min-height: 22px; margin-top: 2px; }
+.replay-tag { flex: none; width: 16px; font-style: normal; font-size: 11px; font-weight: 800;
+  color: #cfe0d6; background: rgba(255,255,255,.12); border-radius: 4px; text-align: center; line-height: 18px; }
+.replay-row { display: flex; flex-wrap: wrap; gap: 1px; align-items: flex-start; min-width: 0; }
+.replay-row.replay-discards { opacity: .75; }
+.replay-none { font-size: 11px; line-height: 18px; }
+
+
+/* ---------- 大厅 / 主页的顶栏与名片 ---------- */
+.home-top { display: grid !important; grid-template-columns: 50px 1fr auto; align-items: center; gap: 8px; }
+.hm-right { display: inline-flex; align-items: center; gap: 6px; }
+.hm-btn { min-width: 50px; height: 38px; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 24px; line-height: 1; letter-spacing: -2px; }
+.hm-title { text-align: center; font-size: 21px; font-weight: 900; letter-spacing: 3px; color: var(--gold);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.hm-seal { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: linear-gradient(160deg, #c8232c, #8d1219); color: #ffe9a8;
+  font-size: 18px; font-weight: 900; letter-spacing: 0; box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+
+/* 我的名片 */
+.home-card { background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
+  padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.hm-nick { display: flex; align-items: center; gap: 6px; font-size: 17px; }
+.hm-nick b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-pen { padding: 3px 6px !important; line-height: 1; display: inline-flex; align-items: center; flex: none; }
+.hm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 4px; }
+.hm-stat { text-align: center; }
+.hm-stat b { display: block; font-size: 17px; font-weight: 800; color: var(--accent); }
+.hm-stat span { font-size: 11px; color: var(--muted); }
+
+/* 桌子按底分分栏 */
+.tier-sec { display: flex; flex-direction: column; gap: 6px; }
+.tier-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 2px 2px 0; border-left: 3px solid var(--gold); padding-left: 8px; }
+.tier-head b { color: var(--gold); font-size: 15px; }
+.tier-head .muted { font-size: 12px; }
+
+/* 就地改昵称 + 数据统计的展开收起 */
+.hm-nick-in { flex: 1; min-width: 0; padding: 5px 8px !important; font-size: 15px; }
+.hm-ok { padding: 5px 10px !important; font-size: 13px; flex: none; }
+.hm-more { width: 100%; text-align: center; padding: 6px 10px !important; font-size: 13px; }
+.hm-more .muted { font-size: 12px; margin: 0 4px; }
+
+/* ---------- 回放：一行正好 21 张牌，三行等高不跳 ---------- */
+/* 牌宽按面板实际宽度算：(可用宽 − 20 条 1px 缝) / 21；上下左右各留 2px */
+/* 宽度钉死：牌越打越少也不能跟着缩，不然一步一步看的时候面板一跳一跳的 */
+.replay-box { width: min(92vw, 520px); max-width: 100%;
+  --rw: max(10px, calc((min(92vw, 520px) - 106px) / 21)); --rh: calc(var(--rw) * 1.34); }
+.replay-box .replay-line, .replay-box .replay-seat, .replay-box .replay-seats { width: 100%; }
+.replay-line { height: calc(var(--rh) + 4px); min-height: 0; align-items: center; overflow: hidden; }
+.replay-tag { width: 16px; line-height: calc(var(--rh) + 2px); font-size: 10px; }
+/* 组与组之间靠这 2px 的缝分开；组内的牌是挨着的，这样 21 张正好一行装下 */
+.replay-row { flex-wrap: nowrap !important; overflow: hidden; gap: 2px; align-items: center; }
+.replay-row .card { width: var(--rw) !important; height: var(--rh) !important;
+  min-width: 0; padding: 2px 0 !important; border-radius: 3px; }
+.replay-row .card .card-ch { font-size: calc(var(--rw) * 0.84); line-height: 1; }
+.replay-row .card .card-seal { display: none; }
+.replay-row .replay-group, .replay-row .replay-meld { margin: 0; gap: 0; padding: 0; background: none; }
+.replay-row .replay-meld .card { box-shadow: inset 0 0 0 1px rgba(242,193,78,.85); }
+.replay-none { line-height: calc(var(--rh) + 2px); }
+.replay-seat { padding-top: 3px; }
+.replay-seats { gap: 3px; }
+
+/* 回放里的底牌：摸走的那几张红虚线框住，一条竖线隔开还没摸的 */
+.replay-pile .replay-name { color: var(--muted); }
+.replay-drawn { display: inline-flex; gap: 0; align-items: center; padding: 1px 2px; border-radius: 5px;
+  border: 1px dashed rgba(220,60,60,.75); background: rgba(120,20,20,.15); }
+.replay-drawn.replay-empty { border: none; background: none; padding: 0; }
+.replay-drawn .card { filter: brightness(.88) saturate(.92); }
+.replay-split { flex: none; width: 2px; height: calc(var(--rh) + 4px); margin: 0 3px;
+  background: linear-gradient(var(--gold), rgba(242,193,78,.25)); border-radius: 1px; }
+
+/* 回放里的弃牌：跟牌桌上一样，围一圈红色虚线 */
+.replay-row.replay-discards { opacity: 1; padding: 1px 2px; border: 1px dashed rgba(220,60,60,.75);
+  border-radius: 5px; background: rgba(120,20,20,.15); width: max-content; max-width: 100%; }
+.replay-row.replay-discards .card { filter: brightness(.88) saturate(.92); }
+.replay-row.replay-discards.replay-empty { border: none; background: none; padding: 0; }
+
+/* 页面别跟着手指飘：关掉整页的回弹 / 下拉刷新；牌桌那一页干脆不让浏览器接管手势 */
+html, body { overscroll-behavior: none; overflow: hidden; }
+#root:not(.upright) { touch-action: none; overscroll-behavior: none; }
+/* 弹窗里的长列表（纪录表、回放）还是要能上下滑 */
+#root:not(.upright) .modal-bg, #root:not(.upright) .modal { touch-action: pan-y; overscroll-behavior: contain; }
+
+/* 装到桌面 */
+/* 挪到名片右边、跟头像平齐：图标在上、字在下的一颗方按钮 */
+.hm-install { flex: none; align-self: center; display: inline-flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; width: 62px; padding: 6px 4px !important; font-size: 11px; line-height: 1.2; }
+.hm-install span { white-space: nowrap; }
+/* 说明里"画出来"的系统图标：跟文字一起排，稍微往上提一点 */
+.ico-inline { vertical-align: -5px; margin: 0 2px; color: var(--gold);
+  background: rgba(255,255,255,.1); border-radius: 5px; padding: 1px; }
+.install-guide ol { margin: 4px 0 0; padding-left: 20px; line-height: 1.9; font-size: 14px; }
+.install-guide ol b { color: var(--gold); }
+
+/* 战绩 · 复盘回放：按场次折叠 */
+.sess { border: 1px solid rgba(255,255,255,.14); border-radius: 10px; overflow: hidden; background: rgba(0,0,0,.25); }
+.sess.on { border-color: rgba(242,193,78,.45); }
+.sess-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; }
+.sess-head:hover { background: rgba(255,255,255,.08); }
+.sess-arrow { color: var(--gold); width: 12px; }
+.sess table.ledger { background: rgba(0,0,0,.2); }
+
+/* 胡牌算分：三行 —— 胡的哪个字 / 胡息→敦数 / 翻倍→总分 */
+.hu-line { line-height: 1.8; justify-content: flex-start !important; gap: 8px !important; }
+.hu-calc .hu-line em { font-style: normal; font-size: 12px; color: var(--gold); margin-right: 1px; }
+.hu-kind { font-weight: 800; color: var(--gold); }
+.hu-ring { font-style: normal; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; margin-left: 2px; border-radius: 50%; border: 2px solid var(--gold);
+  color: var(--gold); font-weight: 900; line-height: 1; vertical-align: -4px; }
+.hu-total { margin-top: 6px; font-weight: 800; color: var(--gold); font-size: 13px; }
+
+/* 战绩 · 复盘回放：一览和"展开的那一场"都用固定高度的滚动区 ——
+   局数少也不缩成一条缝，局数多就在框里上下滚（不跟外面的弹窗抢滚动） */
+.hist-modal .modal { width: min(440px, 92vw); max-height: 88vh; overflow: hidden; display: flex; }
+.hist-modal .modal > .col { flex: 1; min-height: 0; min-width: 0; width: 100%; }
+/* 场次那一行：桌名 + 玩法一行写完，长了省略号，别把整块撑宽 */
+.sess-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-head > .col > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 注意：这块是**块级**布局，不是 flex —— 以前套了 .col（竖排 flex），
+   外面又给了固定高度，于是每一行被 flex 压扁（横屏更矮，直接压成一条缝，第二行时间全看不见）。 */
+.hist-scroll { display: block; height: 56vh; max-height: 56vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; padding-right: 2px; }
+.hist-scroll > .sess { margin-bottom: 8px; }
+.hist-scroll > .sess:last-child { margin-bottom: 0; }
+/* 场次那一行：两行字（桌名 + 时间局数）得完整露出来，别被压扁 */
+.sess-head { min-height: 56px; align-items: center; }
+.sess-head > .col { justify-content: center; }
+.sess-head b { line-height: 1.35; }
+/* 横屏（浏览器 / 平板）：屏幕矮，弹窗放宽、列表相对高一点，别缩成一条 */
+@media (orientation: landscape) {
+  .hist-modal .modal { width: min(620px, 94vw); padding: 14px 16px; }
+  .hist-scroll { height: 58vh; max-height: 58vh; }
+}
+.hist-scroll table.ledger td { padding: 9px 6px; }
+#root.upright .hist-scroll { height: 44vh; max-height: 44vh; }
+
+/* 放炮：红字点名，这一胡他一个人包赔 */
+.hu-baopei { color: #ff7a7a; font-weight: 800; }
+.hu-baopei b { color: #ff4d4d; }
+
+/* 选中的牌：抬起来之外，金边一闪一闪（一眼看得见选的是哪张）。
+   注意：手牌每张都被 clip-path 剪过（只留到小红印下面），**画在框外面的阴影会被一起剪掉** ——
+   所以这里一律用 inset（画在牌里面）的描边和辉光，外加牌面本身提亮，才看得见。 */
+@keyframes cardPick {
+  0%, 100% { box-shadow: inset 0 0 0 3px var(--gold), inset 0 0 10px rgba(242,193,78,.5); filter: brightness(1.06); }
+  50%      { box-shadow: inset 0 0 0 4px #fff3c4, inset 0 0 18px rgba(255,226,140,.85); filter: brightness(1.16); }
+}
+.card-selected { animation: cardPick .9s ease-in-out infinite; }
+/* 没被剪过的地方（弹窗里、拖着的那张）再补一圈外发光 */
+.card-selected:not(.card-fan) { box-shadow: 0 0 0 3px var(--gold), 0 0 14px rgba(242,193,78,.7), 0 8px 14px rgba(0,0,0,.45); }
+
+/* 明牌收掉之后那一趟飞行：从明牌位置滑到弃牌堆 / 下地区，落下去的同时缩到牌堆那么大。
+   位置用 #root 的局部坐标（跟拖牌的影子一个路子，竖屏整页旋转也对得上）。 */
+/* 飞过去的那张牌：位置和缩放都在 transform 里，由 Web Animations 驱动（见 LandCard）。
+   落到了就**停在那儿**（不再淡出），等那一摞把牌画出来才撤 —— 中间不许有"牌不见了"的空档 */
+.land-card { position: fixed; left: 0; top: 0; z-index: 58; pointer-events: none;
+  will-change: transform; transform: translate(-50%, -50%); }
+
+/* 牌桌设置里那个"字"图标 */
+.tt-item .tt-font { display: inline-flex; align-items: center; justify-content: center; width: 33px; height: 33px;
+  border: 2px solid currentColor; border-radius: 8px; font-size: 20px; font-weight: 800;
+  font-family: "Baoli SC", "STLiti", "STKaiti", serif; }
+
+/* 胡 / 碰 / 跑 这类带倒计时的按钮：一呼一吸地闪，提醒"这半程要过了" */
+@keyframes actBreath {
+  0%, 100% { box-shadow: 0 0 0 2px var(--accent), 0 2px 0 #b58a1a, 0 0 6px rgba(255,179,71,.35); filter: brightness(1); }
+  50%      { box-shadow: 0 0 0 3px #ffe9a8, 0 2px 0 #b58a1a, 0 0 18px rgba(255,226,140,.8); filter: brightness(1.12); }
+}
+.act-wrap.timed .act-btn.avail:not(:disabled) { animation: actBreath 1s ease-in-out infinite; }
+/* 胡的那个更急一点（红底的按钮用红光） */
+@keyframes actBreathHu {
+  0%, 100% { box-shadow: 0 0 0 2px #ff9a9a, 0 2px 0 #8f1d1d, 0 0 8px rgba(255,90,90,.4); filter: brightness(1); }
+  50%      { box-shadow: 0 0 0 4px #ffd6d6, 0 2px 0 #8f1d1d, 0 0 22px rgba(255,120,120,.9); filter: brightness(1.18); }
+}
+.act-wrap.timed .act-btn.hu.avail:not(:disabled) { animation: actBreathHu .72s ease-in-out infinite; }
+
+/* 明牌（亮给大家看的那张）：一呼一吸地亮，跟按钮一个道理，一眼看得见"现在这张是关键" */
+@keyframes floatBreath {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,233,168,.85), 0 0 10px rgba(255,226,140,.5), 0 6px 16px rgba(0,0,0,.45); }
+  50%      { box-shadow: 0 0 0 4px #fff3c4, 0 0 24px rgba(255,226,140,.95), 0 8px 20px rgba(0,0,0,.5); }
+}
+.float-card .float-inner .card { animation: floatBreath 1.1s ease-in-out infinite; }
+
+/* 拖着的那张：原位那一张变暗之外，也照样金边呼吸（跟"选中"一个样，手指上那张不变） */
+.card.card-dragsrc { animation: cardPick .9s ease-in-out infinite; opacity: .62; }
+/* 弃牌堆外面那层壳：空着也占一点地方，好让飞过来的牌有个准落点 */
+.pile-slot { min-width: 26px; min-height: 30px; display: flex; align-items: flex-start; }
+.discard-band { min-height: 30px; }
+
+/* 能点的动作按钮都呼吸：吃 / 过 / 打出 用金光，胡 / 碰 / 跑（半程那几个）用红光 */
+.actions .act-btn.avail:not(:disabled) { animation: actBreath 1.15s ease-in-out infinite; }
+.actions .act-btn.hu.avail:not(:disabled) { animation: actBreathHu .82s ease-in-out infinite; }
+/* 点过之后灰掉的那个就别闪了 */
+.actions .act-btn.idle, .actions .act-btn.chosen, .actions .act-btn:disabled { animation: none !important; }
+
+/* 「打出」也呼吸：跟吃 / 过一个节奏的金光（按钮里那张牌不跟着闪） */
+@keyframes discardBreath {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,233,168,.8), 0 2px 0 #b58a1a, 0 0 8px rgba(255,226,140,.45); filter: brightness(1); }
+  50%      { box-shadow: 0 0 0 4px #fff3c4, 0 2px 0 #b58a1a, 0 0 20px rgba(255,226,140,.9); filter: brightness(1.08); }
+}
+.discard-big { animation: discardBreath 1.15s ease-in-out infinite; }
+.discard-big .btn-card { animation: none; }
+
+/* 自己描的那套字：SVG 笔画，占的位置跟文字版一样 */
+
+/* 牌面字体选单：一行一款，左边是样张，点一下就换 */
+/* 弹窗本身不滚：高度固定，**中间那张单子**滚，底下的开关和「关闭」永远看得见 */
+.font-modal .modal { width: min(460px, 92vw); max-height: 88vh; overflow: hidden; display: flex; padding: 14px 16px; }
+.font-modal .modal > .col { flex: 1; min-height: 0; min-width: 0; width: 100%; }
+.font-list { gap: 6px; flex: 1 1 auto; min-height: 100px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; padding-right: 2px; }
+.font-list > .font-row { flex: 0 0 auto; }
+.font-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; flex: 0 0 auto;
+  padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.14); color: var(--text); }
+.font-row.on { border-color: var(--gold); background: rgba(242,193,78,.16); }
+.font-row .font-sample { font-size: 26px; color: #f6f3e7; letter-spacing: 2px; line-height: 1.25; min-width: 96px; }
+/* 雁字体那一行的样张是三个 SVG：并排摆好，大小跟别的样张一致 */
+.font-row .font-sample svg { display: inline-block; vertical-align: -.12em; margin-right: 2px; }
+.font-row .font-name { flex: 1; font-size: 14px; }
+.font-row .font-name i { display: block; font-style: normal; font-size: 11px; color: var(--muted); }
+.font-row .font-tick { color: var(--gold); font-weight: 900; }
+/* 用过但现在没选的那几款：右边挂个淡淡的「用过」 */
+.font-row .font-used { font-size: 11px; color: var(--muted); border: 1px solid currentColor;
+  border-radius: 4px; padding: 0 4px; margin-left: auto; opacity: .7; }
+
+/* 「整个界面也用这款字」打开时：小字和数字稍微收一收，书法体才不糊 */
+html.ui-font-on .muted, html.ui-font-on table.ledger, html.ui-font-on .tile-sub, html.ui-font-on .table-sub,
+html.ui-font-on .hu-calc, html.ui-font-on .sess-head span { letter-spacing: .3px; }
+html.ui-font-on .font-name, html.ui-font-on .toast { font-family: -apple-system, "PingFang SC", sans-serif; }
+
+/* 选单底下那一行开关 */
+.font-row.font-ui { margin-top: 2px; background: rgba(0,0,0,.25); }
+.font-row.font-ui .sw { flex: none; }
+.font-row.font-ui .font-name i { display: block; font-style: normal; font-size: 11px; color: var(--muted); }
+
+/* ==========================================================================
+   立体感：一套统一的"浮雕"配方
+   —— 牌面那套字是实物描的，本身有厚度；界面还是平的就显得两层皮。
+   配方分三件：
+     ① 背景上叠一层"顶光 + 底影"（`--emboss`）——做在 background-image 里，
+        不占 box-shadow，免得跟按钮那几个呼吸 / 倒计时动画抢位置；
+     ② box-shadow 负责"厚度"：一条实色的下沿（像键帽的侧面）+ 一片投影 + 一道内顶光；
+     ③ 按下去就真的压下去：整体下沉、厚度收掉。
+   ========================================================================== */
+:root {
+  --emboss: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0) 44%, rgba(0,0,0,.18));
+  --emboss-soft: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,0) 50%, rgba(0,0,0,.14));
+}
+
+/* ---- 按钮：金色主按钮 / 幽灵按钮 / 危险按钮 ---- */
+button {
+  background-image: var(--emboss), linear-gradient(#ffe9a8, var(--gold));
+  text-shadow: 0 1px 0 rgba(255,255,255,.45);
+  box-shadow: 0 3px 0 #a87d16, 0 7px 14px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.75);
+  transition: transform .06s, box-shadow .06s;
+}
+button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 #a87d16, 0 2px 6px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.4);
+}
+button.ghost {
+  /* 底色带上桌面的绿（就是 #root 那层渐变里亮的那一档）。
+     原来是**纯白半透明**盖在绿呢子上 —— 白掺进绿里偏灰偏冷，
+     一眼看过去像贴了块塑料，跟整桌的暖绿不是一家人。 */
+  background-color: rgba(28, 112, 83, .55);
+  background-image: var(--emboss-soft), linear-gradient(rgba(255,255,255,.13), rgba(255,255,255,.04));
+  /* 边框分三档：上沿留高光、两侧淡一点、**下沿压暗**。
+     之前四条边一律 rgba(255,255,255,.25)，而下面紧跟着一道 2px 的黑色立体唇 ——
+     一条白线贴着一条黑线，对比拉满，看着就是"按钮底下漏出一条白边"。
+     现在下沿跟那道唇是同一路暗色，过渡就连上了。 */
+  border-color: rgba(255,255,255,.22) rgba(255,255,255,.12) rgba(0,0,0,.24);
+  text-shadow: 0 1px 2px rgba(0,0,0,.5);
+  box-shadow: 0 2px 0 rgba(0,0,0,.4), 0 5px 10px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.22);
+}
+button.ghost:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 rgba(0,0,0,.4), 0 2px 5px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.18); }
+button.danger {
+  background-image: var(--emboss), linear-gradient(#ff8a8a, var(--danger));
+  text-shadow: 0 1px 1px rgba(0,0,0,.35);
+  box-shadow: 0 3px 0 #8e1b1b, 0 7px 14px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.45);
+}
+button.danger:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 0 0 #8e1b1b, 0 2px 6px rgba(0,0,0,.35); }
+
+/* 牌桌上的行动按钮：厚度交给背景那一层（box-shadow 让给"可点高亮"和倒计时圈） */
+.act-btn { background-image: var(--emboss), linear-gradient(#ffe9a8, var(--gold)); }
+.actions .hu, .act-btn.hu { background-image: var(--emboss), linear-gradient(#c2465a, #8c1f2e); text-shadow: 0 1px 1px rgba(0,0,0,.45); }
+.discard-slot .discard-big { background-image: var(--emboss), linear-gradient(#ffe9a8, var(--gold)); }
+
+/* ---- 板块：面板 / 弹窗 / 名片 —— 像一块浮在绒布上的牌板 ---- */
+.panel, .modal, .home-card, .hosted, .sess {
+  box-shadow: 0 12px 30px rgba(0,0,0,.45), 0 2px 0 rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.14);
+}
+/* 大厅的玩法卡：抬得更高一点，按下去也真的沉下去 */
+.tile, .tier {
+  box-shadow: 0 10px 22px rgba(0,0,0,.42), 0 3px 0 rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.22);
+  transition: transform .08s, box-shadow .08s;
+}
+.tile:active, .tier:active {
+  transform: translateY(3px) scale(.995);
+  box-shadow: 0 4px 10px rgba(0,0,0,.4), 0 0 0 rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.14);
+}
+
+/* ---- 小件：头像框、角标、印章 ---- */
+.avatar { box-shadow: 0 3px 8px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.4), inset 0 -3px 5px rgba(0,0,0,.28); }
+.badge, .tag, .ava-tag { box-shadow: 0 1px 2px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.3); }
+.hm-seal, .home-seal { box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.28), inset 0 -3px 6px rgba(0,0,0,.3); }
+.seat .mini-back .hand-count { box-shadow: 0 1px 3px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.8); }
+
+/* ---- 标题：金字压一道深色底边，像刻上去的 ---- */
+.title, .hm-title, .home-title {
+  text-shadow: 0 1px 0 #8a6412, 0 2px 0 #6d4e0d, 0 3px 6px rgba(0,0,0,.55);
+}
+
+/* 输入框也收一收：内凹，跟凸起的按钮对上 */
+input, select, textarea {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.28), inset 0 -1px 0 rgba(255,255,255,.7), 0 1px 0 rgba(255,255,255,.12);
+}
+
+/* ---------- 玩法说明 ---------- */
+/* 玩法卡右上角那个「?」：点它只看说明，不进玩法 */
+.tile-help { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; z-index: 3;
+  font-size: 14px; font-weight: 800; line-height: 1; color: var(--text);
+  background: rgba(0,0,0,.34); border: 1px solid rgba(255,255,255,.35);
+  box-shadow: 0 2px 4px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.3); }
+.tile-help:active { transform: translateY(1px); }
+.tile-help.inline { position: static; width: 20px; height: 20px; font-size: 13px; margin-left: 6px; vertical-align: middle; }
+/* 弹窗本身不滚（不然外面一条、里面一条两个滚动条），中间那块自己滚 */
+.rules-modal .modal { max-width: min(560px, 94vw); max-height: 86vh; overflow: hidden; display: flex; flex-direction: column; }
+.rules-modal .rules { flex: 1; min-height: 0; }
+.rules-body { flex: 1; min-height: 0; overflow: auto; padding-right: 4px; -webkit-overflow-scrolling: touch; }
+.rules-sec { margin-bottom: 12px; }
+.rules-sec h4 { margin: 0 0 4px; font-size: 14px; color: var(--gold); letter-spacing: 1px; }
+.rules-sec p { margin: 3px 0; font-size: 13px; line-height: 1.55; color: var(--text); }
+.rules-kv { display: flex; gap: 8px; font-size: 13px; line-height: 1.5; margin: 2px 0; }
+.rules-kv .k { flex: none; min-width: 112px; color: var(--muted); }
+.rules-kv .v { flex: 1; }
+
+
+/* ---------- 关于本游戏 ---------- */
+/* 顶栏那个「i」：跟战绩按钮一样大，挨着它 */
+.hm-about { font-style: italic; font-weight: 900; font-size: 20px !important; min-width: 40px !important; }
+/* 登录页底下那一小块：几个词 + 一句提示，别抢了登录按钮的地方 */
+.about-brief { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 2px; }
+.ab-tag { font-size: 11px; color: var(--muted); padding: 2px 8px; border-radius: 999px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); }
+.ab-notice { width: 100%; text-align: center; font-size: 11px; color: var(--gold); opacity: .85; margin-top: 4px; }
+.ab-more { width: 100%; text-align: center; font-size: 12px; color: var(--gold); cursor: pointer; margin-top: 2px; }
+.about-notice { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px; text-align: center;
+  color: var(--gold); background: rgba(242,193,78,.1); border: 1px solid rgba(242,193,78,.35); }
+
+/* ---------- 我的房间（VIP 自己管房） ---------- */
+.myrooms-modal .modal { min-width: min(420px, 92vw); }
+.mr-list { display: flex; flex-direction: column; gap: 10px; max-height: 62vh; overflow-y: auto; }
+.mr-room { background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 7px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.1); }
+.mr-head { display: flex; align-items: center; gap: 8px; }
+.mr-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-pill { flex: none; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.12); color: #cfe6da; }
+.mr-pill.on { background: rgba(76,217,123,.22); color: #8ef0b4; }
+.mr-pill.off { background: rgba(224,74,74,.22); color: #ffb3b3; }
+.mr-sub { font-size: 12px; }
+.mr-score { display: flex; flex-wrap: wrap; gap: 6px; }
+.mr-seat { display: inline-flex; align-items: baseline; gap: 5px; font-size: 12px;
+  background: rgba(255,255,255,.06); border-radius: 8px; padding: 3px 8px; }
+.mr-seat i { font-style: normal; color: #cfe6da; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-seat.empty i { color: rgba(255,255,255,.35); }
+.mr-seat b { font-variant-numeric: tabular-nums; }
+.mr-secs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.mr-sec { padding: 3px 9px !important; font-size: 12px !important; }
+.mr-sec.cur { background: rgba(76,217,123,.22) !important; border-color: var(--accent) !important; color: #8ef0b4 !important; }
+.mr-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.mr-acts button { padding: 4px 10px !important; font-size: 12px !important; }
+button.warn { background: linear-gradient(#e04a4a, #b81e1e) !important; border-color: rgba(255,255,255,.2) !important; color: #fff !important; }
+button.ghost.warn { background: transparent !important; color: #ff9b9b !important; border-color: rgba(255,120,120,.45) !important; }
+
+/* 我的房间：房间详情里那一行一行的玩家 */
+.mr-players { display: flex; flex-direction: column; gap: 4px; }
+.mr-p { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.05); border-radius: 8px; padding: 4px 8px; }
+.mr-p.empty { opacity: .45; }
+.mr-p-seat { flex: none; width: 18px; text-align: center; color: var(--gold); font-size: 12px; }
+.mr-p-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mr-p-name { font-size: 13px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-tag { font-style: normal; font-size: 10px; padding: 0 5px; border-radius: 999px; background: rgba(255,255,255,.14); color: #cfe6da; font-weight: 400; }
+.mr-tag.off { background: rgba(224,74,74,.2); color: #ffb3b3; }
+.mr-p-net { font-size: 11px; color: rgba(255,255,255,.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-p-num { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
+.mr-p-num b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.mr-p-num i { font-style: normal; font-size: 11px; color: rgba(255,255,255,.45); }
+.mr-made { background: rgba(0,0,0,.3); border-radius: 10px; padding: 10px 12px; font-weight: 700; font-size: 16px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.mr-made span { color: var(--gold); font-size: 15px; font-variant-numeric: tabular-nums; }
+.mr-tag.same { background: rgba(230,180,60,.22); color: #ffd98a; margin-left: 5px; }
+
+/* 我的房间：单独一页 */
+.mr-body { gap: 10px; overflow-y: auto; flex: 1; min-height: 0; }
+.mr-card { background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
+  padding: 8px 12px; font-size: 13px; color: #cfe6da; }
+.mr-card.warn { background: rgba(230,180,60,.14); border-color: rgba(230,180,60,.4); color: #ffd98a; }
+.mr-card.off { background: rgba(224,74,74,.14); border-color: rgba(224,74,74,.4); color: #ffb3b3; }
+/* 房间卡：跟大厅桌子一个样子，底下挂一条状态 */
+/* 「我的房间」的卡片：信息比大厅那边多（房号 / 底分 / 局数）+ 底下那条状态带，
+   高度让内容自己撑，别写死 */
+.table-card.mr-card-room { position: relative; padding-bottom: 10px !important; text-align: left; min-height: 104px !important; }
+/* 戳在这儿单独占一行、靠左摆（这张卡片整体是左对齐的，居中反而显得飘）。
+   底下那条状态带其实是**流内**元素（`.table-card > :not(.tc-art)` 把它压成了 relative，
+   `bottom:7px` 只是把它往上挪了一点），所以戳得自己留出这段间距，不然俩挤一块儿。 */
+.mr-card-room .tc-stamp { align-self: flex-start; margin: 3px 0 12px; }
+.mr-card-room .mr-line { display: block; width: 100%; font-size: 12px; line-height: 1.45;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+.mr-card-room.cap { border-color: rgba(224,74,74,.55); box-shadow: 0 0 0 1px rgba(224,74,74,.25) inset, 0 8px 18px rgba(0,0,0,.4); }
+.mr-card-room.short { border-color: rgba(230,180,60,.5); }
+.mr-flag { position: absolute; left: 10px; right: 10px; bottom: 7px; font-size: 11px; border-radius: 999px;
+  padding: 1px 8px; text-align: center; background: rgba(255,255,255,.12); color: #cfe6da; }
+.mr-flag.cap { background: rgba(224,74,74,.28); color: #ffd0d0; font-weight: 700; }
+.mr-flag.short { background: rgba(230,180,60,.25); color: #ffd98a; font-weight: 700; }
+.mr-flag.on { background: rgba(76,217,123,.2); color: #8ef0b4; }
+.mr-flag.off { background: rgba(255,255,255,.1); color: rgba(255,255,255,.6); }
+.mr-pill.cap { background: rgba(224,74,74,.24); color: #ffb3b3; }
+.mr-pill.short { background: rgba(230,180,60,.24); color: #ffd98a; }
+/* 「房间开好了」那两个按钮：一左一右各占三分之一，中间空着 */
+.made-ops { display: flex; justify-content: space-between; gap: 8px; width: 100%; }
+.made-ops button { flex: 0 0 33.333%; max-width: 33.333%; padding-left: 0; padding-right: 0; }
+/* 玩家那一行的 IP / 归属地：默认一行截断，点一下摊开看全的 */
+.mr-p-net { cursor: pointer; }
+.mr-p-net.open { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-all; color: rgba(255,255,255,.7); }
+/* 房间详情：房名就地改 */
+.mr-pen { flex: none; padding: 2px 8px !important; font-size: 13px !important; line-height: 1.4; }
+.mr-name-in { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; padding: 5px 9px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.35); color: #eaf5ef; }
+.mr-ok { flex: none; padding: 5px 10px !important; font-size: 13px !important; }
+.mr-tag.dev { background: rgba(224,74,74,.24); color: #ffb3b3; margin-left: 5px; }
+/* 弃牌堆里给"正在飞的那张"留的隐形占位：占着位子、不显形 */
+.pile-item.pile-ghost { visibility: hidden; pointer-events: none; }
+.meld.meld-ghost { visibility: hidden; pointer-events: none; }
+/* 空位上的「＋ 请机器人」：小小一枚，别抢头像的地方 */
+.seat-invite { padding: 2px 8px !important; font-size: 11px !important; border-radius: 999px;
+  color: var(--gold) !important; border-color: rgba(242,193,78,.5) !important; white-space: nowrap; }
+/* 已经点过别的动作了：这几个按钮留着位子但不显形，省得剩下那个往下跳一格 */
+.act-wrap.act-ghost { visibility: hidden; pointer-events: none; }
+
+/* ═══ 呼吸效果改用「透明度」来做（省电、手机不烫） ════════════════════════
+   原来那一堆"一呼一吸"是直接给 box-shadow / filter 打动画的。这两样都**不能交给合成器**：
+   浏览器得一帧一帧地重算样式、重画那圈带模糊的阴影 —— 60 帧一秒，一刻不停。
+   实测牌桌闲着不动的时候，样式重算就有 60 次／秒，全是这些呼吸在烧；
+   而且明牌、能点的按钮、选中的牌这些几乎"一直在场"，等于整局游戏 GPU 没歇过。
+   这才是手机发烫的大头 —— 不是音频（音频只在播的那几百毫秒才醒）。
+
+   改法：元素本身钉死"最暗那一帧"的阴影，另拿一个 ::after 盖上去，
+   上面钉死"最亮那一帧"的阴影，只给它的 opacity 打动画。
+   opacity 是合成器自己就能插值的属性，不重算样式、不重画 —— 一帧的开销几乎为零，
+   看上去一模一样。 */
+@keyframes brth { 0%, 100% { opacity: 0 } 50% { opacity: 1 } }
+@keyframes brthRing { from { opacity: .7; transform: scale(1) } to { opacity: 0; transform: scale(1.14) } }
+
+.card-new, .card-new-wrap .card, .next-count, .act-btn.pulse, .act-btn.chosen,
+.card-selected, .card.card-dragsrc, .float-card .float-inner .card,
+.act-wrap.timed .act-btn.avail:not(:disabled), .actions .act-btn.avail:not(:disabled),
+.discard-big { position: relative; animation: none !important; }
+
+.card-new::after, .card-new-wrap .card::after, .next-count::after, .act-btn.pulse::after,
+.act-btn.chosen::after, .card-selected::after, .card.card-dragsrc::after,
+.float-card .float-inner .card::after,
+.act-wrap.timed .act-btn.avail:not(:disabled)::after,
+.actions .act-btn.avail:not(:disabled)::after,
+.discard-big::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  opacity: 0; animation: brth 1s ease-in-out infinite; z-index: 0; }
+
+/* 摸上来那张：绿光 */
+.card-new, .card-new-wrap .card { box-shadow: 0 0 0 2px var(--ok), 0 0 8px var(--ok); }
+.card-new::after, .card-new-wrap .card::after { box-shadow: 0 0 0 3px #fff, 0 0 18px var(--ok); animation-duration: 1.1s; }
+/* 中央倒计时圈 */
+.next-count::after { box-shadow: 0 0 20px rgba(76,217,123,.75), inset 0 0 16px rgba(76,217,123,.35); animation-duration: .9s; }
+/* 成胡了的胡按钮：一圈往外扩散 */
+.act-btn.pulse::after { box-shadow: 0 0 0 6px rgba(255,210,90,.7); animation: brthRing .7s ease-out infinite; }
+/* 点过动作、等服务端揭晓的那个：提亮一下 */
+.act-btn.chosen::after { background: rgba(255,255,255,.22); animation-duration: 1s; }
+/* 选中 / 正被拖着的那张：金边（内描边，跟着牌的剪裁走） */
+.card-selected::after, .card.card-dragsrc::after {
+  box-shadow: inset 0 0 0 4px #fff3c4, inset 0 0 18px rgba(255,226,140,.85); animation-duration: .9s; }
+/* 明牌 */
+.float-card .float-inner .card { box-shadow: 0 0 0 2px rgba(255,233,168,.85), 0 0 10px rgba(255,226,140,.5), 0 6px 16px rgba(0,0,0,.45); }
+.float-card .float-inner .card::after { box-shadow: 0 0 0 4px #fff3c4, 0 0 24px rgba(255,226,140,.95); animation-duration: 1.1s; }
+/* 能点的动作按钮：金光；胡 / 碰 / 跑 用红光 */
+.act-wrap.timed .act-btn.avail:not(:disabled)::after,
+.actions .act-btn.avail:not(:disabled)::after { box-shadow: 0 0 0 3px #ffe9a8, 0 0 18px rgba(255,226,140,.8); animation-duration: 1.15s; }
+.act-wrap.timed .act-btn.hu.avail:not(:disabled)::after,
+.actions .act-btn.hu.avail:not(:disabled)::after { box-shadow: 0 0 0 4px #ffd6d6, 0 0 22px rgba(255,120,120,.9); animation-duration: .82s; }
+/* 「打出」 */
+.discard-big::after { box-shadow: 0 0 0 4px #fff3c4, 0 0 20px rgba(255,226,140,.9); animation-duration: 1.15s; }
+/* 灰掉 / 禁用的一律不呼吸 */
+.actions .act-btn.idle::after, .actions .act-btn:disabled::after,
+.act-btn.idle::after, .act-btn:disabled::after { content: none; }
+
+/* 我的弃牌堆：贴右边、从右往左码（跟下家一个方向），不再跟着手牌移动 */
+.discard-band { justify-content: flex-end !important; }
+.my-discards { flex-direction: row-reverse !important; justify-content: flex-start !important;
+  max-width: 100% !important; margin-left: auto; }
+
+/* 上下家的弃牌区：各自贴着头像那一侧的边沿排，不再居中。
+   居中的毛病是"别的东西一变宽，整堆打过的牌就跟着挪位"——牌没动，位置却变了。 */
+.table-mid > .seat:first-child .seat-body { justify-content: flex-start !important; width: 100%; }
+.table-mid > .seat.seat-r .seat-body { justify-content: flex-end !important; width: 100%; }
+.table-mid > .seat:first-child .discard-pile { justify-content: flex-start !important; margin-right: auto; }
+.table-mid > .seat.seat-r .discard-pile { justify-content: flex-end !important; margin-left: auto;
+  flex-direction: row-reverse !important; }
+
+/* 上下家：弃牌区从下地区里**脱出来**，各管各的。
+   以前两者同在一列里，左右边沿被绑在一起 —— 下地牌一多，弃牌堆就跟着挪。
+   现在弃牌堆改成绝对定位：顶着各自那一侧的屏幕边（跟头像框齐平），
+   上面空出四张牌头的高度留给下地牌。 */
+.table-mid > .seat { position: relative; }
+.table-mid > .seat .pile-slot {
+  position: absolute; top: calc(22px * 4 * var(--meld-zoom, 1.2)); z-index: 6;
+  max-width: 62%; }
+.table-mid > .seat:first-child .pile-slot { left: 0; right: auto; justify-content: flex-start; }
+.table-mid > .seat.seat-r .pile-slot { right: 0; left: auto; justify-content: flex-end; }
+.table-mid > .seat.seat-r .pile-slot .discard-pile { margin-left: auto; }
+
+/* 胡是这盘里最要紧的一下，按钮比别的大一号、字也粗一档 —— 别让人错过。
+   缩放的是**整个 act-wrap**（按钮连着外圈那道倒计时一起大），不是只放大按钮 ——
+   只放大按钮的话圈还是原来那么大，会错开一圈。
+   :has() 不支持的老浏览器退回只放大按钮本身，样子差一点但不会错位。 */
+.act-wrap:has(> .act-btn.hu) { transform: scale(1.18); transform-origin: center; margin: 7px 6px; }
+.act-btn.hu { font-weight: 900 !important; letter-spacing: 1px; }
+@supports not selector(:has(*)) {
+  .actions .act-btn.hu { transform: scale(1.18); transform-origin: center; }
+}
+
+/* 飞牌途中：进牌化成一道星光、弃牌化成一滴雨，落地那一下再显出牌来。
+   光画在同一个元素里，跟着一起缩 —— 越飞越小，落地正好收成一个点。 */
+.land-card.as-star::before, .land-card.as-rain::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 300px; height: 300px;
+  transform: translate(-50%, -50%); pointer-events: none; opacity: 0;
+  animation: fxGlow .42s ease-out both; }
+/* 亮度收了一档：原来芯子是纯白、外圈也浓，飞过去像一道闪光灯，晃眼。
+   现在芯子不用纯白（用带色的浅调），中间那圈也压薄，整体再降一档透明度 ——
+   看得见是一道光，但不扎眼。 */
+.land-card.as-star::before {
+  background: radial-gradient(closest-side, rgba(255,246,206,.72) 0%, rgba(255,226,140,.46) 22%, rgba(228,176,60,.16) 48%, rgba(220,170,40,0) 74%); }
+.land-card.as-rain::before {
+  background: radial-gradient(closest-side, rgba(226,244,255,.66) 0%, rgba(158,206,248,.42) 26%, rgba(96,160,230,.14) 50%, rgba(80,150,255,0) 76%);
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; }
+@keyframes fxGlow { 0% { opacity: 0 } 22% { opacity: .82 } 78% { opacity: .74 } 100% { opacity: 0 } }
+.land-card.as-star .card, .land-card.as-rain .card { animation: fxCard .42s ease-out both; }
+@keyframes fxCard { 0% { opacity: 1 } 28% { opacity: .12 } 82% { opacity: .12 } 100% { opacity: 1 } }
+
+/* 倒计时的最后一秒：颜色一下子回满，再一明一暗地跳 —— 别让人以为按钮已经没了。
+   只动 opacity 和 transform（合成器自己就能插值），不碰 box-shadow / filter，
+   免得又变成一条 60 帧／秒的重画（发热那笔账刚算完）。 */
+/* 这儿不能再写 filter/opacity 的 !important —— 写了就把行内那条"快速回色"的过渡压死了，
+   颜色会"啪"地跳回去。回色交给行内样式，这里只管闪。
+   选择器要写得比上面那条"呼吸改成 ::after"里的 `animation: none !important` 更具体，
+   不然同样带 !important 的两条比权重，闪烁那条会输 —— 那一行就是这么被吃掉的。 */
+.act-wrap.timed .act-btn.avail.last-call:not(:disabled),
+.actions .act-wrap.timed .act-btn.avail.last-call:not(:disabled),
+.actions .act-btn.avail.last-call:not(:disabled),
+.act-btn.last-call {
+  animation: lastCall .38s ease-in-out infinite alternate !important; }
+@keyframes lastCall { from { opacity: 1; transform: scale(1) } to { opacity: .5; transform: scale(1.07) } }
+.act-btn.last-call::after { content: none; }   /* 闪的时候就别再叠那层呼吸光了 */
+
+/* 主页 / 登录页的标志：直接用那张三张牌的图标，跟桌面图标是同一个东西 */
+.hm-logo { width: 32px; height: 32px; flex: none; border-radius: 8px; object-fit: contain;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45); user-select: none; -webkit-user-drag: none; }
+.login-logo { width: 96px; height: 96px; align-self: center; border-radius: 22px; object-fit: contain;
+  margin-bottom: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.5); user-select: none; -webkit-user-drag: none; }
+
+/* 「过」只是退路，不是机会 —— 不给呼吸光，免得跟吃 / 碰 / 胡 抢注意力 */
+.act-wrap.act-pass .act-btn::after, .act-btn.act-pass::after { content: none !important; }
+.act-wrap.act-pass .act-btn { animation: none !important; }
+
+/* 行动按钮不再用 disabled（disabled 的按钮收不到点击，玩家点了没反应还没提示），
+   改用 aria-disabled 做同样的外观 —— 样子一模一样，但事件照收，能回一句话。 */
+.act-btn[aria-disabled="true"] { opacity: .45; cursor: default; }
+.act-wrap.timed .act-btn.avail[aria-disabled="true"],
+.actions .act-btn.avail[aria-disabled="true"] { animation: none !important; }
+.act-btn.avail[aria-disabled="true"]::after { content: none !important; }
+
+/* 飞行途中那张牌收成一个圆点：方牌落到一摞方牌里分不出来，圆的一眼看得见是"正在落的那张"。
+   牌面本身也跟着裁圆（overflow: hidden），不然字角会戳出圆外面。 */
+.land-card { z-index: 200; }
+.land-card .card { border-radius: 50% !important; overflow: hidden; }
+
+/* 我这一堆和下家那一堆上下挨着，中间画一道线隔开 —— 不画的话两堆连成一片，
+   容易看成是一家打的。线画在我这一堆的上沿，就是两家的分界。 */
+.discard-band { border-top: 1px dashed rgba(255,255,255,.34); padding-top: 3px; }
+
+/* 暂停是个持续状态，不是一闪而过的事件：入场那一下走上面的红色横幅，
+   播完之后换成这条静态带子一直挂着（同一套视觉语言，只是不再走展开动画）。 */
+.phase-banner.pb-hold { z-index: 58; animation: pb-breathe 1.6s ease-in-out infinite alternate; }
+@keyframes pb-breathe {
+  from { opacity: .82; transform: translate(-50%, -50%) }
+  to   { opacity: 1;   transform: translate(-50%, -50%) }
+}
+@media (prefers-reduced-motion: reduce) { .phase-banner.pb-hold { animation: none; opacity: 1 } }
+
+/* 胡牌大印：盖在亮牌区正上方，约两张牌那么大，外面一圈金光。
+   只动 opacity 和 transform 的呼吸（合成器自己插值），不给阴影打动画 —— 发热那笔账不再欠。 */
+.hu-stamp { position: absolute; left: 50%; top: 50%; z-index: 62; pointer-events: none;
+  transform: translate(calc(-50% + var(--fx1, 0px)), calc(-50% + var(--fy1, 0px))); }
+/* 印是**半透的** —— 亮牌那一刻大家都在数牌，一枚实心的印盖上去正好挡住最想看的那几张。
+   底色用带透明度的红，字和边框留实（还是一眼认得出是「胡」），牌从底下透出来。 */
+.hu-stamp span { display: flex; align-items: center; justify-content: center;
+  width: 86px; height: 86px; border-radius: 50%;
+  font-family: var(--card-font, inherit); font-size: 54px; font-weight: 900; line-height: 1;
+  color: rgba(255,248,220,.92);
+  background: radial-gradient(circle at 40% 34%, rgba(216,70,79,.34), rgba(140,22,32,.40) 72%);
+  border: 4px solid rgba(255,233,168,.8);
+  box-shadow: 0 0 0 2px rgba(242,193,78,.32), 0 0 22px rgba(255,214,120,.45);
+  text-shadow: 0 2px 5px rgba(0,0,0,.8), 0 0 10px rgba(0,0,0,.5); }
+.hu-stamp::after { content: ''; position: absolute; left: 50%; top: 50%; width: 146px; height: 146px;
+  transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255,226,140,.22), rgba(255,200,60,0) 72%);
+  animation: huHalo 1.5s ease-in-out infinite alternate; }
+@keyframes huHalo { from { opacity: .35; transform: translate(-50%, -50%) scale(.92) }
+                    to   { opacity: .7;  transform: translate(-50%, -50%) scale(1.12) } }
+
+/* 倒计时那两个字符（比如「2s」）单独用系统字，别跟着界面那款书法体走。
+   书法体里数字和拉丁字母是另画的一套 —— 粗细、颜色、宽度都跟汉字不是一路，
+   所以会出现「2 灰、s 绿、中间还空一大格」。字距也一并清掉（全局字距会在末字后面
+   多留一格，把整串挤得偏左，圈里就不居中了）。 */
+.next-count, .next-count span {
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif !important;
+  letter-spacing: normal !important; font-variant-numeric: tabular-nums;
+  color: var(--ok) !important; }
+
+/* ═══ 三家弃牌区：以屏幕中线为基准，钉死 ═════════════════════════════
+   上家 —— 中线**上方**，靠左，从左往右码
+   下家 —— 中线**上方**，靠右，从右往左码
+   我   —— 中线**下方**，靠右，从右往左码
+   三边各离中线 2px；我和下家之间就是中线那条虚线。
+
+   为什么要钉死：原先这三堆是"量出来"的（跟着头像、跟着下家那一堆走），
+   而量完还要把屏幕坐标换算成桌面坐标，中间任何一环有出入，飞牌的落点就飘。
+   钉死之后落点是个定数 —— 机型、缩放、地址栏伸不伸缩，都不影响。
+
+   position: fixed 在被 transform 过的祖先里，参照的就是那个祖先（#root，也就是整张牌桌），
+   所以这里的 50% 就是牌桌的上下中线。 */
+.table-mid > .seat .pile-slot, .discard-band {
+  position: fixed !important; z-index: 8; max-width: 42%;
+  display: flex; overflow: visible; }
+/* 中线上方那两堆：底边贴着中线往上 2px */
+.table-mid > .seat .pile-slot { top: 50%; transform: translateY(calc(-100% - 2px)); }
+.table-mid > .seat:first-child .pile-slot { left: var(--edge); right: auto; justify-content: flex-start; }
+.table-mid > .seat.seat-r .pile-slot { right: var(--edge); left: auto; justify-content: flex-end; }
+/* 我这堆：中线下方 2px，靠右，从右往左 */
+.discard-band { top: calc(50% + 2px); right: var(--edge); left: auto; bottom: auto;
+  height: auto; justify-content: flex-end;
+  border-top: 1px dashed rgba(255,255,255,.34); padding-top: 3px; }
+.my-discards { flex-direction: row-reverse !important; justify-content: flex-start !important;
+  margin-left: auto; max-width: 100% !important; }
+.table-mid > .seat:first-child .pile-slot .discard-pile { flex-direction: row !important; margin-right: auto; }
+.table-mid > .seat.seat-r .pile-slot .discard-pile { flex-direction: row-reverse !important; margin-left: auto; }
+
+/* 弃牌区跟头像框对齐：左边那堆第一张牌的**左**边沿对上家头像的左边沿，
+   右边那两堆第一张牌的**右**边沿对下家头像的右边沿。
+   头像那一排本来就贴着 --edge 这条线，所以三堆都钉在同一条线上就对齐了。
+   顺手把内层那个弃牌堆的绝对定位清掉 —— 它身上还留着一个 right:10px，
+   会把整堆往边上再推一截，就是"说好贴边、结果牌跑到外面去"的由来。 */
+.discard-band > .my-discards, .pile-slot > .discard-pile {
+  position: static !important; left: auto !important; right: auto !important; top: auto !important; }
+.discard-band { right: var(--edge) !important; }
+.table-mid > .seat.seat-r .pile-slot { right: var(--edge) !important; }
+.table-mid > .seat:first-child .pile-slot { left: var(--edge) !important; }
+
+/* 我的下地区：左边沿跟**我自己的头像框**左边沿齐平。
+   以前是 left: 0（贴牌桌最左），比头像还往外顶 14px —— 头像那一排是 --edge 定的，
+   下地牌却从 0 起排，两者差着一条边距，看着就是"下地牌比头像还靠外"。
+   三家弃牌区用的也是这同一条线（--edge），所以现在整列左准线是一条。 */
+.my-melds { left: var(--edge) !important; }
+
+/* 第一张弃牌要**真的**跟头像框边沿齐平。
+   这一摞外面还留着 1px 的内边距，又被 --meld-zoom 放大了一道，量出来正好差 2px ——
+   说是"贴着头像那条线"，实际总差一点点。把**贴边那一侧**的内边距去掉，
+   另外三边留着（牌与牌之间的那点呼吸感还在）。 */
+.table-mid > .seat:first-child .pile-slot .discard-pile { padding-left: 0 !important; }
+.table-mid > .seat.seat-r .pile-slot .discard-pile { padding-right: 0 !important; }
+.discard-band > .my-discards { padding-right: 0 !important; }
+
+/* 下家那一堆是 row-reverse 排的（从右往左码），所以"靠右"该写 flex-start ——
+   row-reverse 里 main-start 就是右边那一头。原先写的是 flex-end，那是按 row 的方向想的，
+   结果整堆被顶到左边去，右边白白空出两个像素，第一张牌跟头像框之间就总差一条缝。
+   （我自己那一堆早就是 flex-start，所以一直对得上。） */
+.table-mid > .seat.seat-r .pile-slot .discard-pile { justify-content: flex-start !important; }
+
+/* 这三堆干脆一点内边距都不留 —— 只要留着，贴边那一侧就总有一条一两像素的缝，
+   "第一张牌跟头像框齐平"就永远差那么一点。牌与牌之间的间距由 gap 管，不靠 padding。 */
+.table-mid > .seat .pile-slot > .discard-pile,
+.discard-band > .my-discards { padding: 0 !important; }
+
+/* ═══ 刘海：真横屏（手机横过来拿）那一路 ═════════════════════════
+   竖着拿的时候整个 #root 转了 90°，上面那个 @media (orientation: portrait)
+   里已经把安全区绕着转了一圈、也把牌桌左右让出来了。
+   可**真横屏**走不到那个分支 —— #root 没有变换，那段规则一条都不生效，
+   于是 `.table` 还是 inset:0 铺满，刘海就直接压在上家头像 / 退出按钮上。
+   这儿补上：横屏时 env() 说的就是机身四条边，照着让即可。
+   挪的是牌桌整块的左右边界（left/right），不能用 padding —— 头像、行动按钮、
+   打出的牌都是相对牌桌绝对定位的，padding 对它们不起作用。 */
+@media (orientation: landscape) {
+  .table { left: var(--sal); right: var(--sar); }
+}
+
+/* 三堆弃牌得跟着一起让。
+   它们是 position: fixed —— 参照的是 #root（竖屏，身上有 transform）或者视口（横屏），
+   **都不是**那个已经被让进来的 `.table`。所以光写 var(--edge) 的话，
+   头像让进来了、弃牌堆却还贴着屏幕边，刚对齐好的那条准线又散了。
+   把安全区一并加进去，两边就还是同一条线。 */
+.table-mid > .seat:first-child .pile-slot { left: calc(var(--sal) + var(--edge)) !important; }
+.table-mid > .seat.seat-r .pile-slot { right: calc(var(--sar) + var(--edge)) !important; }
+.discard-band { right: calc(var(--sar) + var(--edge)) !important; }
+
+/* 拖牌时"落到哪一列"的准星：每一列都有一个，大小位置完全一致（第三张牌那一行）。
+   只用来量，永远不画出来 —— 判定和眼睛看到的虚位是两回事，别混在一起。 */
+.col-aim { position: absolute; left: 0; width: 100%; opacity: 0; pointer-events: none; z-index: -1; }
+
+/* ═══ 弃牌堆：不用 zoom，改成按 --meld-zoom 实打实地放大每一处尺寸 ═══
+   凡是原来靠 zoom 顺带放大的，这儿都要自己写一遍：牌宽、字号、内边距、
+   圆角、描边、牌与牌的缝、牌背花纹那一档（--card-u）。
+   漏一处就是"这一摞跟下地牌不像同一副牌"，所以宁可写全。 */
+/* 弃牌堆：牌跟牌**挨着摆**，不留缝 —— 一摞看着才像一摞 */
+.discard-pile { --dz: var(--meld-zoom, 1.2); gap: 0; }
+.discard-pile .card-xs { width: calc(22px * var(--dz)); height: calc(75px * var(--dz));
+  padding: calc(2px * var(--dz)) 0; border-radius: calc(5px * var(--dz));
+  border-width: calc(1px * var(--dz)); --card-u: calc(.48 * var(--dz)); }
+.discard-pile .card-xs .card-ch { font-size: calc(16px * var(--dz)); }
+/* 只露字头那一档：高度由内容撑，上下内边距也得跟着放大。
+   这儿的 !important 是被逼的 —— `.card-headonly { padding: 6px 0 !important }`
+   在上面压着，不带 !important 就盖不过去，牌会矮一截（实测 38 而不是 44）。 */
+.discard-pile .card-xs.card-headonly { height: auto !important; padding: calc(6px * var(--dz)) 0 !important; }
+/* 「从手里打出去的」那个小红点 */
+.discard-pile .card-xs.card-src::before { width: calc(4px * var(--dz)); height: calc(4px * var(--dz));
+  top: calc(1.5px * var(--dz)); right: calc(1.5px * var(--dz)); }
+/* 牌背（摸上来直接打出的那种偶尔会盖着） */
+.discard-pile .card-xs.card-back.card-headonly .card-back-inner { min-height: calc(20px * var(--dz)); }
+
+/* 雨滴从头到尾就是一滴雨 —— 落地那一下不要再显出牌面来。
+   （进牌那一路的星光不动：它落在头像上，显出牌来反而看得清是哪张。） */
+.land-card.as-rain .card { animation: none !important; opacity: 0 !important; }
+.land-card.as-rain::before { animation: fxRain .42s ease-out both; }
+@keyframes fxRain { 0% { opacity: 0 } 22% { opacity: .82 } 100% { opacity: .7 } }
+
+/* ═══ 省电模式（.lite）：老机器上自动开 ═══════════════════════════════
+   发烫的大头是**一直在跑的那些呼吸光晕**。它们早就改成了 ::after 打 opacity
+   （合成器自己插值，CPU 这边是干净的），可每一处仍然是一个独立的合成层：
+   iPhone X 那块 2436×1125、dpr 3 的屏，一秒 60 次把这些层混进去，GPU 就没歇过。
+   这儿把"动"停掉，光晕本身留着 —— 定在中间那一帧，看上去还是亮的，只是不喘气了。
+   识别在 web/src/perf.ts：按屏幕逻辑尺寸认老机型，认不出的量帧率。 */
+.lite .card-new::after, .lite .card-new-wrap .card::after, .lite .next-count::after,
+.lite .act-btn.pulse::after, .lite .act-btn.chosen::after, .lite .card-selected::after,
+.lite .card.card-dragsrc::after, .lite .float-card .float-inner .card::after,
+.lite .act-wrap.timed .act-btn.avail:not(:disabled)::after,
+.lite .actions .act-btn.avail:not(:disabled)::after,
+.lite .discard-big::after { animation: none !important; opacity: .62 !important; }
+
+/* 胡牌大印的光晕、暂停带子的呼吸、最后读秒的闪：一律定住 */
+.lite .hu-stamp::before, .lite .phase-banner.pb-hold { animation: none !important; opacity: .9 !important; }
+.lite .act-btn.last-call { animation: none !important; }
+
+/* 毛玻璃：iOS 上这是最贵的一项 —— 每帧都要把底下那块重新采样一遍、模糊一遍。
+   换成一层实一点的底色，看着差别不大，GPU 省一大截。 */
+.lite .panel { backdrop-filter: none !important; background: rgba(18, 32, 26, .92) !important; }
+.lite .modal-bg.chi-modal .modal { backdrop-filter: none !important; background: rgba(23, 32, 29, .95) !important; }
+
+/* 牌桌底图：老机器上淡一档，少一层大面积的半透明混合 */
+.lite .table-art svg { opacity: min(1, calc(var(--art-dim, .72) * .8)); }
+
+/* ═══ 刘海：真横屏下那些 position:fixed 的块也得让 ═══════════════════
+   `.table` 已经把左右让出来了，可 fixed 的元素参照的是**视口**，不是牌桌 ——
+   横屏时它们还贴着屏幕最外沿，正好压在刘海底下。 */
+@media (orientation: landscape) {
+  .new-col-zone { right: calc(var(--sar) + 6px); }
+  .drop-hint { left: calc(50% + (var(--sal) - var(--sar)) / 2); }
+  .toast { left: calc(50% + (var(--sal) - var(--sar)) / 2); }
+  .reveal-strip { left: calc(50% + (var(--sal) - var(--sar)) / 2); }
+}

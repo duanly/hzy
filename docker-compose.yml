@@ -1,0 +1,55 @@
+# 衡之娱 / 跑胡子 —— 服务器上就跑这一份
+#
+# 两层 Caddy 的下面那一层在这儿：
+#   前置 Caddy（只管 TLS + 域名分发）──► 本机 :${HTTP_PORT} ──► caddy（本应用，管内部路径）──► app:8787
+# 同一个端口也直接对外开着，所以 http://<服务器IP>:${HTTP_PORT} 明文也能进 —— 
+# 局域网、临时调试、还没解析好域名的时候都靠它。
+#
+#   cp .env.example .env && vi .env
+#   docker compose pull && docker compose up -d
+
+name: paohuzi
+
+services:
+  app:
+    image: ghcr.io/${GHCR_OWNER}/paohuzi:${TAG:-latest}
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PORT: "8787"
+      DB_PATH: /data/paohuzi.db
+      VOICE_DIR: /data/voice
+    volumes:
+      # 牌局库 + 后台传上来的语音包。**别用匿名卷**，换镜像就找不着了
+      - ./data:/data
+    expose: ["8787"]          # 只在 compose 网里可见，不对外
+    networks: [phz]
+    logging: &log
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app: { condition: service_healthy }
+    volumes:
+      - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      # 明文 HTTP。前置 Caddy 反代到这儿，IP 直连也是这儿。
+      # 只想给前置 Caddy 用、不许外人按 IP 进的话，写成 "127.0.0.1:${HTTP_PORT:-8080}:80"
+      - "${HTTP_PORT:-8080}:80"
+    networks: [phz]
+    logging: *log
+
+networks:
+  phz:
+
+# 前置 Caddy 也在 Docker 里、想走容器网而不是绕一圈本机端口的话：
+# 把上面 caddy 的 networks 改成 [phz, edge]，再打开下面这段，
+# 前置那边就直接 reverse_proxy paohuzi-caddy-1:80。
+# networks:
+#   edge:
+#     external: true
+#     name: caddy_net

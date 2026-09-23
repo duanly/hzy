@@ -1,0 +1,20 @@
+<view class="page">
+  <!-- 登录/取 token 期间展示 loading -->
+  <view wx:if="{{!webviewSrc && !loadError}}" class="loading">
+    <text>加载中...</text>
+  </view>
+
+  <!-- 登录失败兜底 -->
+  <view wx:if="{{loadError}}" class="error">
+    <text>加载失败：{{loadError}}</text>
+    <button bindtap="retry" size="mini">重试</button>
+  </view>
+
+  <!-- 拿到 token 后用 web-view 承载 H5 -->
+  <web-view
+    wx:if="{{webviewSrc}}"
+    src="{{webviewSrc}}"
+    bindmessage="onWebviewMessage"
+    binderror="onWebviewError"
+  />
+</view>

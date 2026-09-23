@@ -1,0 +1,23 @@
+node_modules/
+server/data/
+*.log
+.DS_Store
+shells/android/.gradle/
+shells/android/build/
+shells/android/app/build/
+shells/ios/build/
+
+# ---- 构建产物 / 发布包 ----
+# bun 打出来的，Docker 构建时会重新打
+web/dist/
+dist-deploy/
+*.tar.gz
+*.tar.gz.md5
+
+# ---- 运行时配置（有密钥，绝不能提交）----
+.env
+.env.local
+
+# ---- 工作过程中的东西 ----
+Claude outputs/
+_to_delete/

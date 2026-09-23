@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>衡之娱 · 后台管理</title>
+<style>
+  :root { --bg:#11161c; --panel:#171f27; --line:#26313c; --text:#e8eef3; --muted:#8fa3b3; --gold:#f2c14e; --ok:#4cd97b; --danger:#ff6b6b; --accent:#3b82f6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+  a { color: var(--accent); }
+  button { font: inherit; border:0; border-radius:8px; padding:7px 12px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); }
+  button.danger { background:var(--danger); }
+  button:disabled { opacity:.5; cursor:default; }
+  input, select { font: inherit; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:#0e1319; color:var(--text); }
+  .layout { display:flex; min-height:100vh; }
+  .side { width:180px; flex:none; background:var(--panel); border-right:1px solid var(--line); padding:16px 12px; }
+  .side h1 { font-size:16px; margin:0 0 16px; color:var(--gold); letter-spacing:2px; }
+  .side a { display:block; padding:9px 12px; border-radius:8px; color:var(--text); text-decoration:none; margin-bottom:4px; cursor:pointer; }
+  .side a.on, .side a:hover { background:#22303c; }
+  .main { flex:1; padding:18px 22px; overflow:auto; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .card b { display:block; font-size:26px; color:var(--gold); }
+  .card span { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border-radius:12px; overflow:hidden; }
+  th, td { padding:9px 10px; text-align:left; border-bottom:1px solid var(--line); font-size:13px; white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; background:#131a21; }
+  tr:last-child td { border-bottom:0; }
+  .pos { color:var(--ok); } .neg { color:var(--danger); } .muted { color:var(--muted); }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing:.5px }
+  /* 胜率 / 胡牌 / 自摸这些细数据平时折起来，勾"显示详细数据"才出来 */
+  .statcol { display: none; }
+  body.show-stats .statcol { display: table-cell; }
+  .tag { font-size:11px; padding:1px 7px; border-radius:20px; background:#22303c; color:var(--muted); }
+  .tag.on { background:rgba(76,217,123,.18); color:var(--ok); }
+  .tag.off { background:rgba(255,107,107,.15); color:var(--danger); }
+  .tag.warn { background:rgba(230,180,60,.2); color:#e6b43c; }
+  .login { max-width:320px; margin:14vh auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .login h1 { font-size:18px; margin:0 0 14px; color:var(--gold); }
+  .login input { width:100%; margin-bottom:10px; }
+  .err { color:var(--danger); font-size:13px; min-height:18px; }
+  .scroll { overflow:auto; }
+  h2 { font-size:16px; margin:0 0 12px; }
+  .sec { margin-bottom:26px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// 用 template 解析：<tr>/<td> 这种放在 div 里会被浏览器丢掉
+const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const app = document.getElementById('app');
+let token = localStorage.getItem('phz_admin_token') || '';
+let page = 'overview';
+let groups = [];
+
+async function api(path, body, method) {
+  const r = await fetch('/api/admin/' + path, {
+    method: method || (body ? 'POST' : 'GET'),
+    headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) { token = ''; localStorage.removeItem('phz_admin_token'); renderLogin(); throw new Error('需要重新登录'); }
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+const fmt = (n) => (n > 0 ? '+' + n : String(n));
+const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : 'muted');
+const time = (t) => new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const VARIANT = { hy_honghei: '衡阳红黑', hy_liuhuqiang: '衡阳六胡抢', ly_tilong: '耒阳提龙' };
+
+function renderLogin(err) {
+  app.innerHTML = '';
+  const box = $(`<div class="login">
+    <h1>衡之娱 · 后台管理</h1>
+    <input id="u" placeholder="管理员账号" value="admin" />
+    <input id="p" type="password" placeholder="密码" />
+    <div class="err">${err || ''}</div>
+    <button id="go" style="width:100%">登录</button>
+  </div>`);
+  app.appendChild(box);
+  const go = async () => {
+    try {
+      const d = await api('login', { username: box.querySelector('#u').value, password: box.querySelector('#p').value });
+      token = d.token; localStorage.setItem('phz_admin_token', token); render();
+    } catch (e) { renderLogin(e.message); }
+  };
+  box.querySelector('#go').onclick = go;
+  box.querySelector('#p').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+
+const NAV = [['overview', '总览'], ['users', '玩家'], ['audit', '审计'], ['agents', 'VIP'], ['groups', '分组'], ['tables', '牌桌配置'], ['voice', '语音包'], ['rooms', '房间'], ['rounds', '对局']];
+
+async function render() {
+  if (!token) return renderLogin();
+  app.innerHTML = '';
+  const side = $(`<div class="side"><h1>衡之娱后台</h1>${NAV.map(([k, n]) => `<a data-k="${k}" class="${k === page ? 'on' : ''}">${n}</a>`).join('')}
+    <a id="logout" style="margin-top:20px;color:#8fa3b3">退出登录</a>
+    <a class="mlink" href="/m">手机版后台 /m ›</a></div>`);
+  const main = $('<div class="main"><div class="muted">加载中…</div></div>');
+  const layout = $('<div class="layout"></div>');
+  layout.appendChild(side); layout.appendChild(main); app.appendChild(layout);
+  side.querySelectorAll('a[data-k]').forEach(a => a.onclick = () => { page = a.dataset.k; render(); });
+  side.querySelector('#logout').onclick = () => { token = ''; localStorage.removeItem('phz_admin_token'); renderLogin(); };
+  try {
+    groups = (await api('groups')).groups;
+    if (page === 'overview') await pageOverview(main);
+    if (page === 'users') await pageUsers(main);
+    if (page === 'agents') await pageAgents(main);
+    if (page === 'audit') await pageAudit(main);
+    if (page === 'groups') await pageGroups(main);
+    if (page === 'tables') await pageTables(main);
+    if (page === 'voice') await pageVoice(main);
+    if (page === 'rooms') await pageRooms(main);
+    if (page === 'rounds') await pageRounds(main);
+  } catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; }
+}
+
+/* 语音包：自己录的报牌音（衡阳话 / 耒阳话都行）。
+   传了哪条就放哪条，没传的自动退回系统 TTS；TTS 也发不出声的机器退到提示音。
+   文件存在服务器的 data/voice/ 里，重新部署不会丢。
+   每个玩法可以有自己的一套（存 data/voice/<玩法>/），没单独录的那条跟通用的走。 */
+let voicePackId = '';
+let rec = null, recKey = '', recTimer = null;
+
+async function pageVoice(main) {
+  const d = await api('voice?pack=' + encodeURIComponent(voicePackId), null, 'GET');
+  main.innerHTML = '';
+  const box = $('<div class="box"></div>');
+
+  // 有哪些套 + 新建 / 改名 / 删
+  const prow = $('<div class="row" style="margin-bottom:8px;flex-wrap:wrap"></div>');
+  prow.appendChild($('<b style="margin-right:4px">哪一套：</b>'));
+  for (const pk of d.packs) {
+    const b = $(`<button class="${voicePackId === pk.id ? '' : 'ghost'}">${pk.name}${pk.count ? ` (${pk.count})` : ''}</button>`);
+    b.onclick = () => { voicePackId = pk.id; render(); };
+    prow.appendChild(b);
+  }
+  const add = $('<button class="ghost">＋ 新建一套</button>');
+  add.onclick = async () => {
+    const name = prompt('这一套叫什么？（比如「衡阳老王」「普通话女声」）');
+    if (!name) return;
+    const r = await api('voice', { newPack: name });
+    voicePackId = r.id; render();
+  };
+  prow.appendChild(add);
+  if (voicePackId) {
+    const ren = $('<button class="ghost">改名</button>');
+    ren.onclick = async () => {
+      const name = prompt('改成什么名字？', (d.packs.find(x => x.id === voicePackId) || {}).name || '');
+      if (!name) return;
+      await api('voice', { pack: voicePackId, rename: name }); render();
+    };
+    const del = $('<button class="ghost" style="color:#ff9b9b">删掉这一套</button>');
+    del.onclick = async () => {
+      if (!confirm('整套删掉？里头录的都没了。')) return;
+      await api('voice', { dropPack: voicePackId }); voicePackId = ''; render();
+    };
+    prow.appendChild(ren); prow.appendChild(del);
+  }
+  box.appendChild(prow);
+
+  // 每个玩法默认用哪一套（玩家没自己挑的时候）
+  const vrow = $('<div class="row" style="margin-bottom:8px;flex-wrap:wrap"></div>');
+  vrow.appendChild($('<b style="margin-right:4px">各玩法默认：</b>'));
+  for (const v of d.variants) {
+    const sel = $('<select style="width:auto"></select>');
+    for (const pk of d.packs) sel.appendChild($(`<option value="${pk.id}">${pk.name}</option>`));
+    sel.value = d.byVariant[v.id] || '';
+    sel.onchange = async e => { await api('voice', { setVariant: v.id, usePack: e.target.value }); };
+    const lab = $(`<label class="row">${v.name} </label>`);
+    lab.appendChild(sel); vrow.appendChild(lab);
+  }
+  box.appendChild(vrow);
+
+  box.appendChild($('<div class="hint"><b>最省事的办法：新建一套，挑个发音人，点「生成这一套」</b> —— ' +
+    '服务端连一次微软 Edge 的在线朗读，三十多条一次性合成成 mp3 存下来，以后就是普通语音包（不再联网）。' +
+    '要人味儿再照下面自己录，录了哪条盖哪条。<br>' +
+    '<b>一条可以有好几种说法</b>：「念什么」里用 <b>/</b> 隔开，比如 <b>碰 / 碰啦 / 我碰了</b> —— ' +
+    '生成时一句合一条，牌桌上随机挑一条念，听着不那么机械。<br>' +
+    '按下面的名字录成音频，一次可以选一批传上来 —— 文件名对上就自动归位。' +
+    '也可以点每一行的「录」当场录一段（再点一次停）。<br>' +
+    '<b>不用录全</b>：传了哪条就用哪条，没传的自动退回系统 TTS。建议先录动作那几条' +
+    '（碰 / 吃 / 开跑 / 提龙 / 笑起 / 胡了 / 该你出牌），牌名那 20 条最费工夫，可以放到最后。<br>' +
+    '<b>格式</b>：正式用的建议传 <b>mp3</b>（所有机器都放得了）。当场录的话，' +
+    '<b>用 iPhone / iPad 的 Safari 打开这个后台录</b>，出来的是 m4a，全平台通吃；' +
+    '电脑 Chrome 录出来是 webm，<b>苹果手机放不了</b>，只适合自己听听效果。<br>' +
+    '录的时候干脆利落一点，一条别超过 1 秒，末尾别留空白。<br>' +
+    '<b>试听没声音？</b>iPhone / iPad 先看一眼机身侧边的<b>静音开关</b> —— 拨到静音时网页里的声音是不响的。</div>'));
+
+  /* 在线生成：服务端连一次微软 Edge 的「大声朗读」接口，把整套合成成 mp3 存下来。
+     存完就是普通的语音包 —— 客户端照常拿 /voice/... 播，跟人工录的没区别，
+     也不会再联网（合成只在这儿点一次）。服务器出不了网的话，点了会明说是哪一步不通。 */
+  const gen = $('<div class="row" style="margin:10px 0;flex-wrap:wrap;gap:8px;align-items:center;' +
+    'border:1px dashed var(--line);border-radius:10px;padding:10px"></div>');
+  gen.appendChild($('<b>在线生成：</b>'));
+  const gv = $('<select style="width:auto"></select>');
+  for (const v of (d.voices || [])) gv.appendChild($(`<option value="${v.id}">${v.name}</option>`));
+  gen.appendChild(gv);
+  /* 发音人是服务端给的。一条都没有 = 跑着的还是旧版服务端（文件换了但进程没重启），
+     这时候别让人对着一个空下拉框猜。 */
+  if (!(d.voices || []).length) {
+    gv.appendChild($('<option>（服务端还是旧版）</option>'));
+    gen.appendChild($('<span class="hint" style="color:#e6b43c">挑不到发音人 —— 服务端还没重启，' +
+      '新接口还没生效。重启一下服务再进这一页。</span>'));
+  }
+  const gr = $('<select style="width:auto"><option value="-20">慢一点</option><option value="-10">稍慢</option>' +
+    '<option value="0" selected>正常语速</option><option value="10">稍快</option><option value="20">快一点</option></select>');
+  gen.appendChild(gr);
+  const gall = $('<label class="row" style="gap:4px"><input type="checkbox" /> 整套重做（连已经有的一起覆盖）</label>');
+  gen.appendChild(gall);
+  const gbtn = $('<button>生成这一套</button>');
+  const gtip = $('<span class="hint"></span>');
+  gen.appendChild(gbtn); gen.appendChild(gtip);
+  gbtn.onclick = async () => {
+    const all = gall.querySelector('input').checked;
+    if (all && !confirm('整套重做会把已经录好 / 生成好的都覆盖掉，确定？')) return;
+    gbtn.disabled = true;
+    gtip.textContent = '正在合成…（三十多条，头一回要等十几秒）';
+    try {
+      const r = await api('voice', { pack: voicePackId, gen: { voice: gv.value, rate: Number(gr.value), all } });
+      gtip.textContent = `生成 ${r.saved.length} 条` + (r.used ? `（用的是${r.used}）` : '')
+        + (r.failed && r.failed.length ? `，${r.failed.length} 条没成：${r.failed[0].why}` : '')
+        + (r.note ? ` —— ${r.note}` : '');
+      setTimeout(() => render(), 1200);
+    } catch (e) { gtip.textContent = '失败：' + e.message; }
+    gbtn.disabled = false;
+  };
+  box.appendChild(gen);
+
+  /* 百炼（阿里云）那把钥匙：服务器搬到国内之后，微软和谷歌那两条都出不去，
+     只有它还通。填一次存进数据库，重启也还在；也可以不填，改用
+     DASHSCOPE_API_KEY 环境变量启动（那样这里会直接显示「已配好」）。 */
+  const ali = $('<div class="row" style="margin:10px 0;flex-wrap:wrap;gap:8px;align-items:center;' +
+    'border:1px dashed var(--line);border-radius:10px;padding:10px"></div>');
+  ali.appendChild($('<b>百炼 API Key：</b>'));
+  const ak = $('<input type="password" placeholder="sk-…（百炼控制台申请）" style="width:260px" />');
+  ali.appendChild(ak);
+  const akb = $('<button class="ghost">保存</button>');
+  const aktip = $(`<span class="hint">${d.aliKey ? '已配好，选「芊悦」那几条就能合成' : '还没填 —— 阿里那几个发音人现在点了会报错'}</span>`);
+  ali.appendChild(akb); ali.appendChild(aktip);
+  akb.onclick = async () => {
+    akb.disabled = true;
+    try { await api('voice', { setAliKey: ak.value.trim() }); ak.value = ''; aktip.textContent = '存好了'; setTimeout(() => render(), 900); }
+    catch (e) { aktip.textContent = '失败：' + e.message; }
+    akb.disabled = false;
+  };
+  box.appendChild(ali);
+
+  const pick = $('<div class="row" style="margin:10px 0"></div>');
+  const inp = $('<input type="file" accept="audio/*" multiple style="max-width:320px" />');
+  const tip = $('<span class="hint"></span>');
+  pick.appendChild(inp); pick.appendChild(tip);
+  box.appendChild(pick);
+  inp.onchange = async () => {
+    const fs = [...inp.files];
+    if (!fs.length) return;
+    tip.textContent = `读取 ${fs.length} 个文件…`;
+    const files = [];
+    for (const f of fs) files.push({ key: f.name.replace(/\.[^.]+$/, ''), name: f.name, mime: f.type, data: await b64(f) });
+    tip.textContent = '上传中…';
+    try {
+      const r = await api('voice', { pack: voicePackId, files });
+      tip.textContent = `传好 ${r.saved.length} 条` + (r.skipped.length ? `，${r.skipped.length} 条没认出来（${r.skipped.join('、')}）` : '');
+      setTimeout(() => render(), 900);
+    } catch (e) { tip.textContent = '失败：' + e.message; }
+  };
+
+  const t = $('<table><thead><tr><th>文件名</th><th>念什么（可改）</th><th>状态</th><th>录</th><th>试听</th><th>操作</th></tr></thead><tbody></tbody></table>');
+  const tb = t.querySelector('tbody');
+  for (const it of d.items) {
+    const state = it.size
+      ? `<span style="color:var(--ok)">已录 ${(it.size / 1024).toFixed(0)} KB · ${it.ext}${it.takes > 1 ? ` · ${it.takes} 种说法` : ''}</span>`
+        + (it.stale ? '<br><span style="color:var(--gold)">念法改过，待重做</span>' : '')
+      : (it.baseExt ? '<span class="hint">跟默认那一套</span>' : '<span class="hint">未录</span>');
+    const tr = $(`<tr><td class="mono">${it.key}</td><td></td><td>${state}</td><td></td><td></td><td></td></tr>`);
+    /* 念什么可以自己改：「跑」听着太秃就写「开跑」，合出来就是"开跑"。
+       改的只是合成时念的那句话，文件名还是 pao.mp3 —— 客户端只认 key，不管里头念的是什么。
+       改完要重新生成这一条才听得到新的念法。 */
+    const say = $(`<input value="${(it.say ?? it.label).replace(/"/g, '&quot;')}" style="width:150px" title="改了点「生成缺的」就会重做这一条。想要好几种说法，用 / 隔开，比如「碰 / 碰啦 / 我碰了」，播的时候随机挑一条" />`);
+    if (it.custom) say.style.borderColor = 'var(--gold)';
+    const save = async () => {
+      const v = say.value.trim();
+      if (v === (it.say ?? it.label)) return;
+      try { await api('voice', { pack: voicePackId, setText: it.key, text: v }); it.say = v || it.label; render(); }
+      catch (e) { alert('改不了：' + e.message); }
+    };
+    say.onblur = save;
+    say.onkeydown = e => { if (e.key === 'Enter') say.blur(); };
+    tr.children[1].appendChild(say);
+    const rb = $(`<button class="ghost">${recKey === it.key ? '● 停止' : '录'}</button>`);
+    if (recKey === it.key) rb.style.color = '#ff6b6b';
+    rb.onclick = () => (recKey === it.key ? stopRec() : startRec(it.key));
+    tr.children[3].appendChild(rb);
+    if (it.size || it.baseExt) {
+      const play = $('<button class="ghost">播放</button>');
+      const url = it.size && voicePackId ? `/voice/packs/${voicePackId}/${it.key}.${it.ext}`
+        : it.size ? `/voice/${it.key}.${it.ext}` : `/voice/${it.key}.${it.baseExt}`;
+      play.onclick = () => preview(url, play);
+      tr.children[4].appendChild(play);
+    }
+    if (it.size) {
+      const del = $('<button class="ghost">删掉</button>');
+      del.onclick = async () => { await api('voice', { pack: voicePackId, del: it.key }); render(); };
+      tr.children[5].appendChild(del);
+    }
+    tb.appendChild(tr);
+  }
+  box.appendChild(t);
+  main.appendChild(box);
+}
+
+/* 试听：**复用同一个 <audio> 元素**（iOS 上第一次用户手势解锁之后它一直能用，
+   每次 new 一个反而容易被自动播放策略挡下），而且**不许把错误吞掉** ——
+   以前是 `.catch(() => {})`，放不出来就一点动静没有，谁也不知道为什么。 */
+let previewEl = null;
+function preview(url, btn) {
+  const old = btn ? btn.textContent : '';
+  try {
+    previewEl = previewEl || new Audio();
+    previewEl.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+    previewEl.currentTime = 0;
+    if (btn) {
+      btn.textContent = '♪ 放…';
+      const back = () => { btn.textContent = old; };
+      previewEl.onended = back;
+      previewEl.onerror = () => { back(); alert('这段音频解不开 —— 换个格式试试（mp3 最稳）。'); };
+    }
+    previewEl.play().catch(e => {
+      if (btn) btn.textContent = old;
+      alert('放不出来：' + (e && e.message ? e.message : e)
+        + '\n\n如果是 iPhone / iPad，先看一眼机身侧边的<b>静音开关</b> —— 拨到静音时，网页里的声音是不响的。');
+    });
+  } catch (e) { if (btn) btn.textContent = old; alert('放不出来：' + e.message); }
+}
+
+function b64(blob) {
+  return blob.arrayBuffer().then(buf => {
+    let s = ''; const u8 = new Uint8Array(buf);
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+}
+/** 当场录一条：再点一次停；最多录 10 秒，自动停 */
+async function startRec(key) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'].find(m => MediaRecorder.isTypeSupported?.(m)) || '';
+    const r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    r.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    r.onstop = async () => {
+      r.stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: r.mimeType });
+      recKey = ''; rec = null;
+      if (blob.size < 200) { alert('太短了，没录上'); return render(); }
+      try {
+        await api('voice', { pack: voicePackId, files: [{ key, mime: r.mimeType, data: await b64(blob) }] });
+        // 刚录完顺手放一遍给他听（这会儿还在用户手势的上下文里，最容易放得出来）
+        setTimeout(() => preview(URL.createObjectURL(blob), null), 200);
+      } catch (e) { alert('保存失败：' + e.message); }
+      render();
+    };
+    rec = r; recKey = key; render();
+    r.start();
+    if (recTimer) clearTimeout(recTimer);
+    recTimer = setTimeout(() => stopRec(), 10000);
+  } catch (e) {
+    alert('打不开麦克风：' + e.message + '\n（浏览器只在 https 或 localhost 下才给录音权限）');
+  }
+}
+function stopRec() { if (recTimer) { clearTimeout(recTimer); recTimer = null; } if (rec && rec.state !== 'inactive') rec.stop(); }
+
+async function pageOverview(main) {
+  const d = await api('overview');
+  main.innerHTML = '';
+  main.appendChild($(`<h2>总览</h2>`));
+  main.appendChild($(`<div class="cards">
+    <div class="card"><b>${d.online}</b><span>在座真人</span></div>
+    <div class="card"><b>${d.playing}</b><span>正在打的桌</span></div>
+    <div class="card"><b>${d.tables}</b><span>大厅固定桌</span></div>
+    <div class="card"><b>${d.privateRooms}</b><span>私人房</span></div>
+    <div class="card"><b>${d.rounds24}</b><span>近 24 小时对局</span></div>
+    <div class="card"><b>${d.users}</b><span>注册玩家</span></div>
+  </div>`));
+  main.appendChild($(`<div class="muted">管理员：${d.me.nickname}（#${d.me.id}）</div>`));
+}
+
+async function pageUsers(main) {
+  main.innerHTML = '';
+  main.appendChild($('<h2>玩家</h2>'));
+  const bar = $(`<div class="row sec">
+    <input id="q" placeholder="昵称 / 账号 / ID" />
+    <select id="g"><option value="">全部分组</option>${groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}</select>
+    <button id="find">查询</button>
+    <label class="row" style="gap:4px"><input type="checkbox" id="stats" style="width:auto" /> 显示详细数据</label>
+  </div>`);
+  main.appendChild(bar);
+  const box = $('<div class="scroll"></div>'); main.appendChild(box);
+  const load = async () => {
+    const q = bar.querySelector('#q').value.trim(), g = bar.querySelector('#g').value;
+    const d = await api('users?limit=100' + (q ? '&q=' + encodeURIComponent(q) : '') + (g ? '&group=' + g : ''));
+    box.innerHTML = '';
+    const t = $(`<table><thead><tr>
+      <th>ID</th><th>账号</th><th>昵称</th><th>改名</th><th>积分</th><th>局数</th><th class="statcol">胜率</th>
+      <th class="statcol">胡牌</th><th class="statcol">自摸</th><th class="statcol">点炮</th>
+      <th class="statcol">大胡</th><th class="statcol">最高息</th><th class="statcol">最高倍</th>
+      <th>分组</th><th>开房</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead><tbody></tbody></table>`);
+    const tb = t.querySelector('tbody');
+    for (const u of d.users) {
+      const tr = $(`<tr>
+        <td>${u.id}</td><td class="mono">${u.code || '—'}</td>
+        <td>${u.nickname}${u.role === 'admin' ? ' <span class="tag on">管理员</span>' : ''}</td>
+        <td class="muted">${u.nickChanges ?? 0} / ${u.nickLimit ?? 3}</td>
+        <td>${u.points}</td><td>${u.games}</td><td class="statcol">${u.winRate}%</td>
+        <td class="statcol">${u.hu}</td><td class="statcol">${u.zimo}</td><td class="statcol">${u.dianpao}</td>
+        <td class="statcol">${u.bigHu}</td><td class="statcol">${u.maxXi || '—'}</td>
+        <td class="statcol">${u.maxMul ? '×' + u.maxMul : '—'}</td>
+        <td></td><td></td>
+        <td>${u.blocked ? '<span class="tag off">已封禁</span>' : '<span class="tag on">正常</span>'}</td>
+        <td class="muted">${time(u.lastLogin)}</td>
+        <td></td></tr>`);
+      // 分组
+      const gsel = $(`<select><option value="">未分组</option>${groups.map(g => `<option value="${g.id}" ${g.id === u.groupId ? 'selected' : ''}>${g.name}</option>`).join('')}</select>`);
+      gsel.onchange = () => api('user', { id: u.id, groupId: gsel.value ? Number(gsel.value) : null });
+      tr.children[13].appendChild(gsel);
+      // 开房权限
+      const ob = $(`<button class="ghost">${u.canOpenRoom ? '允许' : '禁止'}</button>`);
+      ob.onclick = async () => { await api('user', { id: u.id, canOpenRoom: !u.canOpenRoom }); load(); };
+      tr.children[14].appendChild(ob);
+      // 操作
+    const ops = $('<span class="row"></span>');
+      const pts = $('<button class="ghost">上下分</button>');
+      pts.onclick = async () => {
+        const v = prompt(`给「${u.nickname}」加减积分（负数为扣分），当前 ${u.points}`, '100');
+        if (v === null || !Number(v)) return;
+        await api('user', { id: u.id, pointsDelta: Number(v) }); load();
+      };
+      const blk = $(`<button class="${u.blocked ? 'ghost' : 'danger'}">${u.blocked ? '解封' : '封禁'}</button>`);
+      blk.onclick = async () => { await api('user', { id: u.id, blocked: !u.blocked }); load(); };
+      // 改昵称：后台改不算玩家自己的次数
+      const rn = $('<button class="ghost">改昵称</button>');
+      rn.onclick = async () => {
+        const v = prompt(`把「${u.nickname}」的昵称改成（最多四个字）`, u.nickname);
+        if (v === null || !v.trim()) return;
+        await api('user', { id: u.id, nickname: v.trim() }); load();
+      };
+      // 改名次数：清零 / 放开
+      const nl = $('<button class="ghost">改名次数</button>');
+      nl.onclick = async () => {
+        const v = prompt(`「${u.nickname}」已改 ${u.nickChanges ?? 0} 次，上限 ${u.nickLimit ?? 3}。\n填新的上限（0 = 不许再改，留空 = 只把已改次数清零）`, '');
+        if (v === null) return;
+        if (v.trim() === '') await api('user', { id: u.id, resetNick: true });
+        else await api('user', { id: u.id, nickLimit: Number(v) });
+        load();
+      };
+      ops.appendChild(rn); ops.appendChild(nl); ops.appendChild(pts); ops.appendChild(blk);
+      tr.children[17].appendChild(ops);
+      tb.appendChild(tr);
+    }
+    box.appendChild($(`<div class="muted sec">共 ${d.total} 人</div>`));
+    box.appendChild(t);
+  };
+  bar.querySelector('#find').onclick = load;
+  bar.querySelector('#q').onkeydown = (e) => { if (e.key === 'Enter') load(); };
+  // 胜率 / 胡牌 / 自摸这些平时不看，默认折起来；勾上才展开（记在本地）
+  const sw = bar.querySelector('#stats');
+  const applyStats = () => {
+    document.body.classList.toggle('show-stats', sw.checked);
+    localStorage.setItem('phz_admin_stats', sw.checked ? '1' : '0');
+  };
+  sw.checked = localStorage.getItem('phz_admin_stats') === '1';
+  sw.onchange = applyStats; applyStats();
+  await load();
+}
+
+/* 审计：按数据挑出"值得回看几局"的人和组合。**不下结论** —— 胜率高本身不是问题，打得好就是赢得多。 */
+async function pageAudit(main) {
+  main.innerHTML = '';
+  main.appendChild($('<h2>审计</h2>'));
+  const bar = $(`<div class="row sec">
+    <label class="muted">起算局数 <input id="mg" value="30" style="width:70px" /></label>
+    <label class="muted">扫描最近 <input id="sc" value="4000" style="width:90px" /> 局</label>
+    <button id="go">重新算</button></div>`);
+  main.appendChild(bar);
+  const box = $('<div class="scroll"></div>'); main.appendChild(box);
+  const load = async () => {
+    box.innerHTML = '<div class="muted">算着…</div>';
+    const mg = Number(bar.querySelector('#mg').value) || 30;
+    const sc = Number(bar.querySelector('#sc').value) || 4000;
+    const d = await api(`audit?minGames=${mg}&scan=${sc}`);
+    box.innerHTML = '';
+    box.appendChild($(`<div class="muted sec">按 ${d.minGames} 局起算，扫了最近 ${d.scanned} 局。
+      这里只按数据挑出"跟大多数人不太一样"的几条，<b>不代表谁有问题</b> ——
+      胜率高本身很正常，打得好就是赢得多。真要看，去复盘里看几局<b>牌打得合不合理</b>。</div>`));
+
+    box.appendChild($('<h3>数据跟大多数人不太一样的</h3>'));
+    if (!d.players.length) box.appendChild($('<div class="muted sec">没有明显偏离的。</div>'));
+    else {
+      const t = $(`<table><thead><tr><th>ID</th><th>账号</th><th>昵称</th><th>局数</th><th>胜率</th>
+        <th>点炮率</th><th>胡/自摸</th><th>净分</th><th>挑出来的原因</th></tr></thead><tbody></tbody></table>`);
+      const tb = t.querySelector('tbody');
+      for (const p of d.players) {
+        tb.appendChild($(`<tr><td>${p.id}</td><td class="mono">${p.code || '—'}</td><td>${p.nickname}</td>
+          <td>${p.games}</td><td>${p.winRate}%</td><td>${p.dianRate}%</td>
+          <td>${p.hu} / ${p.zimo}</td>
+          <td class="${p.net > 0 ? 'pos' : p.net < 0 ? 'neg' : ''}">${p.net}</td>
+          <td>${p.flags.map(f => `<span class="tag">${f}</span>`).join(' ')}</td></tr>`));
+      }
+      box.appendChild(t);
+    }
+
+    box.appendChild($('<h3>输赢比较集中的组合</h3>'));
+    if (!d.pairs.length) box.appendChild($('<div class="muted sec">没有明显的。</div>'));
+    else {
+      const t2 = $(`<table><thead><tr><th>输的一方</th><th>赢的一方</th><th>同桌</th><th>这部分分数</th><th>占他输分</th><th>说明</th></tr></thead><tbody></tbody></table>`);
+      const tb2 = t2.querySelector('tbody');
+      for (const p of d.pairs) {
+        tb2.appendChild($(`<tr><td>${p.fromName} <span class="muted">#${p.from}</span></td>
+          <td>${p.toName} <span class="muted">#${p.to}</span></td>
+          <td>${p.together}</td><td>${p.amount}</td><td>${p.share}%</td>
+          <td class="muted">${p.note}</td></tr>`));
+      }
+      box.appendChild(t2);
+    }
+  };
+  bar.querySelector('#go').onclick = load;
+  await load();
+}
+
+/** 月卡那一格：没卡 / 已过期 / 剩几天，快到期（7 天内）标黄 */
+function cardCell(a) {
+  if (!a.cardUntil) return '<span class="tag off">没卡</span>';
+  const d = new Date(a.cardUntil), day = `${d.getMonth() + 1}/${d.getDate()}`;
+  if (a.cardLeft <= 0) return `<span class="tag off">已到期 ${day}</span>`;
+  const cls = a.cardLeft <= 7 ? 'warn' : 'on';
+  return `<span class="tag ${cls}">${day}（剩 ${a.cardLeft} 天）</span>`;
+}
+
+/* VIP：能开房的那批人单独一张表。可以改开房上限、一键停用 / 恢复、续月卡。 */
+async function pageAgents(main) {
+  main.innerHTML = '';
+  main.appendChild($('<h2>VIP</h2>'));
+  main.appendChild($(`<div class="muted sec">给玩家开了开房权限，他就自动进「VIP」分组。
+    上限 = 同时最多开着几个房间（0 = 不限）；停用会立刻收回开房权限，可以选择连他手上的房间一起解散。<br>
+    <b>开房权限是永久的，月卡是会到期的那一半</b>：权限在、卡没过期才开得了新房。「续卡」按**自然月**走：
+    到期日一律落在某月 1 号 0 点 —— 没卡的从<b>下个月 1 号</b>算起（这个月剩下的天数白送），
+    卡还在的就从原到期日再往后加一个月。已经开着的房间不受影响，让人把这一场打完。</div>`));
+  const bar = $('<div class="row sec"><input id="q" placeholder="昵称 / 账号 ID" /><button id="add">添加 VIP</button></div>');
+  main.appendChild(bar);
+  const box = $('<div class="scroll"></div>'); main.appendChild(box);
+  const load = async () => {
+    const d = await api('agents');
+    box.innerHTML = '';
+    const t = $(`<table><thead><tr>
+      <th>ID</th><th>账号</th><th>昵称</th><th>积分</th><th>开房上限</th><th>正开着</th>
+      <th>月卡到期</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead><tbody></tbody></table>`);
+    const tb = t.querySelector('tbody');
+    for (const a of d.agents) {
+      const tr = $(`<tr>
+        <td>${a.id}</td><td class="mono">${a.code || '—'}</td><td>${a.nickname}</td><td>${a.points}</td>
+        <td></td><td>${a.openRooms}</td>
+        <td>${cardCell(a)}</td>
+        <td>${a.blocked ? '<span class="tag off">已封禁</span>' : a.canOpenRoom ? '<span class="tag on">在用</span>' : '<span class="tag off">已停用</span>'}</td>
+        <td class="muted">${time(a.lastLogin)}</td><td></td></tr>`);
+      // 开房上限：点一下改
+      const lim = $(`<button class="ghost">${a.roomLimit ? a.roomLimit + ' 个' : '不限'}</button>`);
+      lim.onclick = async () => {
+        const v = prompt(`「${a.nickname}」同时最多开几个房间？（0 = 不限）`, String(a.roomLimit ?? 0));
+        if (v === null) return;
+        await api('agent', { id: a.id, roomLimit: Number(v) || 0 }); load();
+      };
+      tr.children[4].appendChild(lim);
+      const ops = $('<span class="row"></span>');
+      if (a.canOpenRoom) {
+        const stop = $('<button class="danger">停用</button>');
+        stop.onclick = async () => {
+          if (!confirm(`停用 VIP「${a.nickname}」？他马上开不了新房。`)) return;
+          const close = a.openRooms > 0 && confirm(`他手上还开着 ${a.openRooms} 个房间，一并解散并结算吗？`);
+          await api('agent', { id: a.id, stop: true, closeRooms: close }); load();
+        };
+        ops.appendChild(stop);
+      } else {
+        const on = $('<button class="ghost">恢复</button>');
+        on.onclick = async () => { await api('agent', { id: a.id, start: true }); load(); };
+        ops.appendChild(on);
+      }
+      // 续卡：一次一个月；按住 Shift 点可以一次续好几个月
+      const renew = $('<button class="ghost">续卡</button>');
+      renew.onclick = async (ev) => {
+        let months = 1;
+        if (ev.shiftKey) { const v = prompt(`给「${a.nickname}」续几个月？`, '3'); if (v === null) return; months = Number(v) || 1; }
+        await api('agent', { id: a.id, renewCard: months }); load();
+      };
+      ops.appendChild(renew);
+      if (a.cardUntil) {
+        const stopCard = $('<button class="ghost">停卡</button>');
+        stopCard.onclick = async () => { if (!confirm(`把「${a.nickname}」的月卡停掉？他马上开不了新房。`)) return; await api('agent', { id: a.id, stopCard: true }); load(); };
+        ops.appendChild(stopCard);
+      }
+      tr.children[9].appendChild(ops);
+      tb.appendChild(tr);
+    }
+    box.appendChild($(`<div class="muted sec">共 ${d.agents.length} 个 VIP</div>`));
+    box.appendChild(t);
+  };
+  bar.querySelector('#add').onclick = async () => {
+    const q = bar.querySelector('#q').value.trim();
+    if (!q) return alert('先在左边填昵称或账号 ID');
+    const r = await api('users?limit=5&q=' + encodeURIComponent(q));
+    if (!r.users.length) return alert('没找到这个人');
+    const u = r.users[0];
+    if (!confirm(`把「${u.nickname}」（账号 ${u.code || u.id}）设成 VIP？`)) return;
+    await api('agent', { id: u.id, start: true }); load();
+  };
+  await load();
+}
+
+async function pageGroups(main) {
+  main.innerHTML = '';
+  main.appendChild($('<h2>分组</h2>'));
+  const bar = $('<div class="row sec"><input id="n" placeholder="新分组名称" /><button id="add">新建分组</button></div>');
+  main.appendChild(bar);
+  const box = $('<div></div>'); main.appendChild(box);
+  const load = async () => {
+    groups = (await api('groups')).groups;
+    box.innerHTML = '';
+    const t = $('<table><thead><tr><th>ID</th><th>名称</th><th>人数</th><th>操作</th></tr></thead><tbody></tbody></table>');
+    const tb = t.querySelector('tbody');
+    for (const g of groups) {
+      const tr = $(`<tr><td>${g.id}</td><td>${g.name}</td><td>${g.members}</td><td></td></tr>`);
+      const ren = $('<button class="ghost">改名</button>');
+      ren.onclick = async () => { const v = prompt('新的分组名', g.name); if (v) { await api('group', { id: g.id, name: v }); load(); } };
+      const del = $('<button class="danger">删除</button>');
+      del.onclick = async () => { if (confirm(`删除分组「${g.name}」？组内玩家会变成未分组。`)) { await api('group', { id: g.id, delete: true }); load(); } };
+    const ops = $('<span class="row"></span>'); ops.appendChild(ren); ops.appendChild(del);
+      tr.children[3].appendChild(ops); tb.appendChild(tr);
+    }
+    box.appendChild(t);
+  };
+  bar.querySelector('#add').onclick = async () => {
+    const n = bar.querySelector('#n').value.trim(); if (!n) return;
+    await api('group', { name: n }); bar.querySelector('#n').value = ''; load();
+  };
+  await load();
+}
+
+async function pageTables(main) {
+  const d = await api('tables');
+  main.innerHTML = '';
+  main.appendChild($('<h2>大厅牌桌配置</h2>'));
+  main.appendChild($('<div class="muted sec">改完点保存：空桌立刻按新配置重建，正在打的那一桌下一局生效。<br>' +
+    '每一组（一个底分档）可以单独配读秒 / 自动开局 / 机器人思考 / 几局一歇；留空就跟着上面那一行的「玩法默认」走。</div>'));
+  const state = JSON.parse(JSON.stringify(d.tables));
+  for (const t of state) {
+    const box = $(`<div class="card sec"><div class="row" style="justify-content:space-between">
+      <b style="font-size:15px;color:var(--gold)">${VARIANT[t.variant] || t.variant}</b></div></div>`);
+    const line = $('<div class="row" style="margin-top:10px;flex-wrap:wrap"></div>');
+    const tiers = $('<div style="margin-top:10px"></div>');
+    let drawTiers = () => {};
+    const open = $(`<label class="row"><input type="checkbox" ${t.open ? 'checked' : ''} /> 开放</label>`);
+    open.querySelector('input').onchange = (e) => t.open = e.target.checked;
+    const turn = $(`<label class="row">默认读秒 <input type="number" min="10" max="120" value="${t.turnSec}" style="width:80px" /> 秒</label>`);
+    turn.querySelector('input').onchange = (e) => { t.turnSec = Number(e.target.value); drawTiers(); };
+    const auto = $(`<label class="row">默认自动开局 <input type="number" min="3" max="120" value="${t.autoNextSec}" style="width:80px" /> 秒</label>`);
+    auto.querySelector('input').onchange = (e) => { t.autoNextSec = Number(e.target.value); drawTiers(); };
+    const think = $(`<label class="row"><input type="checkbox" ${t.botThink ? 'checked' : ''} /> 默认机器人思考停顿</label>`);
+    think.querySelector('input').onchange = (e) => { t.botThink = e.target.checked; drawTiers(); };
+    // 几局一歇：打满这么多局就停一停，由桌上第一位玩家点「继续」。0 = 一直打下去
+    const pe = $(`<label class="row">默认几局一歇 <input type="number" min="0" max="999" value="${t.pauseEvery ?? 0}" style="width:80px" /> 局（0=不歇）</label>`);
+    pe.querySelector('input').onchange = (e) => { t.pauseEvery = Number(e.target.value) || 0; drawTiers(); };
+    line.appendChild(open); line.appendChild(turn); line.appendChild(auto); line.appendChild(think); line.appendChild(pe);
+    box.appendChild(line);
+    drawTiers = () => {
+      tiers.innerHTML = '';
+      t.tiers.forEach((tier, i) => {
+        const r = $('<div class="row" style="margin-bottom:6px;flex-wrap:wrap"></div>');
+        const b = $(`<label class="row">底分 <input type="number" min="1" max="1000" value="${tier.baseScore}" style="width:90px" /></label>`);
+        b.querySelector('input').onchange = (e) => tier.baseScore = Number(e.target.value);
+        const c = $(`<label class="row">桌数 <input type="number" min="0" max="40" value="${tier.count}" style="width:90px" /></label>`);
+        c.querySelector('input').onchange = (e) => tier.count = Number(e.target.value);
+        // 这一组单独的读秒 / 自动开局：空着 = 跟玩法默认
+        const ts = $(`<label class="row">读秒 <input type="number" min="10" max="120" placeholder="${t.turnSec}" value="${tier.turnSec ?? ''}" style="width:80px" /> 秒</label>`);
+        ts.querySelector('input').onchange = (e) => { const v = e.target.value.trim(); tier.turnSec = v === '' ? undefined : Number(v); };
+        const as = $(`<label class="row">自动开局 <input type="number" min="3" max="120" placeholder="${t.autoNextSec}" value="${tier.autoNextSec ?? ''}" style="width:80px" /> 秒</label>`);
+        as.querySelector('input').onchange = (e) => { const v = e.target.value.trim(); tier.autoNextSec = v === '' ? undefined : Number(v); };
+        // 机器人思考：跟默认 / 开 / 关 三选一
+        const bt = $(`<label class="row">机器人思考 <select style="width:110px">
+          <option value="">跟默认（${t.botThink ? '开' : '关'}）</option>
+          <option value="1">开</option><option value="0">关</option></select></label>`);
+        const sel = bt.querySelector('select');
+        sel.value = tier.botThink === undefined || tier.botThink === null ? '' : (tier.botThink ? '1' : '0');
+        sel.onchange = (e) => { const v = e.target.value; tier.botThink = v === '' ? undefined : v === '1'; };
+        // 这一组单独的"几局一歇"：空着 = 跟玩法默认
+        const ps = $(`<label class="row">几局一歇 <input type="number" min="0" max="999" placeholder="${t.pauseEvery ?? 0}" value="${tier.pauseEvery ?? ''}" style="width:80px" /> 局</label>`);
+        ps.querySelector('input').onchange = (e) => { const v = e.target.value.trim(); tier.pauseEvery = v === '' ? undefined : Number(v); };
+        const del = $('<button class="ghost">删除</button>');
+        del.onclick = () => { t.tiers.splice(i, 1); drawTiers(); };
+        r.appendChild(b); r.appendChild(c); r.appendChild(ts); r.appendChild(as); r.appendChild(bt); r.appendChild(ps); r.appendChild(del);
+        tiers.appendChild(r);
+      });
+      const add = $('<button class="ghost">+ 加一档</button>');
+      add.onclick = () => { t.tiers.push({ baseScore: 1, count: 4 }); drawTiers(); };
+      tiers.appendChild(add);
+    };
+    drawTiers();
+    box.appendChild(tiers);
+    // 保存就摆在这个玩法里：改完一个玩法当场存，不用再滑到页面最底下
+    const one = $(`<button style="margin-top:12px">保存「${VARIANT[t.variant] || t.variant}」</button>`);
+    one.onclick = async () => { await api('tables', { tables: state }); alert('已保存'); render(); };
+    box.appendChild(one);
+    main.appendChild(box);
+  }
+  const save = $('<button>保存全部玩法</button>');
+  save.onclick = async () => { await api('tables', { tables: state }); alert('已保存'); render(); };
+  main.appendChild(save);
+}
+
+async function pageRooms(main) {
+  const d = await api('rooms');
+  main.innerHTML = '';
+  main.appendChild($('<h2>房间</h2>'));
+  const t = $(`<table><thead><tr><th>房号</th><th>名称</th><th>类型</th><th>玩法</th><th>底分</th><th>读秒</th><th>机器人</th>
+    <th>自动开局</th><th>封顶</th><th>几局一歇</th><th>状态</th><th>局数</th><th>人 / 机</th><th>座位</th><th>操作</th></tr></thead><tbody></tbody></table>`);
+  const tb = t.querySelector('tbody');
+  for (const r of d.rooms.sort((a, b) => (b.players - a.players) || a.id.localeCompare(b.id))) {
+    const tr = $(`<tr>
+      <td>${r.id}</td><td>${r.name}</td><td>${r.isPrivate ? '私人房' : '固定桌'}</td>
+      <td>${VARIANT[r.variant] || r.variant}</td><td>${r.baseScore}</td><td>${r.turnSec}s</td>
+      <td></td>
+      <td>${r.autoNextSec}s</td><td>${r.swingCap || '—'}</td><td>${r.pauseEvery || '—'}</td>
+      <td>${r.pausedReason ? '<span class="tag off">暂停</span>' : r.status === 'playing' ? '<span class="tag on">牌局中</span>' : r.status}</td>
+      <td>${r.roundNo}</td><td>${r.players} / ${r.bots}</td>
+      <td class="muted">${r.seats.map(s => s.name || '空').join(' · ')}</td><td></td></tr>`);
+    // 机器人节奏：这一桌单独扳一下（固定桌下次按分组配置重建时会跟回分组设置）
+    const bt = $(`<button class="ghost">${r.botThink ? '思考' : '快出'}</button>`);
+    bt.title = '点一下切换：思考 = 随机停一下再出手；快出 = 轮到就出手';
+    bt.onclick = async () => { await api('room', { id: r.id, action: 'botThink', value: !r.botThink }); render(); };
+    tr.children[6].appendChild(bt);
+    const ops = $('<span class="row"></span>');
+    if (r.pausedReason) { const b = $('<button class="ghost">解除暂停</button>'); b.onclick = async () => { await api('room', { id: r.id, action: 'resume' }); render(); }; ops.appendChild(b); }
+    const c = $('<button class="danger">解散</button>');
+    c.onclick = async () => { if (confirm(`解散 ${r.name}？`)) { await api('room', { id: r.id, action: 'close' }); render(); } };
+    ops.appendChild(c);
+    tr.children[13].appendChild(ops);
+    tb.appendChild(tr);
+  }
+  main.appendChild(t);
+}
+
+async function pageRounds(main) {
+  main.innerHTML = '';
+  main.appendChild($('<h2>对局</h2>'));
+  const bar = $('<div class="row sec"><input id="room" placeholder="房号（可空）" /><input id="uid" placeholder="玩家 ID（可空）" /><button id="find">查询</button></div>');
+  main.appendChild(bar);
+  const box = $('<div class="scroll"></div>'); main.appendChild(box);
+  const load = async () => {
+    const room = bar.querySelector('#room').value.trim(), uid = bar.querySelector('#uid').value.trim();
+    const d = await api('rounds?limit=100' + (room ? '&roomId=' + encodeURIComponent(room) : '') + (uid ? '&userId=' + uid : ''));
+    box.innerHTML = '';
+    const t = $('<table><thead><tr><th>时间</th><th>房号</th><th>玩法</th><th>局</th><th>座位</th><th>输赢</th><th>回放</th></tr></thead><tbody></tbody></table>');
+    const tb = t.querySelector('tbody');
+    for (const r of d.rounds) {
+      const deltas = Object.entries(r.deltas || {}).map(([id, v]) => `${id}:${fmt(v)}`).join(' ');
+      const tr = $(`<tr><td class="muted">${time(r.time)}</td><td>${r.roomId}</td><td>${VARIANT[r.variant] || r.variant}</td>
+        <td>${r.round}</td><td>${(r.seatNames || []).join(' / ')}</td><td class="muted">${deltas}</td>
+        <td>${r.hasReplay ? '<span class="tag on">有</span>' : '<span class="muted">无</span>'}</td></tr>`);
+      tb.appendChild(tr);
+    }
+    box.appendChild(t);
+  };
+  bar.querySelector('#find').onclick = load;
+  await load();
+}
+
+render();
+</script>
+</body>
+</html>

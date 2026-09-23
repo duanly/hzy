@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#11161c" />
+<!-- 加到桌面之后按「全屏应用」打开（没有地址栏）：状态栏那一条由页面自己让开（下面的 --sat） -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="衡之娱后台" />
+<title>衡之娱 · 手机后台</title>
+<style>
+  /* 手机竖屏用的简版后台：只留常用的那几件事，按钮都在拇指够得着的地方。
+     跟电脑版（/admin）共用同一套接口，改的是同一份数据。 */
+  :root { --bg:#11161c; --panel:#171f27; --line:#26313c; --text:#e8eef3; --muted:#8fa3b3;
+          --gold:#f2c14e; --ok:#4cd97b; --danger:#ff6b6b; --accent:#3b82f6;
+          --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* 只许上下滑：左右不晃、到头也不橡皮筋回弹（手机上一晃就露出底色，看着像页面坏了）。
+     关键是**别让整页去滚**：`overscroll-behavior` 在 iOS 上管不住"整个文档"这一层的回弹 ——
+     在 Safari 标签页里看不出来，是因为往下拖先被地址栏的伸缩吃掉了；
+     一旦加到桌面按全屏应用打开，没有地址栏，那一下就全落在页面上，整页跟着晃。
+     所以把文档钉死（html / body 固定、不滚），滚动交给里面的 #app：
+     容器自己滚，到头就是到头，再拖也带不动外面。 */
+  html, body { position: fixed; inset: 0; width: 100%; height: 100%;
+               overflow: hidden; overscroll-behavior: none; }
+  body { margin:0; font: 15px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--text); }
+  /* 真正滚动的那一层 */
+  #app { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+         touch-action: pan-y; padding-bottom: calc(64px + var(--sab)); }
+  img, table, pre { max-width: 100%; }
+  button { font: inherit; border:0; border-radius:10px; padding:9px 14px; background:var(--accent); color:#fff; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); }
+  button.danger { background:var(--danger); }
+  button.sm { padding:6px 11px; font-size:13px; border-radius:8px; }
+  button:disabled { opacity:.45; }
+  input, select { font: inherit; padding:9px 11px; border-radius:10px; border:1px solid var(--line); background:#0e1319; color:var(--text); width:100%; }
+  .top { position:sticky; top:0; z-index:5; background:rgba(17,22,28,.96); backdrop-filter:blur(6px);
+         padding: calc(10px + var(--sat)) 14px 10px; border-bottom:1px solid var(--line);
+         display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .top h1 { font-size:17px; margin:0; color:var(--gold); letter-spacing:1px; }
+  .wrap { padding: 12px 14px 20px; display:flex; flex-direction:column; gap:10px; min-width:0; max-width:100%; }
+  .item, .stat, .fold { min-width:0; max-width:100%; overflow:hidden; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .stat b { display:block; font-size:26px; color:var(--gold); line-height:1.2; }
+  .stat span { color:var(--muted); font-size:12px; }
+  .item { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .line { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .name { font-weight:700; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub { color:var(--muted); font-size:12px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing:.5px; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:20px; background:#22303c; color:var(--muted); white-space:nowrap; }
+  .tag.on { background:rgba(76,217,123,.18); color:var(--ok); }
+  .tag.off { background:rgba(255,107,107,.15); color:var(--danger); }
+  .tag.warn { background:rgba(230,180,60,.2); color:#e6b43c; }
+  .tabs { position:fixed; left:0; right:0; bottom:0; z-index:9; display:grid; grid-template-columns:repeat(6,1fr);
+          background:rgba(23,31,39,.98); border-top:1px solid var(--line); padding-bottom: var(--sab); }
+  .tabs a { padding:11px 0 10px; text-align:center; color:var(--muted); font-size:12px; text-decoration:none; }
+  .tabs a.on { color:var(--gold); }
+  .tabs a i { display:block; font-style:normal; font-size:17px; line-height:1.2; }
+  .login { margin: 16vh auto 0; max-width:340px; padding:0 18px; display:flex; flex-direction:column; gap:10px; }
+  .login h1 { font-size:19px; color:var(--gold); margin:0 0 6px; }
+  .err { color:var(--danger); font-size:13px; min-height:18px; }
+  .muted { color:var(--muted); }
+  .sep { height:1px; background:var(--line); margin:2px 0; }
+  .fold { border:1px solid var(--line); border-radius:14px; background:var(--panel); overflow:hidden; }
+  .fold > summary { padding:12px 14px; font-weight:700; color:var(--gold); list-style:none; display:flex; justify-content:space-between; align-items:center; }
+  .fold > summary::-webkit-details-marker { display:none; }
+  .fold .body { padding:0 14px 14px; display:flex; flex-direction:column; gap:10px; }
+  .field { display:flex; align-items:center; gap:8px; }
+  .field span { flex:none; width:72px; color:var(--muted); font-size:13px; }
+  .field input[type=number] { max-width:120px; }
+  .field input[type=checkbox] { width:22px; height:22px; }
+  .tier .field span { width:64px; }
+  .tier-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .tier { border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .fab { position:sticky; bottom: calc(72px + var(--sab)); align-self:flex-end; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const app = document.getElementById('app');
+// 跟电脑版共用同一个登录 token：那边登过了，这边直接进
+let token = localStorage.getItem('phz_admin_token') || '';
+let page = location.hash.slice(1) || 'overview';
+
+async function api(path, body, method) {
+  const r = await fetch('/api/admin/' + path, {
+    method: method || (body ? 'POST' : 'GET'),
+    headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) { token = ''; localStorage.removeItem('phz_admin_token'); renderLogin(); throw new Error('需要重新登录'); }
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+const VARIANT = { hy_honghei: '衡阳红黑', hy_liuhuqiang: '衡阳六胡抢', ly_tilong: '耒阳提龙' };
+const day = (t) => t ? new Date(t).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) : '';
+const time = (t) => t ? new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const NAV = [['overview', '总览', '▦'], ['users', '玩家', '👤'], ['agents', 'VIP', '★'], ['rooms', '大厅', '🀄'], ['tables', '配置', '⚙'], ['voice', '语音', '🎤']];
+
+function renderLogin(err) {
+  app.innerHTML = ''; dropTabs();
+  const box = $(`<div class="login">
+    <h1>衡之娱 · 手机后台</h1>
+    <input id="u" placeholder="管理员账号" value="admin" />
+    <input id="p" type="password" placeholder="密码" />
+    <div class="err">${err || ''}</div>
+    <button id="go">登录</button>
+    <div class="muted" style="font-size:12px">电脑上的完整后台在 <a href="/admin" style="color:var(--accent)">/admin</a></div>
+  </div>`);
+  app.appendChild(box);
+  const go = async () => {
+    try {
+      const d = await api('login', { username: box.querySelector('#u').value, password: box.querySelector('#p').value });
+      token = d.token; localStorage.setItem('phz_admin_token', token); render();
+    } catch (e) { renderLogin(e.message); }
+  };
+  box.querySelector('#go').onclick = go;
+  box.querySelector('#p').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+
+/* 底部那条 tab 栏挂在 body 上，不放进滚动容器里 ——
+   iOS 上 position:fixed 的元素一旦待在可滚动的容器里，某些版本会跟着一起滚。 */
+function dropTabs() { for (const e of document.querySelectorAll('body > .tabs')) e.remove(); }
+
+async function render() {
+  if (!token) return renderLogin();
+  app.innerHTML = ''; dropTabs();
+  const title = (NAV.find(n => n[0] === page) || NAV[0])[1];
+  const top = $(`<div class="top"><h1>${title}</h1><button class="ghost sm" id="rf">刷新</button></div>`);
+  top.querySelector('#rf').onclick = () => render();
+  app.appendChild(top);
+  const wrap = $('<div class="wrap"></div>');
+  app.appendChild(wrap);
+  const tabs = $('<div class="tabs"></div>');
+  for (const [k, n, ico] of NAV) {
+    const a = $(`<a href="#${k}" class="${page === k ? 'on' : ''}"><i>${ico}</i>${n}</a>`);
+    a.onclick = () => { page = k; setTimeout(render, 0); };
+    tabs.appendChild(a);
+  }
+  document.body.appendChild(tabs);
+  try {
+    if (page === 'overview') await pageOverview(wrap);
+    else if (page === 'users') await pageUsers(wrap);
+    else if (page === 'agents') await pageAgents(wrap);
+    else if (page === 'rooms') await pageRooms(wrap);
+    else if (page === 'tables') await pageTables(wrap);
+    else if (page === 'voice') await pageVoice(wrap);
+  } catch (e) { wrap.appendChild($(`<div class="err">${e.message}</div>`)); }
+}
+
+/* ---------- 语音包：手机上录最方便 ----------
+   iPhone / iPad 的 Safari 录出来是 m4a，全平台都放得了；
+   安卓 Chrome 录出来是 webm，苹果手机放不了，只适合自己听听效果。 */
+let vPack = '';
+let mRec = null, mRecKey = '', mRecTimer = null;
+
+async function pageVoice(w) {
+  const d = await api('voice?pack=' + encodeURIComponent(vPack), null, 'GET');
+  const pick = $('<div class="row" style="flex-wrap:wrap;gap:6px"></div>');
+  for (const pk of d.packs) {
+    const b = $(`<button class="${vPack === pk.id ? '' : 'ghost'} sm">${pk.name}${pk.count ? ` (${pk.count})` : ''}</button>`);
+    b.onclick = () => { vPack = pk.id; render(); };
+    pick.appendChild(b);
+  }
+  const add = $('<button class="ghost sm">＋ 新建</button>');
+  add.onclick = async () => {
+    const name = prompt('这一套叫什么？');
+    if (!name) return;
+    const r = await api('voice', { newPack: name }); vPack = r.id; render();
+  };
+  pick.appendChild(add);
+  if (vPack) {
+    const del = $('<button class="ghost sm" style="color:#ff9b9b">删整套</button>');
+    del.onclick = async () => { if (!confirm('整套删掉？')) return; await api('voice', { dropPack: vPack }); vPack = ''; render(); };
+    pick.appendChild(del);
+  }
+  w.appendChild(pick);
+
+  // 各玩法默认用哪一套
+  const vf = $('<div class="fold" style="padding:10px"></div>');
+  vf.appendChild($('<div class="sub" style="margin-bottom:6px">各玩法默认用哪一套（玩家没自己挑的时候）</div>'));
+  for (const v of d.variants) {
+    const lab = $(`<label class="field"><span>${v.name}</span></label>`);
+    const sel = $('<select></select>');
+    for (const pk of d.packs) sel.appendChild($(`<option value="${pk.id}">${pk.name}</option>`));
+    sel.value = d.byVariant[v.id] || '';
+    sel.onchange = async e => { await api('voice', { setVariant: v.id, usePack: e.target.value }); };
+    lab.appendChild(sel); vf.appendChild(lab);
+  }
+  w.appendChild(vf);
+
+  /* 在线生成：服务端连一次微软 Edge 的「大声朗读」，把整套合成成 mp3 存下来。
+     存完就是普通语音包，客户端照常播，不再联网。 */
+  const gen = $('<div class="fold" style="padding:10px;display:flex;flex-direction:column;gap:8px"></div>');
+  gen.appendChild($('<div class="sub"><b>在线生成一整套</b> —— 挑个发音人点一下，三十多条一次合成好（之后不再联网）。</div>'));
+  const gv = $('<select></select>');
+  for (const v of (d.voices || [])) gv.appendChild($(`<option value="${v.id}">${v.name}</option>`));
+  gen.appendChild(gv);
+  if (!(d.voices || []).length) {
+    gv.appendChild($('<option>（服务端还是旧版）</option>'));
+    gen.appendChild($('<div class="sub" style="color:#e6b43c">挑不到发音人 —— 服务端还没重启，新接口没生效。</div>'));
+  }
+  const gr = $('<select><option value="-20">慢一点</option><option value="-10">稍慢</option>' +
+    '<option value="0" selected>正常语速</option><option value="10">稍快</option><option value="20">快一点</option></select>');
+  gen.appendChild(gr);
+  const grow = $('<div class="row"></div>');
+  const gbtn = $('<button>生成缺的</button>');
+  const gallb = $('<button class="ghost">整套重做</button>');
+  const gtip = $('<span class="sub"></span>');
+  grow.appendChild(gbtn); grow.appendChild(gallb); grow.appendChild(gtip);
+  gen.appendChild(grow);
+  const doGen = async all => {
+    if (all && !confirm('整套重做会覆盖已经有的，确定？')) return;
+    gbtn.disabled = gallb.disabled = true;
+    gtip.textContent = '合成中…';
+    try {
+      const r = await api('voice', { pack: vPack, gen: { voice: gv.value, rate: Number(gr.value), all } });
+      gtip.textContent = `好了 ${r.saved.length} 条` + (r.used ? `（${r.used}）` : '') + (r.failed && r.failed.length ? `，${r.failed.length} 条没成：${r.failed[0].why}` : '');
+      setTimeout(() => render(), 1200);
+    } catch (e) { gtip.textContent = '失败：' + e.message; }
+    gbtn.disabled = gallb.disabled = false;
+  };
+  gbtn.onclick = () => doGen(false);
+  gallb.onclick = () => doGen(true);
+  w.appendChild(gen);
+
+  w.appendChild($('<div class="sub">名字那一行可以直接改<b>念什么</b>；用 <b>/</b> 隔开就是几种说法（「碰 / 碰啦」），随机挑一条念。<br>' +
+    '点「录」当场录一段，再点一次停（最多 10 秒）。没录的那条自动退回系统 TTS。<br>' +
+    '用 <b>iPhone / iPad 的 Safari</b> 录出来是 m4a，全平台通吃；安卓 Chrome 录的是 webm，<b>苹果手机放不了</b>。<br>' +
+    '正式用的建议在电脑上传 mp3（完整后台 /admin）。<br>' +
+    '<b>试听没声音？</b>iPhone / iPad 先看一眼机身侧边的静音开关 —— 拨到静音时网页里的声音是不响的。</div>'));
+
+  const list = $('<div class="wrap" style="padding:0;gap:8px"></div>');
+  for (const it of d.items) {
+    const row = $(`<div class="item"><div class="line">
+      <div style="min-width:0"><div class="name"></div><div class="sub mono">${it.key}</div></div>
+      <div class="row" style="gap:6px"></div></div></div>`);
+    /* 念什么可以自己改（「跑」→「开跑」）：改的只是合成时念的那句，文件名还是 pao.mp3。
+       改完要重新生成这一条才听得到。 */
+    const say = $(`<input value="${(it.say ?? it.label).replace(/"/g, '&quot;')}" style="width:120px;padding:4px 8px;font-size:15px;font-weight:700" />`);
+    if (it.custom) say.style.borderColor = 'var(--gold)';
+    say.onblur = async () => {
+      const v = say.value.trim();
+      if (v === (it.say ?? it.label)) return;
+      try { await api('voice', { pack: vPack, setText: it.key, text: v }); render(); }
+      catch (e) { alert('改不了：' + e.message); }
+    };
+    say.onkeydown = e => { if (e.key === 'Enter') say.blur(); };
+    row.querySelector('.name').appendChild(say);
+    const ops = row.querySelector('.row');
+    ops.appendChild($(`<span class="tag ${it.stale ? 'warn' : it.size ? 'on' : ''}">${
+      it.stale ? '待重做' : it.size ? (it.takes > 1 ? it.takes + ' 种 · ' : '') + (it.size / 1024).toFixed(0) + 'KB' : (it.baseExt ? '跟默认' : '未录')}</span>`));
+    const rb = $(`<button class="${mRecKey === it.key ? 'danger' : 'ghost'} sm">${mRecKey === it.key ? '● 停' : '录'}</button>`);
+    rb.onclick = () => (mRecKey === it.key ? mStopRec() : mStartRec(it.key));
+    ops.appendChild(rb);
+    if (it.size || it.baseExt) {
+      const url = it.size && vPack ? `/voice/packs/${vPack}/${it.key}.${it.ext}`
+        : it.size ? `/voice/${it.key}.${it.ext}` : `/voice/${it.key}.${it.baseExt}`;
+      const pb = $('<button class="ghost sm">听</button>');
+      pb.onclick = () => mPlay(url, pb);
+      ops.appendChild(pb);
+    }
+    if (it.size) {
+      const db = $('<button class="ghost sm">删</button>');
+      db.onclick = async () => { await api('voice', { pack: vPack, del: it.key }); render(); };
+      ops.appendChild(db);
+    }
+    list.appendChild(row);
+  }
+  w.appendChild(list);
+}
+/* 试听。以前是 `new Audio(url).play().catch(() => {})` —— 放不出来时错误被整个吞掉，
+   点了跟没点一样。现在复用同一个 <audio>（iOS 对新建的 Audio 更挑），
+   放不出来就把原因说清楚：手机上十有八九是机身侧边的静音开关。 */
+let mAudio = null;
+function mPlay(url, btn) {
+  const old = btn ? btn.textContent : '';
+  const back = () => { if (btn) btn.textContent = old; };
+  try {
+    mAudio = mAudio || new Audio();
+    mAudio.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+    mAudio.currentTime = 0;
+    if (btn) btn.textContent = '♪';
+    mAudio.onended = back;
+    mAudio.onerror = () => { back(); alert('这段音频解不开 —— 换个格式试试（mp3 最稳）。'); };
+    mAudio.play().catch(e => {
+      back();
+      alert('放不出来：' + (e && e.message ? e.message : e)
+        + '\n\n如果是 iPhone / iPad，先看一眼机身侧边的静音开关 —— 拨到静音时，网页里的声音是不响的。');
+    });
+  } catch (e) { back(); alert('放不出来：' + e.message); }
+}
+function mB64(blob) {
+  return blob.arrayBuffer().then(buf => {
+    let s = ''; const u8 = new Uint8Array(buf);
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+}
+async function mStartRec(key) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'].find(m => MediaRecorder.isTypeSupported?.(m)) || '';
+    const r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    r.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    r.onstop = async () => {
+      r.stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: r.mimeType });
+      mRecKey = ''; mRec = null;
+      if (blob.size < 200) { alert('太短了，没录上'); return render(); }
+      let ok = true;
+      try { await api('voice', { pack: vPack, files: [{ key, mime: r.mimeType, data: await mB64(blob) }] }); }
+      catch (e) { ok = false; alert('保存失败：' + e.message); }
+      render();
+      /* 录完顺手放一遍 —— 刚松手那一下还在手势的有效期里，最容易放得出来。 */
+      if (ok) setTimeout(() => mPlay(URL.createObjectURL(blob), null), 200);
+    };
+    mRec = r; mRecKey = key; render();
+    r.start();
+    if (mRecTimer) clearTimeout(mRecTimer);
+    mRecTimer = setTimeout(() => mStopRec(), 10000);
+  } catch (e) {
+    alert('打不开麦克风：' + e.message + '\n（浏览器只在 https 或 localhost 下才给录音权限）');
+  }
+}
+function mStopRec() { if (mRecTimer) { clearTimeout(mRecTimer); mRecTimer = null; } if (mRec && mRec.state !== 'inactive') mRec.stop(); }
+
+/* ---------- 总览：只留最常看的六个数 ---------- */
+async function pageOverview(w) {
+  const d = await api('overview');
+  const g = $('<div class="grid2"></div>');
+  const cards = [
+    ['在线', d.online], ['牌局中', d.playing],
+    ['大厅牌桌', d.tables], ['私人房', d.privateRooms],
+    ['24 小时对局', d.rounds24], ['玩家总数', d.users],
+  ];
+  for (const [n, v] of cards) g.appendChild($(`<div class="stat"><b>${v}</b><span>${n}</span></div>`));
+  w.appendChild(g);
+  w.appendChild($(`<div class="muted" style="font-size:12px">管理员：${d.me.nickname} · 手机上只管大厅和 VIP；私人房由房主自己管，完整功能（审计 / 对局 / 分组）在电脑上的 <a href="/admin" style="color:var(--accent)">/admin</a></div>`));
+  const out = $('<button class="ghost">退出登录</button>');
+  out.onclick = () => { token = ''; localStorage.removeItem('phz_admin_token'); renderLogin(); };
+  w.appendChild(out);
+}
+
+/* ---------- 玩家：账号、昵称、分组、允许开房、封禁 ---------- */
+async function pageUsers(w) {
+  const bar = $('<div class="row"><input id="q" placeholder="昵称 / 账号 ID / 数字 ID" /></div>');
+  w.appendChild(bar);
+  const list = $('<div class="wrap" style="padding:0;gap:10px"></div>');
+  w.appendChild(list);
+  const groups = (await api('groups')).groups;
+  const load = async (q) => {
+    list.innerHTML = '<div class="muted">加载中…</div>';
+    const d = await api('users?limit=30' + (q ? '&q=' + encodeURIComponent(q) : ''));
+    list.innerHTML = '';
+    list.appendChild($(`<div class="muted" style="font-size:12px">共 ${d.total} 人，显示前 ${d.users.length} 个</div>`));
+    for (const u of d.users) list.appendChild(userItem(u, groups, () => load(bar.querySelector('#q').value.trim())));
+  };
+  let timer = null;
+  bar.querySelector('#q').oninput = (e) => { clearTimeout(timer); const v = e.target.value.trim(); timer = setTimeout(() => load(v), 350); };
+  await load('');
+}
+function userItem(u, groups, reload) {
+  const it = $(`<div class="item">
+    <div class="line"><span class="name">${u.nickname}</span>
+      <span class="row" style="gap:5px">
+        ${u.role === 'admin' ? '<span class="tag warn">管理员</span>' : ''}
+        ${u.blocked ? '<span class="tag off">已封禁</span>' : '<span class="tag on">正常</span>'}
+      </span></div>
+    <div class="sub">账号 <span class="mono">${u.code || u.id}</span> · 积分 ${u.points} · 最近登录 ${time(u.lastLogin)}</div>
+  </div>`);
+  const ops = $('<div class="row"></div>');
+  // 分组
+  const sel = $('<select style="width:auto;flex:1"></select>');
+  sel.appendChild($('<option value="">（无分组）</option>'));
+  for (const g of groups) sel.appendChild($(`<option value="${g.id}">${g.name}</option>`));
+  sel.value = u.groupId ? String(u.groupId) : '';
+  sel.onchange = async (e) => { await api('user', { id: u.id, groupId: e.target.value === '' ? null : Number(e.target.value) }); reload(); };
+  ops.appendChild(sel);
+  // 允许开房
+  const open = $(`<button class="${u.canOpenRoom ? '' : 'ghost'} sm">${u.canOpenRoom ? '✓ 可开房' : '允许开房'}</button>`);
+  open.onclick = async () => { await api('user', { id: u.id, canOpenRoom: !u.canOpenRoom }); reload(); };
+  ops.appendChild(open);
+  // 封禁
+  const blk = $(`<button class="${u.blocked ? '' : 'ghost'} sm ${u.blocked ? '' : 'danger'}">${u.blocked ? '解封' : '封禁'}</button>`);
+  blk.onclick = async () => {
+    if (!u.blocked && !confirm(`封禁「${u.nickname}」？他马上登不进来。`)) return;
+    await api('user', { id: u.id, blocked: !u.blocked }); reload();
+  };
+  ops.appendChild(blk);
+  it.appendChild(ops);
+  return it;
+}
+
+/* ---------- VIP：上限 / 已开、月卡、停用与续卡 ---------- */
+async function pageAgents(w) {
+  const list = $('<div class="wrap" style="padding:0;gap:10px"></div>');
+  w.appendChild(list);
+  const load = async () => {
+    list.innerHTML = '<div class="muted">加载中…</div>';
+    const d = await api('agents');
+    list.innerHTML = '';
+    list.appendChild($(`<div class="muted" style="font-size:12px">共 ${d.agents.length} 个 VIP · 开房要「权限 + 月卡」两样都在 · 月卡按自然月算，到期日都在 1 号</div>`));
+    for (const a of d.agents) list.appendChild(agentItem(a, load));
+  };
+  await load();
+}
+function cardTag(a) {
+  if (!a.cardUntil) return '<span class="tag off">没卡</span>';
+  if (a.cardLeft <= 0) return `<span class="tag off">卡已到期 ${day(a.cardUntil)}</span>`;
+  return `<span class="tag ${a.cardLeft <= 7 ? 'warn' : 'on'}">卡到 ${day(a.cardUntil)}（${a.cardLeft} 天）</span>`;
+}
+function agentItem(a, reload) {
+  const it = $(`<div class="item">
+    <div class="line"><span class="name">${a.nickname}</span>
+      <span class="row" style="gap:5px">${a.canOpenRoom ? '<span class="tag on">在用</span>' : '<span class="tag off">已停用</span>'}</span></div>
+    <div class="sub">账号 <span class="mono">${a.code || a.id}</span> · 开房上限 ${a.roomLimit ? a.roomLimit + ' 个' : '不限'} · 正开着 ${a.openRooms} 个</div>
+    <div class="row">${cardTag(a)}</div>
+  </div>`);
+  const ops = $('<div class="row"></div>');
+  const renew = $('<button class="sm">续 1 个月</button>');
+  renew.onclick = async () => { await api('agent', { id: a.id, renewCard: 1 }); reload(); };
+  ops.appendChild(renew);
+  const more = $('<button class="ghost sm">续几个月</button>');
+  more.onclick = async () => { const v = prompt(`给「${a.nickname}」续几个月？`, '3'); if (v === null) return; await api('agent', { id: a.id, renewCard: Number(v) || 1 }); reload(); };
+  ops.appendChild(more);
+  const lim = $('<button class="ghost sm">改上限</button>');
+  lim.onclick = async () => { const v = prompt(`「${a.nickname}」同时最多开几个房间？（0 = 不限）`, String(a.roomLimit ?? 0)); if (v === null) return; await api('agent', { id: a.id, roomLimit: Number(v) || 0 }); reload(); };
+  ops.appendChild(lim);
+  if (a.canOpenRoom) {
+    const stop = $('<button class="danger sm">停用</button>');
+    stop.onclick = async () => {
+      if (!confirm(`停用 VIP「${a.nickname}」？他马上开不了新房。`)) return;
+      const close = a.openRooms > 0 && confirm(`他手上还开着 ${a.openRooms} 个房间，一并解散并结算吗？`);
+      await api('agent', { id: a.id, stop: true, closeRooms: close }); reload();
+    };
+    ops.appendChild(stop);
+  } else {
+    const on = $('<button class="ghost sm">恢复</button>');
+    on.onclick = async () => { await api('agent', { id: a.id, start: true }); reload(); };
+    ops.appendChild(on);
+  }
+  it.appendChild(ops);
+  return it;
+}
+
+/* ---------- 大厅：只管大厅的固定桌。
+   私人房不在这儿管 —— 那是房主自己的房，他在 App 的「我的房间」里管
+   （读秒、暂停、清空、解散都有），手机后台只在总览里数一个数就够了。 ---------- */
+let roomsOnlyBusy = true;   // 大厅四十桌，默认只看有人的那几桌
+async function pageRooms(w) {
+  const bar = $(`<div class="row" style="gap:6px">
+    <button class="${roomsOnlyBusy ? '' : 'ghost'} sm" id="busy">只看有人的</button>
+    <button class="${roomsOnlyBusy ? 'ghost' : ''} sm" id="all">全部桌子</button></div>`);
+  w.appendChild(bar);
+  const list = $('<div class="wrap" style="padding:0;gap:10px"></div>');
+  w.appendChild(list);
+  bar.querySelector('#busy').onclick = () => { roomsOnlyBusy = true; render(); };
+  bar.querySelector('#all').onclick = () => { roomsOnlyBusy = false; render(); };
+  const load = async () => {
+    list.innerHTML = '<div class="muted">加载中…</div>';
+    const d = await api('rooms');
+    // 只留大厅的固定桌；有人管的（暂停的）排最前
+    const rooms = d.rooms.filter(r => !r.isPrivate)
+      .sort((a, b) => (a.pausedReason ? 0 : 1) - (b.pausedReason ? 0 : 1) || String(a.id).localeCompare(String(b.id)));
+    list.innerHTML = '';
+    const busy = rooms.filter(r => r.players > 0).length;
+    const priv = d.rooms.length - rooms.length;
+    list.appendChild($(`<div class="muted" style="font-size:12px">大厅共 ${rooms.length} 桌，${busy} 桌有人`
+      + (priv ? ` · 另有 ${priv} 个私人房（房主在 App 里自己管）` : '') + `</div>`));
+    // 只看有人的：一桌人都没有的时候还是把全部摆出来，免得一片空白
+    const shown = roomsOnlyBusy && busy > 0 ? rooms.filter(r => r.players > 0 || r.bots > 0 || r.pausedReason) : rooms;
+    for (const r of shown) {
+      const st = r.pausedReason ? '<span class="tag off">暂停</span>'
+        : r.status === 'playing' ? '<span class="tag on">牌局中</span>' : '<span class="tag">等待中</span>';
+      const it = $(`<div class="item">
+        <div class="line"><span class="name">${r.name}</span><span class="row" style="gap:5px">${st}</span></div>
+        <div class="sub">房号 <span class="mono">${r.id}</span> · ${VARIANT[r.variant] || r.variant} · 底分 ${r.baseScore} · 读秒 ${r.turnSec}s</div>
+        <div class="sub">${r.players} 人${r.bots ? '+' + r.bots + ' 机' : ''} · 第 ${r.roundNo} 局${r.pausedReason ? ' · ' + r.pausedReason : ''}</div>
+      </div>`);
+      // 读秒：跟房主在「我的房间」里那一排一样（正在打的那一局保持原样，下一局按新的来）
+      const secs = $('<div class="row" style="gap:6px"><span class="sub" style="flex:none">读秒</span></div>');
+      for (const v of [10, 15, 20, 30, 45, 60]) {
+        const b = $(`<button class="${r.turnSec === v ? '' : 'ghost'} sm">${v}s</button>`);
+        b.onclick = async () => { await api('room', { id: r.id, action: 'turnSec', value: v }); load(); };
+        secs.appendChild(b);
+      }
+      it.appendChild(secs);
+      const ops = $('<div class="row"></div>');
+      if (r.pausedReason) {
+        const go = $('<button class="sm">▶ 开始</button>');
+        go.onclick = async () => { await api('room', { id: r.id, action: 'start' }); load(); };
+        ops.appendChild(go);
+      } else {
+        const ps = $('<button class="ghost sm">‖ 暂停</button>');
+        ps.onclick = async () => { await api('room', { id: r.id, action: 'pause' }); load(); };
+        ops.appendChild(ps);
+      }
+      // 清空这一桌的账：积分牌 + 记录表归零，牌局本身不删（玩家自己的战绩照旧看得到）
+      const wipe = $('<button class="ghost sm">清空数据</button>');
+      wipe.onclick = async () => {
+        if (!confirm(`清空「${r.name}」的积分牌和记录表？从现在重新记，牌局本身不删，玩家自己的战绩照旧看得到。`)) return;
+        await api('room', { id: r.id, action: 'clear' }); load();
+      };
+      ops.appendChild(wipe);
+      const kill = $('<button class="ghost sm danger">清空重来</button>');
+      kill.onclick = async () => { if (!confirm(`把大厅这桌「${r.name}」清空重来吗？桌上的人会被请下去。`)) return; await api('room', { id: r.id, action: 'close' }); load(); };
+      ops.appendChild(kill);
+      it.appendChild(ops);
+      list.appendChild(it);
+    }
+  };
+  await load();
+}
+
+/* ---------- 大厅牌桌：按玩法折叠，每个玩法自己一个保存按钮 ---------- */
+async function pageTables(w) {
+  const d = await api('tables');
+  const state = JSON.parse(JSON.stringify(d.tables));
+  w.appendChild($('<div class="muted" style="font-size:12px">改完点这一玩法自己的「保存」：空桌立刻按新配置重建，正在打的那一桌下一局生效。<br>每一档底分可以单独配读秒 / 自动开局，留空就跟玩法默认走。</div>'));
+  for (const t of state) {
+    // 默认全折起来：点开哪个玩法才展开，省得一屏划不到底
+    const total = t.tiers.reduce((n, x) => n + (x.count || 0), 0);
+    const box = $(`<details class="fold">
+      <summary><span>${VARIANT[t.variant] || t.variant} <span class="sub">${t.tiers.length} 档 · ${total} 桌 · ${t.turnSec}s</span></span>
+      <span class="tag ${t.open ? 'on' : 'off'}">${t.open ? '开放' : '关闭'}</span></summary>
+      <div class="body"></div></details>`);
+    const body = box.querySelector('.body');
+    const open = $(`<label class="field"><span>开放</span><input type="checkbox" style="width:auto" ${t.open ? 'checked' : ''} /></label>`);
+    open.querySelector('input').onchange = (e) => { t.open = e.target.checked; };
+    const turn = $(`<label class="field"><span>默认读秒</span><input type="number" min="10" max="120" value="${t.turnSec}" /></label>`);
+    turn.querySelector('input').onchange = (e) => { t.turnSec = Number(e.target.value); };
+    const auto = $(`<label class="field"><span>自动开局</span><input type="number" min="3" max="120" value="${t.autoNextSec}" /></label>`);
+    auto.querySelector('input').onchange = (e) => { t.autoNextSec = Number(e.target.value); };
+    const think = $(`<label class="field"><span>机器人停顿</span><input type="checkbox" style="width:auto" ${t.botThink ? 'checked' : ''} /></label>`);
+    think.querySelector('input').onchange = (e) => { t.botThink = e.target.checked; };
+    // 几局一歇：打满这么多局就停一停，由桌上第一位玩家点「继续」。0 = 一直打下去
+    const pe = $(`<label class="field"><span>几局一歇（0=不歇）</span><input type="number" min="0" max="999" value="${t.pauseEvery ?? 0}" /></label>`);
+    pe.querySelector('input').onchange = (e) => { t.pauseEvery = Number(e.target.value) || 0; };
+    body.appendChild(open); body.appendChild(turn); body.appendChild(auto); body.appendChild(think); body.appendChild(pe);
+    const tiers = $('<div style="display:flex;flex-direction:column;gap:10px"></div>');
+    const drawTiers = () => {
+      tiers.innerHTML = '';
+      t.tiers.forEach((tier, i) => {
+        const r = $('<div class="tier"></div>');
+        const g = $('<div class="tier-grid"></div>');
+        const b = $(`<label class="field"><span>底分</span><input type="number" min="1" max="1000" value="${tier.baseScore}" /></label>`);
+        b.querySelector('input').onchange = (e) => tier.baseScore = Number(e.target.value);
+        const c = $(`<label class="field"><span>桌数</span><input type="number" min="0" max="40" value="${tier.count}" /></label>`);
+        c.querySelector('input').onchange = (e) => tier.count = Number(e.target.value);
+        const ts = $(`<label class="field"><span>读秒</span><input type="number" min="10" max="120" placeholder="跟默认 ${t.turnSec}" value="${tier.turnSec ?? ''}" /></label>`);
+        ts.querySelector('input').onchange = (e) => { const v = e.target.value.trim(); tier.turnSec = v === '' ? undefined : Number(v); };
+        const as = $(`<label class="field"><span>自动开局</span><input type="number" min="3" max="120" placeholder="跟默认 ${t.autoNextSec}" value="${tier.autoNextSec ?? ''}" /></label>`);
+        as.querySelector('input').onchange = (e) => { const v = e.target.value.trim(); tier.autoNextSec = v === '' ? undefined : Number(v); };
+        const ps = $(`<label class="field"><span>几局一歇</span><input type="number" min="0" max="999" placeholder="跟默认 ${t.pauseEvery ?? 0}" value="${tier.pauseEvery ?? ''}" /></label>`);
+        ps.querySelector('input').onchange = (e) => { const v = e.target.value.trim(); tier.pauseEvery = v === '' ? undefined : Number(v); };
+        const del = $('<button class="ghost sm" style="align-self:flex-end">删掉这一档</button>');
+        del.onclick = () => { t.tiers.splice(i, 1); drawTiers(); };
+        g.appendChild(b); g.appendChild(c); g.appendChild(ts); g.appendChild(as); g.appendChild(ps);
+        r.appendChild(g); r.appendChild(del);
+        tiers.appendChild(r);
+      });
+      const add = $('<button class="ghost sm">＋ 加一档底分</button>');
+      add.onclick = () => { t.tiers.push({ baseScore: 1, count: 4 }); drawTiers(); };
+      tiers.appendChild(add);
+    };
+    drawTiers();
+    body.appendChild(tiers);
+    // 保存就在这个玩法里，不用划到页面最底下
+    const save = $(`<button>保存「${VARIANT[t.variant] || t.variant}」</button>`);
+    save.onclick = async () => {
+      save.disabled = true; save.textContent = '保存中…';
+      try { await api('tables', { tables: state }); save.textContent = '已保存 ✓'; setTimeout(() => render(), 700); }
+      catch (e) { alert(e.message); save.disabled = false; save.textContent = '保存'; }
+    };
+    body.appendChild(save);
+    w.appendChild(box);
+  }
+}
+
+window.addEventListener('hashchange', () => { const p = location.hash.slice(1); if (p && p !== page) { page = p; render(); } });
+render();
+</script>
+</body>
+</html>

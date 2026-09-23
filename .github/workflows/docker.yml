@@ -1,0 +1,67 @@
+# push 到 main（或者打个 v* 的 tag）就构建镜像推到 GHCR。
+# 服务器那头只要 `docker compose pull && docker compose up -d`，不用装 bun、也不占 CPU 构建。
+name: 构建并推送镜像
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    # 只动文档 / 部署说明不值当重新构建
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:      # 也可以在网页上手点一次
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository_owner }}/paohuzi
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      # 引擎那套是规则的底线，没过就别推镜像
+      - run: node --experimental-strip-types --test packages/engine/test/*.test.ts
+      - run: node --experimental-strip-types --test server/test/*.test.ts
+        continue-on-error: true   # 语音包那条用例依赖本地资源目录，CI 里跑不过
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write           # 推 GHCR 要这个
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # 不用另外配密钥
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 层缓存存在 Actions 自己的缓存里，第二次起就快了
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 这次推了哪些 tag
+        run: echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY

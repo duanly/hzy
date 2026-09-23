@@ -1,0 +1,19 @@
+# 构建上下文越小越快。前端产物一律在镜像里重新打，别把本地的带进去。
+.git
+.github
+node_modules
+**/node_modules
+web/dist
+dist-deploy
+*.tar.gz
+server/data
+data
+.env
+.env.*
+!.env.example
+docs
+miniprogram
+shells
+assets
+*.md
+.DS_Store

@@ -1,0 +1,33 @@
+# 丢到**前置 Caddy** 的 conf.d/ 里，一个应用一个文件。
+# 前置那层只干两件事：签证书、按域名把流量分到各应用自己那层 Caddy。
+#
+#   域名  → https:// （证书自动签、自动续）
+#   IP:端口 → http:// （不经过这儿，直接进应用那层 Caddy 的 HTTP_PORT）
+#
+# 把 paohuzi.example.com 换成真域名，8080 换成 .env 里的 HTTP_PORT。
+
+paohuzi.example.com {
+	encode zstd gzip
+
+	# 应用那层 Caddy 在本机这个口上。
+	# 前置 Caddy 要是也在 Docker 里、并且跟应用共了一个 network，
+	# 这里换成容器名即可：reverse_proxy paohuzi-caddy-1:80
+	reverse_proxy 127.0.0.1:8080 {
+		# 牌桌那条 WebSocket 一开就是几十分钟，别让它被流超时掐掉
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+
+	log {
+		output file /var/log/caddy/paohuzi.log {
+			roll_size 50mb
+			roll_keep 5
+		}
+	}
+}
+
+# http:// 域名要不要也直接出内容？
+# Caddy 默认会把 http:// 301 到 https://，一般这样就挺好。
+# 真要两种协议都直出，把上面那段改成 `http://paohuzi.example.com, paohuzi.example.com { ... }`。

@@ -1,0 +1,52 @@
+# 本应用自己那一层 Caddy：只管**内部路径路由**，不碰证书。
+# 证书和域名分发是前面那层的事，这儿一律明文 HTTP —— 所以 auto_https 要显式关掉，
+# 不关的话 Caddy 见到站点名就会自己去申请证书，在内网里必然失败、还刷一屏错。
+{
+	admin off
+	auto_https off
+	servers {
+		# 前置 Caddy / 宿主机转进来的那一跳是可信的：认它带过来的 X-Forwarded-For，
+		# 否则房间详情里看到的 IP 全是前置那台机器的。
+		trusted_proxies static private_ranges
+	}
+}
+
+:80 {
+	log {
+		output stdout
+		format console
+	}
+
+	# ---- WebSocket：牌桌全靠它 ----
+	# reverse_proxy 自带 Upgrade 透传，不用额外写头；单独拎出来是为了**不压缩**、
+	# 也不让下面那条 encode 沾上它。
+	@ws path /ws
+	reverse_proxy @ws app:8787 {
+		# 牌局一局能打半小时，默认的流超时会把连接掐了
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+
+	# ---- 语音包：体积大、改得少，交给浏览器缓存 ----
+	@voice path /voice/*
+	handle @voice {
+		header Cache-Control "public, max-age=604800"
+		reverse_proxy app:8787
+	}
+
+	# ---- 打包出来的静态资源带哈希名，可以长缓 ----
+	@immutable path /main.js /styles.css
+	handle @immutable {
+		# 这两个名字是固定的、不带哈希，所以只缓一小会儿，发版之后玩家刷一下就更新
+		header Cache-Control "public, max-age=300"
+		reverse_proxy app:8787
+	}
+
+	# ---- 其余（/、/admin、/api/*、index.html 兜底路由）统统给 node ----
+	handle {
+		encode zstd gzip
+		reverse_proxy app:8787
+	}
+}

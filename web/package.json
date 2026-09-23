@@ -1,0 +1,19 @@
+{
+  "name": "@paohuzi/web",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun build src/main.tsx --outdir dist --target browser --watch & cp -r public/* dist/ && wait",
+    "build": "bun build src/main.tsx --outdir dist --target browser --production && cp -r public/* dist/"
+  },
+  "dependencies": {
+    "@paohuzi/engine": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.6.0"
+  }
+}

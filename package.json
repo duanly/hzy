@@ -1,0 +1,11 @@
+{
+  "name": "paohuzi",
+  "private": true,
+  "workspaces": ["packages/engine", "server", "web"],
+  "scripts": {
+    "dev": "npm run dev -w server & npm run dev -w web",
+    "build": "npm run build -w packages/engine && npm run build -w web && npm run build -w server",
+    "test": "npm test -w packages/engine && npm test -w server",
+    "sim": "npm run sim -w server"
+  }
+}

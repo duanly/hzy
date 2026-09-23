@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "跑胡子",
+    "navigationBarBackgroundColor": "#1B5E20",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#1B5E20"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
