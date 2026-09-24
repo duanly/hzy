@@ -28,7 +28,12 @@ FROM node:22-alpine
 # node:sqlite（DatabaseSync）和 --experimental-strip-types 都是 22.x 自带的，
 # 这个大版本**别随手往上跳** —— 跳之前先把两套测试跑一遍。
 # su-exec：entrypoint 摆平 /data 的属主之后用它降权（比 gosu 小得多）
-RUN apk add --no-cache tini tzdata su-exec
+# ffmpeg：**不是可有可无的。** 百炼只回 WAV（接口不让挑格式），
+# alitts.ts 的 toMp3() 靠它把 24kHz 单声道 WAV 转成 48kbps 的 mp3 —— 体积差八倍。
+# 没装的话整套报牌声按 WAV 存：一条一秒就 40KB，一套三十多条 ≈ 1.5MB，
+# 转完 ≈ 200KB。镜像大这几十 MB 是部署时拉一次的事，流量是每个玩家都要付的。
+# 装了 ffmpeg 之后服务端测试里那条会走 mp3 分支（用例自己会认有没有 ffmpeg，两边都跑得过）。
+RUN apk add --no-cache tini tzdata su-exec ffmpeg
 ENV TZ=Asia/Shanghai \
     NODE_ENV=production \
     PORT=8787 \

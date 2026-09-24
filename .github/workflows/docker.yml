@@ -95,6 +95,10 @@ jobs:
           curl -fsS http://127.0.0.1:18787/api/health > /dev/null || { echo "::error::健康检查一直不通"; docker logs phz-smoke; exit 1; }
           # 首页也要真能取到（web/dist 没拷进去的话这儿会露馅）
           curl -fsS -o /dev/null http://127.0.0.1:18787/ || { echo "::error::首页取不到，web/dist 八成没进镜像"; docker logs phz-smoke; exit 1; }
+          # ffmpeg 也要在：百炼只回 WAV，没有它整套报牌声按 WAV 存，大八倍。
+          # 缺了不会报错、只会悄悄变大，所以在这儿明着拦一道。
+          docker exec phz-smoke ffmpeg -version > /dev/null 2>&1 \
+            || { echo "::error::镜像里没有 ffmpeg —— 报牌声会按 WAV 存（体积大八倍）"; exit 1; }
           docker rm -f phz-smoke
 
       - name: 推上去
