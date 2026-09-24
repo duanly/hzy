@@ -23,10 +23,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-      # 引擎那套是规则的底线，没过就别推镜像
+      - uses: oven-sh/setup-bun@v2
+      # 服务端那套里有一条要访问 `/`，得先有前端产物才跑得过。
+      # 顺带也等于在 CI 里验了一遍前端能不能打包（跟 Dockerfile 里那条命令一模一样）。
+      - name: 打一份前端产物（服务端用例要用）
+        run: cd web && bun build src/main.tsx --outdir dist --target browser --production && cp -r public/* dist/
+      # 三套都是底线，没过就别推镜像
       - run: node --experimental-strip-types --test packages/engine/test/*.test.ts
+      - run: node --experimental-strip-types --test packages/mahjong/test/*.test.ts
+      # 这条原先挂着 continue-on-error（"语音包那条用例依赖本地资源目录"）——
+      # 挂着就等于这 28 条用例一条也拦不住发版，白跑。缺的其实只是 web/dist，
+      # 上面补上了，这儿就该老老实实让它当门槛。
       - run: node --experimental-strip-types --test server/test/*.test.ts
-        continue-on-error: true   # 语音包那条用例依赖本地资源目录，CI 里跑不过
 
   build:
     needs: test
@@ -55,15 +63,48 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - uses: docker/build-push-action@v6
+      # 先**只构建、装进本地 docker**，不推。
+      - name: 构建（先不推）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: phz-smoke:test
+          # 层缓存存在 Actions 自己的缓存里，第二次起就快了
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 真把它跑起来看一眼再推。
+      # 加这一步是因为吃过亏：Dockerfile 的运行层原先是一个一个点名拷 packages 的，
+      # 后来加了 packages/mahjong 没人跟着改 —— 镜像构建成功、测试全绿、推上去了，
+      # 服务器上一起容器就 `Cannot find module .../packages/mahjong/src/index.ts` 当场挂。
+      # 单元测试在仓库里跑，照不出"镜像里少拷了文件"这种事；只有真起一次才照得出来。
+      - name: 起一把看看（少拷文件这种事只有跑起来才照得出来）
+        run: |
+          docker run -d --name phz-smoke -p 18787:8787 phz-smoke:test
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18787/api/health > /tmp/health.json 2>/dev/null; then
+              echo "起来了：$(cat /tmp/health.json)"; break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' phz-smoke)" != "true" ]; then
+              echo "::error::容器起不来，日志在下面"; docker logs phz-smoke; exit 1
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18787/api/health > /dev/null || { echo "::error::健康检查一直不通"; docker logs phz-smoke; exit 1; }
+          # 首页也要真能取到（web/dist 没拷进去的话这儿会露馅）
+          curl -fsS -o /dev/null http://127.0.0.1:18787/ || { echo "::error::首页取不到，web/dist 八成没进镜像"; docker logs phz-smoke; exit 1; }
+          docker rm -f phz-smoke
+
+      - name: 推上去
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # 层缓存存在 Actions 自己的缓存里，第二次起就快了
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: 这次推了哪些 tag
         run: echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY

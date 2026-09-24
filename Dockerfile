@@ -37,8 +37,13 @@ ENV TZ=Asia/Shanghai \
     WEB_DIST=/app/web/dist
 WORKDIR /app
 COPY package.json ./
-COPY packages/engine/package.json ./packages/engine/
-COPY packages/engine/src ./packages/engine/src
+# **整个 packages 一起拷，别一个一个点名。**
+# 原先这儿是 `COPY packages/engine/...` 两行，后来加了 packages/mahjong，
+# 这儿没人跟着改 —— 镜像照样构建成功、照样推上去，一起容器就
+# `Cannot find module '/app/packages/mahjong/src/index.ts'` 当场挂掉。
+# 点名的写法等于"每加一个包都要记得回来改一次"，迟早再漏一回。
+# 里头全是 .ts 源码，node_modules 已经被 .dockerignore 挡在外面了，拷全也没多大。
+COPY packages ./packages
 COPY server/package.json ./server/
 COPY server/src ./server/src
 COPY --from=web /src/web/dist ./web/dist
