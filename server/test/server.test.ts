@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -814,11 +814,20 @@ test('在线合成：照百炼的协议走一遍，整套报牌声落成 mp3', a
     assert.deepEqual([...new Set(spoke)], ['Cherry'], '发音人要原样传过去，a: 前缀得剥掉');
     assert.deepEqual([...new Set(langs)], ['Chinese'], '没指定语言就是中文');
 
+    /* 存成什么后缀，**取决于这台机器上有没有 ffmpeg**：
+       百炼回的是 WAV（接口不让挑格式），有 ffmpeg 才转成 mp3、体积小八倍，
+       没有就照原样存 WAV —— 一样能放，只是包大。
+       这儿原先写死了 .mp3：我的 Mac 和开发容器都装了 ffmpeg，跑着一直是绿的，
+       推到 CI 上（runner 没有 ffmpeg）当场红。**别把本机装了什么当成前提**。 */
+    const haveFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;
+    const ext = haveFfmpeg ? 'mp3' : 'wav';
     const clips = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
-    assert.equal((clips.clips.wei ?? '').split('?')[0], `/voice/packs/${pk.id}/wei.mp3`, '有 ffmpeg 就转成 mp3 存');
+    assert.equal((clips.clips.wei ?? '').split('?')[0], `/voice/packs/${pk.id}/wei.${ext}`,
+      haveFfmpeg ? '有 ffmpeg：转成 mp3 存' : '没有 ffmpeg：照原样存 WAV');
     const f = await fetch(`${BASE}${clips.clips.wei}`);
     assert.equal(f.status, 200);
-    assert.equal(f.headers.get('content-type'), 'audio/mpeg');
+    // 后缀和 Content-Type 必须对得上，不然浏览器可能不认
+    assert.equal(f.headers.get('content-type'), haveFfmpeg ? 'audio/mpeg' : 'audio/wav');
     assert.ok((await f.arrayBuffer()).byteLength > 200, '存下来的不该是个空壳');
 
     // 再点一次「只补缺的」：已经有的不重做
