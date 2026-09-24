@@ -836,7 +836,7 @@ test('在线合成：照百炼的协议走一遍，整套报牌声落成 mp3', a
     assert.ok(again.saved.includes('hu'), '缺的那几条要补上');
 
     /* 念什么可以自己改：嫌「碰」太秃就写「碰啦」—— 合出来念的是"碰啦"，
-       可**文件名还是 peng.mp3**（客户端只认 key，不管里头念的是什么）。 */
+       可**文件名还是 peng.<后缀>**（客户端只认 key，不管里头念的是什么）。 */
     asked.length = 0;
     const st = await P({ pack: pk.id, setText: 'peng', text: '碰啦' });
     assert.equal(st.say, '碰啦');
@@ -851,8 +851,8 @@ test('在线合成：照百炼的协议走一遍，整套报牌声落成 mp3', a
     assert.deepEqual(fix.saved, ['peng'], '只重做改过词的那一条，别的一概不动');
     assert.deepEqual(asked, ['碰啦'], '合成时念的是改过的那句');
     const clips2 = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
-    assert.equal((clips2.clips.peng ?? '').split('?')[0], `/voice/packs/${pk.id}/peng.mp3`, '文件名不跟着变');
-    /* 一条可以写几种说法（用 / 隔开）：一句合一条，peng.mp3 / peng-2.mp3 / peng-3.mp3，
+    assert.equal((clips2.clips.peng ?? '').split('?')[0], `/voice/packs/${pk.id}/peng.${ext}`, '文件名不跟着变');
+    /* 一条可以写几种说法（用 / 隔开）：一句合一条，peng / peng-2 / peng-3，
        牌桌上随机挑一条念。 */
     asked.length = 0;
     await P({ pack: pk.id, setText: 'peng', text: '碰 / 碰啦 / 我碰了' });
@@ -861,8 +861,8 @@ test('在线合成：照百炼的协议走一遍，整套报牌声落成 mp3', a
     assert.deepEqual(asked, ['碰', '碰啦', '我碰了'], '三种说法各合一条');
     const cl3 = await (await fetch(`${BASE}/api/voice?p=${pk.id}`)).json() as any;
     assert.equal(cl3.takes.peng.length, 3, '这一条有三个录法');
-    assert.ok(cl3.takes.peng[0].startsWith(`/voice/packs/${pk.id}/peng.mp3?v=`), '地址带着改动时间，改过就换');
-    assert.ok(cl3.takes.peng[1].includes('peng-2.mp3'));
+    assert.ok(cl3.takes.peng[0].startsWith(`/voice/packs/${pk.id}/peng.${ext}?v=`), '地址带着改动时间，改过就换');
+    assert.ok(cl3.takes.peng[1].includes(`peng-2.${ext}`));
     assert.equal(cl3.clips.peng, cl3.takes.peng[0], 'clips 留第一条给老客户端垫底');
     for (const u of cl3.takes.peng) assert.equal((await fetch(`${BASE}${u}`)).status, 200, `${u} 取得到`);
     const listT = await (await fetch(`${BASE}/api/admin/voice?pack=${pk.id}`, { headers: H })).json() as any;
