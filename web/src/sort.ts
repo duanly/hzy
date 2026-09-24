@@ -585,3 +585,21 @@ export function revealCols(hand: Kind[], maxCols = 7): Kind[][] {
   // 张数多的排前面（靠玩家那一头），一样多的保持原来的先后
   return out.map((c, i) => [c, i] as const).sort((x, y) => y[0].length - x[0].length || x[1] - y[1]).map(x => x[0]);
 }
+
+
+/**
+ * 「胡」字标在**哪一组下地牌**上 —— 认牌号，不认牌面。
+ *
+ * 出过的岔子：吃了「壹贰叁」下地，后来摸到一张叁**吊对**胡。
+ * 吊对胡的那张进的是"那一对"，不在手里的句子里，所以按牌面找的时候
+ * 手牌那一轮扑空、接着就在下地牌里撞上了壹贰叁里的那个叁 —— 「胡」字就标在了那儿。
+ * 桌上看着像是"有笑不笑、逃笑胡的"，冤枉人。
+ *
+ * 牌号对不上就**一组都不标**（返回 -1），让它继续往后落到"那一对"上去。
+ * 老纪录没有牌号（cid 缺着）才退回按牌面找：会标错，但总比整局一个「胡」字都没有强。
+ */
+export function markInMelds(melds: { cards: Kind[]; cids?: number[] }[], cid: number | undefined | null,
+                     card: Kind | null | undefined): number {
+  if (typeof cid === 'number') return melds.findIndex(m => m.cids?.includes(cid));
+  return melds.findIndex(m => card !== null && card !== undefined && card >= 0 && m.cards.includes(card));
+}

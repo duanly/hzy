@@ -1842,3 +1842,95 @@ test('二维码：定型的那一张点阵一个点都不许变', async () => {
   assert.ok(qrSvg('abc').includes('viewBox="0 0 29 29"'), '21 + 4×2 的静区');
   assert.throws(() => qrMatrix('x'.repeat(400)), /装不下/);
 });
+
+test('被催也能用延时卡：碰得起的那家不会因为别人手快就白丢一张牌', () => {
+  let now = 0;
+  const AV = [S(5), S(6), S(7)];
+  // 座位 2（上家）手里两张小六碰得起；座位 1（下家）五 七 等着吃
+  const g = setup(pad([S(6)], AV), pad([S(5), S(7)], AV), pad([S(6), S(6)], AV), () => now);
+  g.delayCards = [2, 2, 2];
+  g.act(0, 'discard', { card: S(6) });
+  const before = (g.optionsFor(2) as any).fastUntil;
+
+  // 下家当场点吃 → 催场把座位 2 压到宽限那一档
+  g.act(1, 'chi', { combo: [S(5), S(7)] });
+  const hurried = (g.optionsFor(2) as any).fastUntil;
+  assert.ok(hurried < before, '被催了：窗口确实压短了');
+  assert.ok(hurried - now <= g.claimGraceMs() + 50, '压到的就是宽限那一档');
+
+  /* 压短之后到点：**先自动用掉一张延时卡**，而不是直接判过、让牌被吃走。
+     老板遇到的就是这个 —— "来不及反应牌就被吃走了，延时卡却一张没少"。 */
+  now = hurried + 1; g.tick(now);
+  assert.equal(g.delayCards[2], 1, '被催到点要自动用掉一张延时卡');
+  const after = g.optionsFor(2) as any;
+  assert.ok(after, '这一手还在，没被判过');
+  assert.ok(after.options.some((o: any) => o.type === 'peng'), '碰的按钮还在');
+  /* 续的是**碰原本那半程**，不是被压短之后剩下的那一点点 ——
+     一张卡换一次完整的思考时间，别人点得快不该把这张卡的分量也压掉。 */
+  assert.ok(after.fastUntil - now >= g.rules.timers.claimPeng - 50,
+    `续回来的要是完整的一段（claimPeng=${g.rules.timers.claimPeng}），实际只有 ${after.fastUntil - now}`);
+  assert.ok(!g.players[1].melds.some(m => m.type === 'chi'), '牌还没被吃走 —— 人家卡都用了，得等他');
+});
+
+test('催场的窗口是读秒的三分之一：30 秒的桌子给 10 秒', () => {
+  const g = new Game({ rules: getRules('hy_honghei'), baseScore: 1, dealer: 0, now: () => 0 });
+  assert.equal(g.rules.timers.discard, 30000, '默认读秒 30 秒');
+  assert.equal(g.claimGraceMs(), 10000, '被催的时候给 10 秒');
+  /* 催出来的窗口永远短于碰自己那半程，不然"催"就没意义了 */
+  assert.ok(g.claimGraceMs() < g.rules.timers.claimPeng, '催出来的要短于碰那半程');
+});
+
+/* 「胡」字标在哪一张：必须认**牌号**，不能认牌面。
+   老板遇到的是：吃了「壹贰叁」下地，又摸到一张叁吊对胡 —— 按牌面去找，
+   就把下地那句里的叁标成了胡牌张，看着像是"有笑不笑、逃笑胡的"，冤枉人。 */
+test('胡的是哪一张：事件里带牌号，跟同字的其他张分得开（点炮）', () => {
+  let now = 0;
+  const hand1 = [B(1), B(1), B(2), B(2), B(3), B(3), S(2), S(7), S(10), B(5), B(5), B(5), S(4), S(4), S(4), B(8), B(8), B(8), S(6), S(6)];
+  const g = setup([S(6), S(4), S(4), S(4), S(8), S(8), S(8), B(1), B(1), B(1), B(3), B(3), B(3), B(4), B(4), B(4), B(6), B(6), B(6), S(9)], hand1, pad([]), () => now);
+  g.act(0, 'discard', { card: S(6) });
+  const tableCid = (g as any).tableCard.cid;
+  assert.equal(g.act(1, 'hu'), null);
+  const ev: any = g.events.find(e => e.t === 'hu');
+  assert.equal(ev.card, S(6), '胡的是小六');
+  assert.equal(ev.cid, tableCid, '胡的就是桌上那一张，牌号要对得上');
+  // 胡牌者手里本来就有两张小六 —— 牌号必须跟它们区分得开，不然「胡」字会标错地方
+  const mine = (g as any).players[1];
+  const ownSix: number[] = (mine.handIds ?? []).filter((_: number, i: number) => mine.hand[i] === S(6));
+  for (const cid of ownSix) assert.notEqual(ev.cid, cid, '不能标到自己手里那两张小六上');
+});
+
+test('偎起胡 / 提龙胡这种没有"某一张"：牌号就该缺着，客户端别硬标', () => {
+  let now = 0;
+  const hand1 = [B(1), B(1), B(2), B(2), B(3), B(3), S(2), S(7), S(10), B(5), B(5), B(5), S(4), S(4), S(4), B(8), B(8), B(8), S(6), S(6)];
+  const g: any = new Game({ rules: getRules('hy_honghei'), baseScore: 1, dealer: 0, now: () => now });
+  g.players[0].hand = hand1.slice();
+  g.players[1].hand = pad([]); g.players[2].hand = pad([]);
+  g.pile = [S(6), S(1), S(2), S(3)];
+  g.enterDraw(0);
+  /* 摸到第三张同字，引擎先替他偎起来 —— 这一胡是"偎完之后整手成了"，
+     不是靠某一张凑成的，所以 card 是 -1、也就没有牌号可标。
+     客户端遇到这种要老老实实一个「胡」字都不标，别退回按牌面去猜。 */
+  assert.equal(g.act(0, 'hu'), null);
+  const ev: any = g.events.find((e: any) => e.t === 'hu');
+  assert.equal(ev.card, -1, '没有"胡的那一张"');
+  assert.equal(ev.cid, undefined, '牌号也就跟着缺着');
+});
+
+test('「胡」字标在哪一组：认牌号不认牌面（吃了壹贰叁、又摸叁吊对胡）', async () => {
+  const { markInMelds } = await import('../../../web/src/sort.ts');
+  /* 老板遇到的那一局：吃了「壹贰叁」下地（牌号 10/11/12），
+     后来又摸到一张叁（牌号 99）吊对胡。 */
+  const melds = [{ cards: [S(1), S(2), S(3)], cids: [10, 11, 12] }];
+
+  assert.equal(markInMelds(melds, 99, S(3)), -1,
+    '摸来的那张叁不在这一句里 —— 一组都不该标，让「胡」字落到那一对上去');
+  assert.equal(markInMelds(melds, 12, S(3)), 0,
+    '真要是胡在这一句里的那张叁上，那就该标这一组');
+
+  /* 老纪录没有牌号：退回按牌面找。会标错（就是这个 bug），
+     但总比整局一个「胡」字都不标强 —— 这一条是明知故犯，写清楚免得以后被当成回归。 */
+  assert.equal(markInMelds(melds, undefined, S(3)), 0, '没有牌号的老纪录退回按牌面找');
+  assert.equal(markInMelds(melds, undefined, null), -1, '没有胡牌张就什么都不标');
+  // 偎起胡 / 提龙胡：card 是 -1、cid 也缺着，一组都不标
+  assert.equal(markInMelds(melds, undefined, -1 as any), -1, '没有"胡的那一张"就不标');
+});

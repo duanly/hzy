@@ -125,6 +125,10 @@ export interface RoundReveal {
 export interface HuRecord {
   seat: number;
   card: number;
+  /* 胡的**是哪一张**（牌号），不是"哪个字"。亮牌和详情里那个「胡」字按它来标。
+     老纪录没有这个字段，客户端会退回按牌面找 —— 会标错，但总比一个不标强。
+     偎起胡 / 提龙胡那种没有具体某一张，也是缺着的。 */
+  cid?: number;
   ziMo: boolean;
   fromSeat: number;
   detail: any;

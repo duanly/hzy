@@ -473,6 +473,13 @@ export class Room {
     this.lastProgress = Date.now(); this.lastSig = '';
     this.roundSeatUsers = this.seats.map(st => (st.userId !== null ? [st.userId] : []));
     for (const st of this.seats) st.vacatedAt = undefined;
+    /* 托管**一局一清**：超时次数归零，机器人替打的状态也解除。
+       原先 misses 是跨局累加的 —— 第一局走开倒杯水漏了一手、第三局网卡了一下漏一手，
+       两笔加起来就被判"连着两次"交给机器人了，人还坐在这儿呢。
+       而且解除只认"他自己点一下按钮"（wake），一局都没碰屏幕就一直替他打下去。
+       现在的规矩：**同一局里**超时两次才托管，新一局重新开始算。
+       真人要是还没回来，新一局里照样会再超时两次，自然又托管 —— 不会因此卡住桌子。 */
+    for (const st of this.seats) { st.misses = 0; if (st.autoBot) { st.autoBot = false; st.botAt = undefined; } }
     /* 洗牌：默认「接着洗」—— 上一局打完的牌照牌桌上的样子收拢，切两半对插搓几把再发，
        跟真人打牌一个路数（上一局的坎、句子会留下一点残影）。
        第一局、或者收上来的牌对不上数，就退回原来那套"全新一副、完全随机"。 */
@@ -656,7 +663,21 @@ export class Room {
       if (this.nextRoundAt === null) { this.nextRoundAt = t + 3000; this.broadcast(); }
       if (t >= this.nextRoundAt) { this.nextRoundAt = null; this.startRound(); return; }
     }
-    if (this.pausedReason !== null) return;   // 封顶暂停：等房主点继续
+    /* 没发完的帧**永远**要接着发 —— 哪怕这一局已经结算完、状态回到 waiting，
+       哪怕房间这会儿是暂停的。这一句必须排在下面那几道 return 前面。
+       踩过两次，都是同一个道理：
+        · 第一次是 `status !== 'playing'` 那道。点炮胡的时候「打牌」和「胡牌」
+          常常在同一批帧里，第一帧发出去之后 frameAt 推到了未来，剩下「胡」那一帧
+          还排着队，紧接着 settle() 就把 status 改成了 waiting —— 那一帧再也发不出去，
+          客户端收不到 hu，结算面板不弹，一直闷到下一局 deal 才有动静。
+        · 第二次是下面 `pausedReason` 那道。afterAct() 是先把帧排进队列、
+          紧接着 settle()，而 settle → closeRound 里满足"打满 N 局"就把 pausedReason 设上了；
+          于是从下一次 tick 起就在这儿掉头走人，队列里的帧永远发不出去。
+          黄庄最容易撞上 —— 最后几张牌连着没人要，尾巴上排着一长串帧。
+          表现就是老板说的"黄庄遇到满局暂停会卡死"。
+       教训写在这儿：这一句往下挪一行都可能再犯。 */
+    if (this.game && this.frames.length) this.sendFrames();
+    if (this.pausedReason !== null) return;   // 封顶 / 满局暂停：等房主点继续（帧已经在上面发过了）
     if (this.status === 'waiting' && this.nextRoundAt !== null && t >= this.nextRoundAt) {
       this.nextRoundAt = null;
       // 桌上一个真人都没有（全是机器人 / 都在托管）就别自己接着打，不然这桌永远满着，谁也进不来
@@ -665,14 +686,6 @@ export class Room {
     // 固定桌：没人在线、托管时间也过了 —— 清空重来，别让机器人一直占着
     if (this.cfg.fixed && this.status !== 'playing' && this.humanCount() === 0 && this.awayCount() === 0
       && this.seats.some(s => s.userId !== null)) { this.resetTable(); return; }
-    // 没发完的帧**永远**要接着发 —— 哪怕这一局已经结算完、房间状态回到了 waiting。
-    // 以前这一句在下面那道 `status !== 'playing'` 之后：有人点炮胡的时候，
-    // 「打牌」和「胡牌」常常在同一批帧里，第一帧发出去之后 frameAt 推到了未来，
-    // 剩下的「胡」那一帧还排着队，紧接着 settle() 就把 status 改成 waiting ——
-    // 于是那一帧再也发不出去了：客户端根本没收到 hu 事件，结算面板自然不弹，
-    // 一直等到下一局 deal 才有动静，看起来就是"胡牌没有结算界面，直接跳到下一局"。
-    // 机器人提速之后这两步更容易挤进同一批，所以最近特别明显。
-    if (this.game && this.frames.length) this.sendFrames();
     if (this.status !== 'playing' || !this.game) return;
     // 守门狗：这一局其实已经结束了，房间却还挂在"进行中" —— 结算那一步出过岔子。
     // 帧发完之后强行收尾，绝不让桌子冻在"报了胡了"的那一刻。
@@ -832,7 +845,7 @@ export class Room {
     const hu = g.events.find(e => e.t === 'hu') as Extract<GameEvent, { t: 'hu' }> | undefined;
     const entry: LedgerEntry = {
       round: this.roundNo, variant: this.cfg.variant, winner: winnerUid, deltas, time: Date.now(),
-      hu: hu ? { seat: hu.seat, card: hu.card, ziMo: hu.ziMo, fromSeat: hu.fromSeat, detail: hu.detail } : null,
+      hu: hu ? { seat: hu.seat, card: hu.card, cid: hu.cid, ziMo: hu.ziMo, fromSeat: hu.fromSeat, detail: hu.detail } : null,
       seatNames: this.seats.map((s, i) => this.nameOf(ownerOf(i)) ?? this.nameOf(s.userId) ?? '空位'),
       // 耒阳可以弃胡：谁弃了、弃的哪张、当时值多少分，都记到纪录表里
       declines: g.players.flatMap(p => p.declinedHu.map(d => ({ seat: p.seat, card: d.card as number, unit: d.unit }))),

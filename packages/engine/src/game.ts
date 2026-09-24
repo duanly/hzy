@@ -102,7 +102,10 @@ export type GameEvent =
   | { t: 'options'; seat: number; options: ActionOption[]; deadline: number }
   | { t: 'need_discard'; seat: number; deadline: number }
   | { t: 'tilong_score'; seat: number; type: 'ti' | 'long'; delta: number[] }
-  | { t: 'hu'; seat: number; card: Kind; ziMo: boolean; fromSeat: number; detail: HuDetail }
+  /* cid：胡的**是哪一张**，不是"哪个字"。亮牌和详情里那个「胡」字要标在这张上 ——
+     光看字会标错：吃了「壹贰叁」下地，又摸到一张叁吊对胡，按字去找就把下地那句里的叁
+     标成了胡牌张，看着像是逃笑胡的。天胡 / 提龙胡那种没有具体某一张，cid 缺省。 */
+  | { t: 'hu'; seat: number; card: Kind; cid?: number; ziMo: boolean; fromSeat: number; detail: HuDetail }
   | { t: 'penalty'; seat: number; reason: string; delta: number[] }   // 违规罚分：每家 3 分
   | { t: 'delay_grant'; counts: number[] }                          // 发延时卡（开局 / 公共牌过半）
   | { t: 'delay_use'; seat: number; left: number; deadline: number } // 用掉一张延时卡，行动时间续一次
@@ -878,7 +881,7 @@ export class Game {
     switch (type) {
       case 'hu': {
         if (c === null) { this.doHu(seat, -1, this.selfHuFrom, this.selfHuFrom === seat, this.selfHuDianPao); return null; } // 天胡 / 提龙胡 / 跑后胡
-        this.doHu(seat, c, seat, true, false); return null;
+        this.doHu(seat, c, seat, true, false, this.drawnCid); return null;
       }
       case 'discard': { // 仅天胡放弃时（庄家 21 张出牌）
         if (payload?.card === undefined) return 'need card';
@@ -961,9 +964,18 @@ export class Game {
       原来是 1/10（30 秒读秒 → 3 秒），实战里太紧：下家手快点了吃，碰得起的人
       从看见牌到按下去就只剩这一下。放宽到 1/6（→ 5 秒）。
       （下限 1.2 秒是给调快了读秒的桌子留的，别比整轮读秒还长。） */
-  claimGraceMs() { return Math.max(1200, Math.round(this.rules.timers.discard / 6)); }
+  /**
+   * 被别人催的时候，还剩多少时间表态。
+   *
+   * 一路放宽过来：读秒的 1/10（3 秒）→ 1/6（5 秒）→ 现在 1/3。
+   * 30 秒读秒的桌子上就是 **10 秒** —— 老板的原话是"来不及反应牌就被吃走了"。
+   * 用分数而不是写死 10000，是为了跟着房间的读秒走（读秒 15 秒的桌子给 5 秒）。
+   * 1/3 还有个好处：它**永远短于碰自己那半程**（claimPeng = 读秒的 1/2），
+   * 所以这仍然是"催"，不会出现催完反而比不催还长的怪事。
+   */
+  claimGraceMs() { return Math.max(1200, Math.round(this.rules.timers.discard / 3)); }
 
-  /** 有人已经决定要这张牌：把还没表态的人的时限压到"读秒 1/10"以内 */
+  /** 有人已经决定要这张牌：把还没表态的人的时限压到这一档以内（见 claimGraceMs） */
   private hurryOthers() {
     const cut = this.now() + this.claimGraceMs();
     let changed = false;
@@ -1267,7 +1279,7 @@ export class Game {
           ? this.meldThenHuUnit(seat, 'pao', c, self, !self && tc.source === 'discard', tc.from)
           : null;
         if (afterPao !== null && afterPao > huUnit0) { this.execClaim(seat, 'pao', tc); return; }
-        this.doHu(seat, c, tc.from, self, !self && tc.source === 'discard'); return;
+        this.doHu(seat, c, tc.from, self, !self && tc.source === 'discard', tc.cid); return;
       }
       case 'ti': {
         const before = p.longCount;
@@ -1645,14 +1657,14 @@ export class Game {
 
   huCard: Kind = -1;                   // 胡的那一张（亮牌时摆进胡牌者的手牌里一起看）
   private timedOut = new Map<number, { card: Kind; at: number }>();   // 谁在哪张牌上超时没表态
-  private doHu(seat: number, card: Kind, fromSeat: number, ziMo: boolean, dianPao: boolean) {
+  private doHu(seat: number, card: Kind, fromSeat: number, ziMo: boolean, dianPao: boolean, cid?: number) {
     const { detail, delta } = this.computeHu(seat, card, fromSeat, ziMo, dianPao);
     this.huCard = card;
     for (let s = 0; s < this.n; s++) this.scores[s] += delta[s];
     this.winner = seat;
     this.ended = true;
     this.phase = 'ended';
-    this.emit({ t: 'hu', seat, card, ziMo, fromSeat, detail });
+    this.emit({ t: 'hu', seat, card, cid, ziMo, fromSeat, detail });
     this.emit({ t: 'end', scores: this.scores.slice(), winner: seat, dealerNext: seat });
   }
 

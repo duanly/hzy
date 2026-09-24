@@ -84,3 +84,80 @@ test('没打过一局就换人：不封一段空的出来', () => {
   seat(room, [1, 2, 4]); openBatch(room);          // roundNo 还是 0
   assert.equal(room.batches.length, 0, '一局都没打，没什么好封的');
 });
+
+/**
+ * 黄庄撞上「满局暂停」：桌子会冻住。
+ *
+ * 怎么冻的：afterAct() 是先把这一手的帧排进队列、紧接着就 settle()，
+ * 而 settle → closeRound 里一旦满足"打满 N 局"，pausedReason 就设上了。
+ * 偏偏 tick() 里 `if (this.pausedReason !== null) return;` 排在发帧那一句**前面** ——
+ * 于是队列里还没发出去的帧再也发不出去：客户端收不到 liuju，
+ * 结算面板不弹、画面停在最后一张牌上，看着就是卡死。
+ *
+ * 黄庄特别容易撞上，是因为最后几张牌连着没人要，尾巴上排着一长串帧
+ *（room.ts 里那句"客户端要播好一会儿"说的就是这个）。
+ */
+test('黄庄正好赶上满局暂停：帧还得发完，别把桌子冻住', async () => {
+  /* BOT_SPEED 不能压太狠：flush() 里那几段停顿是 `k >= 0.5` 才加的，
+     压到 0.05 就一帧不留、当场全发完 —— 那这条用例就测了个寂寞（我先踩了一次）。
+     0.5 是既留着停顿、又把时长减半的那个临界值。跑完还回去，别污染同文件其他用例。 */
+  const prevSpeed = process.env.BOT_SPEED;
+  process.env.BOT_SPEED = '0.5';
+  try {
+  const room: any = table([1, 2, 3]);
+  room.cfg.pauseEvery = 1;              // 打一局就歇 —— 这一局收尾时必定触发暂停
+  const got: any[][] = [[], [], []];    // 三个人各自收到的事件
+  room.seats.forEach((s: any, i: number) => {
+    s.client = { userId: s.userId, send(m: any) { if (m.type === 'game.events') got[i].push(...m.events); } };
+  });
+
+  room.startRound();
+  const g = room.game;
+  assert.ok(g, '开起来了');
+
+  /* 走引擎真正的黄庄那条路（看门狗用的也是这个），别自己拼事件 ——
+     拼出来的测的就是个假东西。后面这句 afterAct 也照看门狗的写法来：
+     先把帧排进队列，紧接着 settle()，**这正是出问题的那个次序**。 */
+  g.forceLiuJu('用例：把牌打完了');
+  room.afterAct();
+
+  assert.ok(g.ended, '这一局结束了');
+  assert.ok(room.pausedReason?.includes('歇一歇'), `该歇一歇了：${room.pausedReason}`);
+  assert.ok(room.frames.length > 0, '收尾时队列里还压着没发的帧 —— 这条用例就是要测这些帧发不发得出去');
+
+  // 暂停之后接着转：没发完的帧必须继续发出去
+  for (let i = 0; i < 900 && room.frames.length; i++) {
+    room.tick();
+    await new Promise(r => setTimeout(r, 5));
+  }
+  assert.equal(room.frames.length, 0, `帧必须全部发完，还剩 ${room.frames.length} 帧`);
+  for (let i = 0; i < 3; i++) {
+    assert.ok(got[i].some(e => e.t === 'liuju'), `第 ${i} 家没收到黄庄事件 —— 结算面板弹不出来，看着就是卡死`);
+  }
+  } finally { if (prevSpeed === undefined) delete process.env.BOT_SPEED; else process.env.BOT_SPEED = prevSpeed; }
+});
+
+test('托管一局一清：同一局漏两手才交给机器人，新一局重新算', () => {
+  const room: any = table([1, 2, 3]);
+  room.seats.forEach((s: any) => { s.client = { userId: s.userId, send() {} }; });
+  room.startRound();
+
+  // 这一局漏一手：只记一笔，还不托管
+  room.seats[0].misses = 1;
+  assert.equal(!!room.seats[0].autoBot, false, '漏一手还不至于托管 —— 可能只是走开倒杯水');
+
+  /* 关键：这一笔**不能带到下一局**。原先是跨局累加的，
+     第一局漏一手、第三局再漏一手就被判"连着两次"，人还坐在桌上呢。 */
+  room.startRound();
+  assert.equal(room.seats[0].misses, 0, '新一局超时次数清零');
+
+  // 同一局里连漏两手：这才托管
+  room.seats[0].misses = 2; room.seats[0].autoBot = true;
+  assert.equal(room.seats[0].autoBot, true, '一局里漏两手，机器人接手');
+
+  // 又开一局：托管自动解除，不用他自己去点按钮
+  room.startRound();
+  assert.equal(room.seats[0].autoBot, false, '新一局自动解除托管');
+  assert.equal(room.seats[0].misses, 0, '次数也跟着清零');
+  assert.equal(room.seats[0].botAt, undefined, '机器人的排程也要撤掉，别新一局还替他出牌');
+});
