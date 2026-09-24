@@ -95,8 +95,47 @@ function renderLogin(err) {
 
 const NAV = [['overview', '总览'], ['users', '玩家'], ['audit', '审计'], ['agents', 'VIP'], ['groups', '分组'], ['tables', '牌桌配置'], ['voice', '语音包'], ['rooms', '房间'], ['rounds', '对局']];
 
+/**
+ * 整页重建（app.innerHTML = ''）会把**滚动位置和焦点一起冲掉**。
+ *
+ * 最难受的是「语音包」那一页：改完一条念法，一失焦就保存、保存完就 render()，
+ * 页面"啪"地弹回顶端 —— 想接着改下一条，得重新滚下去找。三十多条要改，
+ * 每改一条弹一次。老板反馈的"输入框一获取焦点就回弹到顶端"就是这个
+ *（实际是**失焦提交那一下**弹的，但连着操作看起来就像是碰一下输入框就跳）。
+ *
+ * render() 是所有页面唯一的入口，所以在这儿统一处理，各页不用各管各的：
+ * 进来先记下滚到哪儿、焦点在谁身上、光标在第几个字，重建完再还回去。
+ * 认焦点靠元素自己带的 data-fk（同一个东西重建前后得是同一个名字）；
+ * 没带 data-fk 的就只还原滚动位置 —— 那也比弹回顶端强。
+ */
+/* 有一种情况 snapFocus 自己看不到焦点：**先 blur 再保存**的那条路
+   （按回车提交时 activeElement 已经变成 body 了）。那种地方在调 render() 之前
+   把想要的目标写在这儿，render 完就还给它。用一次就清掉。 */
+let pendingFocus = null;
+
+function snapFocus() {
+  const y = window.scrollY;
+  const a = document.activeElement;
+  const fk = pendingFocus || (a && a.dataset ? a.dataset.fk : null);
+  pendingFocus = null;
+  const sel = a && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
+  return () => {
+    // 先还原滚动，再给焦点：反过来的话浏览器会为了"把焦点元素滚进视野"再挪一次
+    window.scrollTo(0, y);
+    if (!fk) return;
+    const el = document.querySelector(`[data-fk="${CSS.escape(fk)}"]`);
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (sel && typeof el.setSelectionRange === 'function') {
+      try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* 有些类型不让设，随它 */ }
+    }
+    window.scrollTo(0, y);      // focus 可能又把页面挪了一下，再压一次
+  };
+}
+
 async function render() {
   if (!token) return renderLogin();
+  const restore = snapFocus();
   app.innerHTML = '';
   const side = $(`<div class="side"><h1>衡之娱后台</h1>${NAV.map(([k, n]) => `<a data-k="${k}" class="${k === page ? 'on' : ''}">${n}</a>`).join('')}
     <a id="logout" style="margin-top:20px;color:#8fa3b3">退出登录</a>
@@ -118,6 +157,7 @@ async function render() {
     if (page === 'rooms') await pageRooms(main);
     if (page === 'rounds') await pageRounds(main);
   } catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; }
+  restore();
 }
 
 /* 语音包：自己录的报牌音（衡阳话 / 耒阳话都行）。
@@ -348,6 +388,7 @@ async function pageVoice(main) {
        改的只是合成时念的那句话，文件名还是 pao.mp3 —— 客户端只认 key，不管里头念的是什么。
        改完要重新生成这一条才听得到新的念法。 */
     const say = $(`<input value="${(it.say ?? it.label).replace(/"/g, '&quot;')}" style="width:150px" title="改了点「生成缺的」就会重做这一条。想要好几种说法，用 / 隔开，比如「碰 / 碰啦 / 我碰了」，播的时候随机挑一条" />`);
+    say.dataset.fk = 'say:' + it.key;      // 重建之后靠它把焦点找回来（见 snapFocus）
     if (it.custom) say.style.borderColor = 'var(--gold)';
     const save = async () => {
       const v = say.value.trim();
@@ -356,7 +397,15 @@ async function pageVoice(main) {
       catch (e) { alert('改不了：' + e.message); }
     };
     say.onblur = save;
-    say.onkeydown = e => { if (e.key === 'Enter') say.blur(); };
+    /* 回车＝就地确认，**焦点留在这一条**（不是跳走）。
+       原先是 say.blur() 去触发保存 —— 那样 render 的时候焦点早没了，
+       重建完谁也接不住，页面就散了焦点。 */
+    say.onkeydown = e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      pendingFocus = say.dataset.fk;
+      save();
+    };
     tr.children[1].appendChild(say);
     const rb = $(`<button class="ghost">${recKey === it.key ? '● 停止' : '录'}</button>`);
     if (recKey === it.key) rb.style.color = '#ff6b6b';
