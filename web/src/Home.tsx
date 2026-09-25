@@ -222,7 +222,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
   const [roomId, setRoomId] = useState('');
   const [resume, setResume] = useState<string | null>(null);
   const [hosted, setHosted] = useState<HostedRoom[]>([]);
-  const [autoNext, setAutoNext] = useState(15);
+  const [autoNext, setAutoNext] = useState(5);   // 私人房默认 5 秒接着下一局：真人房都在等，别干坐着
   const [capX, setCapX] = useState(100);   // 封顶 = 底分 × 倍数（0 = 不限）
   const [pauseEvery, setPauseEvery] = useState(0);   // 几局一歇（0 = 一直打下去）
   /* 玩法开关：只有开房才能挑，大厅一律全开 + 新牌轮流发。

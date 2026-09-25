@@ -4,7 +4,7 @@ import { nameOf, isBig, partition, type Kind, type ActionOption, type GameEvent,
 import { socket, api } from './net.ts';
 import { note, report } from './log.ts';
 import { Card, CardStack } from './Card.tsx';
-import { autoSort, orderCol, orderCols, sortCol, affinity, revealCols, minXiOf, markInMelds } from './sort.ts';
+import { autoSort, orderCol, orderCols, sortCol, affinity, revealCols, minXiOf, markInMelds, dropCardAt, keepCols } from './sort.ts';
 import { cardFont, setCardFontNow, fontOptions, fontOptionsSorted, usedFont, uiFontOn, setUiFont } from './cardfont.ts';
 import { GLYPHS } from './glyphs.ts';
 import { RulesModal } from './Rules.tsx';
@@ -1974,12 +1974,19 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     pinAdd(toCol === null ? next[next.length - 1] : next[toCol]);
     setCols(next.filter(c => c.length)); setSelected(null);
   }
-  /** 出牌。拆坎不再事先弹窗：打出去之后由服务端罚分并把牌收回来（只罚分，不禁胡） */
-  function tryDiscard(card: Kind) {
+  /** 出牌。拆坎不再事先弹窗：打出去之后由服务端罚分并把牌收回来（只罚分，不禁胡）
+   *
+   *  `at` = 玩家点的**那一张**在手牌里的位置。同一个字手里常有两张（一张码在组里、
+   *  一张刚摸进来单摆着），只报牌面的话，重排手牌时按牌面从左往右配对，
+   *  走的永远是最右边那张 —— 玩家点了左边那张，画面上左边那张又冒回来、右边那张不见了，
+   *  接着整手牌重理一遍。所以这儿**当场按位置**把它从摆法里拿掉，服务端认不认都不影响画面。
+   *  （服务端那边同字的几张本来就通用，打哪一张对它来说都一样。） */
+  function tryDiscard(card: Kind, at?: { col: number; idx: number }) {
     if (!optTypes.has('discard')) { toast('现在不是你出牌'); return; }
     act('discard', { card }); setSelected(null);
     // 先斩后奏：牌当场离手、上明牌位置。服务端那一帧到了会用同一张牌把这个明牌再刷一次（带上牌号），
     // 接着照常飞进弃牌堆 —— 玩家看到的是一段连贯动作，不是"点完没反应，过一会儿牌才飞"
+    if (at) { const next = dropCardAt(cols, at.col, at.idx, card); if (next) setCols(next); }
     setPendDiscard({ card, n0: countOf(myHand0, card), at: Date.now() });
     showFloat({ card, seat: mySeat, verb: '打' }, 0);
   }
@@ -2358,7 +2365,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
          手指稍微往上一抖就已经在线外了。这儿再要求两条：
          从按下的地方**真的走了一段**（60px），而且**越过线还有一截**（18px）。 */
       const moved = Math.hypot(lu.x - d.x0, lu.y - d.y0);
-      if (moved > 60 && isDiscardZone(lu.x, lu.y) && overLine(lu.x, lu.y) > 18) { tryDiscard(card); return; }
+      if (moved > 60 && isDiscardZone(lu.x, lu.y) && overLine(lu.x, lu.y) > 18) { tryDiscard(card, { col: d.col, idx: d.idx }); return; }
       const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
       if (hit?.closest('.new-col-zone')) { moveCard(d, null); return; }   // 拖到最右边 → 单独成一列
       // 落到哪一列：按牌的下半截盖住谁最多算（松手那一下跟拖动时高亮的是同一列）
@@ -2375,7 +2382,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     const now = Date.now(); const last = lastTapRef.current;
     const near = last && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28;
     if (last && last.col === d.col && last.idx === d.idx && near && now - last.t < 260) {
-      lastTapRef.current = null; if (card !== undefined) tryDiscard(card); return;
+      lastTapRef.current = null; if (card !== undefined) tryDiscard(card, { col: d.col, idx: d.idx }); return;
     }
     lastTapRef.current = { col: d.col, idx: d.idx, t: now, x: e.clientX, y: e.clientY };
     // 轮到自己出牌时：点一张就是"改选这一张"，不搬牌（搬牌请用拖动）
@@ -2413,7 +2420,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     setCols(cs => cs.map((c, i) => (i !== col || idx === 0 ? c : [c[idx], ...c.filter((_, j) => j !== idx)])));
     setSelected({ col, idx: 0 });
   }
-  function discardSelected() { if (selectedCard !== null) tryDiscard(selectedCard); }
+  function discardSelected() { if (selectedCard !== null && selected) tryDiscard(selectedCard, selected); }
   /**
    * 出牌超时：不喊「过」—— 直接把选中的那张打出去；没选就打最右边那一张（从右往左、从下往上找，
    * 跳过坎里的牌，拆坎要罚分）。自己先打，服务端就不用替我挑了，报个牌名就完事。
@@ -2427,12 +2434,14 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     autoOutRef.current = deadline;
     const cnt = (k: Kind) => myHand.filter(x => x === k).length;
     let pick: Kind | null = selectedCard !== null && cnt(selectedCard) < 3 ? selectedCard : null;
+    let at: { col: number; idx: number } | undefined = pick !== null && selected ? selected : undefined;
     if (pick === null) {
       outer: for (let i = cols.length - 1; i >= 0; i--)
-        for (let j = cols[i].length - 1; j >= 0; j--) if (cnt(cols[i][j]) < 3) { pick = cols[i][j]; break outer; }
+        for (let j = cols[i].length - 1; j >= 0; j--) if (cnt(cols[i][j]) < 3) { pick = cols[i][j]; at = { col: i, idx: j }; break outer; }
     }
-    if (pick === null) pick = [...myHand].reverse().find(k => cnt(k) < 3) ?? myHand[myHand.length - 1] ?? null;
-    if (pick !== null && pick !== undefined) tryDiscard(pick);
+    // 摆法里一张都挑不出来（全是坎）才退回按牌面找：这时候没有位置，只能交给重排去配
+    if (pick === null) { at = undefined; pick = [...myHand].reverse().find(k => cnt(k) < 3) ?? myHand[myHand.length - 1] ?? null; }
+    if (pick !== null && pick !== undefined) tryDiscard(pick, at);
   }, [now, myTurnToDiscard, deadline, selectedCard, pending]);
 
   function onAction(o: ActionOption) {
@@ -2562,15 +2571,8 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     prevHandRef.current = { len: myHand.length, melds: myMeldCount };
     // 亮牌阶段：保持打牌时的排法，胡进来的那张单独摆一列，不重新理牌
     if (revealingRef.current) {
-      const rest = myHand.slice();
-      const keep: Kind[][] = [];
-      for (const col of cols) {
-        const c: Kind[] = [];
-        for (const k of col) { const i = rest.indexOf(k); if (i >= 0) { rest.splice(i, 1); c.push(k); } }
-        if (c.length) keep.push(c);
-      }
-      for (const k of rest) keep.push([k]);
-      setCols(keep);
+      const kc = keepCols(cols, myHand);
+      setCols([...kc.cols, ...kc.rest.map(k => [k])]);
       return;
     }
     // 起手牌（这一局还没排过）不管开关开没开，都先智能理一遍 —— 总不能让人对着一堆散牌开局
@@ -2578,13 +2580,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     // 那是他的思路，别给人拆了
     if (!cols.length) { setCols(autoCols(myHand)); return; }
     // 先拿现在的摆法去对手牌：还在手上的原样留着，新进来的另算
-    const remaining = myHand.slice();
-    const next: Kind[][] = [];
-    for (const col of cols) {
-      const keep: Kind[] = [];
-      for (const k of col) { const i = remaining.indexOf(k); if (i >= 0) { keep.push(k); remaining.splice(i, 1); } }
-      if (keep.length) next.push(keep);
-    }
+    const { cols: next, rest: remaining } = keepCols(cols, myHand);
     /* **进张的那一下不理牌**：摸上来、吃 / 碰 / 偎 / 提 / 跑 完了正要出牌的时候，
        牌一动位置就全变了，本来想打哪张都找不着，手忙脚乱。
        所以这时候原来的摆法一张不动，新进来的牌单独摆到最右边（一眼看得见），
@@ -3284,22 +3280,27 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
                它一出现整手牌就重新铺开、跟着歪一下，很难受。 */
             const pitch = colsShown.length > 1 ? FAN_SPREAD / (colsShown.length - 1) : 15;
             const angle = fanMode && !revealing ? (colsShown.length > 1 ? -FAN_SPREAD / 2 + pitch * i : pitch) : 0;
-            /* 高度按**一张牌**算，跟只有一张牌的那种列一样 —— 所有列都是底边对齐的，
-               这样它就正好落在最右边那一组的高度上。
-               （之前按三张算、虚位又全摆在负数位置，整个框就飘到牌顶上面去了。） */
-            const h = colH(1);
+            /* 高度按**三张牌**算：摆满三张的那种列有多高，这个空组就有多高。
+               以前只画最底下一个「＋」—— 一个巴掌大的小方块杵在一排牌旁边，
+               既不好找，拖过去也容易擦边落回隔壁组。现在三张牌的位置上各摆一个「＋」，
+               整整一列的靶子，一眼看得见、随便哪一格松手都算。
+               三个虚位都摆在 0 / STEP / 2·STEP（stack 自己就有三张高），
+               所以不会像早先那样飘到牌顶上面去。 */
+            const h = colH(AIM_LEN);
             const st: React.CSSProperties = fanMode && !revealing
               ? { position: 'absolute', left: '50%', bottom: FAN_LIFT - TRIM, height: h, transformOrigin: '50% calc(100% + 2px)', transform: `translateX(-50%) rotate(${angle}deg)`, zIndex: 100 - i }
-              : { width: CARD_W, height: colBox(1) };
+              : { width: CARD_W, height: colBox(AIM_LEN) };
             return (
               <div key="ghost" data-col={i} className={`hand-col ghost-col ${drag && drag.overCol === i ? 'drop-target' : ''}`}
                 onClick={() => { if (selected) moveCard(selected, null); }} style={{ ...st, ['--slot-up' as any]: '0px' }}>
                 <div className="stack" style={{ height: h, ['--slot-up' as any]: '0px' }}>
-                  {/* 平时只露一个「＋」；牌拖到这儿才把虚线框亮出来（跟拖到别的牌组上高亮是一回事） */}
-                  <div className="col-slot" aria-hidden style={{ top: 0, height: CARD_TAIL }} />
+                  {/* 平时只露三个「＋」；牌拖到这儿才把虚线框亮出来（跟拖到别的牌组上高亮是一回事） */}
+                  {Array.from({ length: AIM_LEN }, (_, k) =>
+                    <div key={`gs${k}`} className="col-slot" aria-hidden style={{ top: k * STEP, height: CARD_TAIL }} />)}
                   {/* 准星：位置、大小跟别的列一致（都在"第三张牌"那一行），拖动判定才排得在同一条弧上 */}
-                  <div className="col-aim" aria-hidden style={{ top: (1 - AIM_LEN) * STEP, height: CARD_TAIL }} />
-                  <span className="ghost-plus" style={{ top: Math.round(CARD_TAIL / 2) - 12 }}>＋</span>
+                  <div className="col-aim" aria-hidden style={{ top: 0, height: CARD_TAIL }} />
+                  {Array.from({ length: AIM_LEN }, (_, k) =>
+                    <span key={`gp${k}`} className="ghost-plus" style={{ top: k * STEP + Math.round(CARD_TAIL / 2) - 12 }}>＋</span>)}
                 </div>
               </div>
             );

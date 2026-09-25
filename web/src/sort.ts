@@ -603,3 +603,38 @@ export function markInMelds(melds: { cards: Kind[]; cids?: number[] }[], cid: nu
   if (typeof cid === 'number') return melds.findIndex(m => m.cids?.includes(cid));
   return melds.findIndex(m => card !== null && card !== undefined && card >= 0 && m.cards.includes(card));
 }
+
+/**
+ * 按**位置**把一张牌从手牌分组里拿走。
+ *
+ * 为什么不能按牌面拿：同一个字有四张，手里常常摆着两张一样的（比如两张小六，一张在左边那组、
+ * 一张单独摆在右边）。先斩后奏出牌的时候，画面上得让**玩家点的那一张**离手。
+ * 以前是拿新手牌去对一遍旧摆法、按牌面从左往右配对，配不上的那一张算被打掉 ——
+ * 于是永远是**最右边**那张同字牌消失：玩家点了左边那张，画面上左边那张又冒回来、
+ * 右边那张反而不见了，接着整手牌重理一遍，看着就像"牌自己乱跳"。
+ *
+ * 位置对不上（牌面变了 = 这个位置已经过期）就返回 null，让调用方退回老办法，宁可不动也不乱动。
+ */
+export function dropCardAt(cols: Kind[][], col: number, idx: number, card: Kind): Kind[][] | null {
+  if (cols[col]?.[idx] !== card) return null;
+  return cols.map((c, i) => (i === col ? c.filter((_, j) => j !== idx) : c.slice())).filter(c => c.length);
+}
+
+/**
+ * 拿当前手牌去对一遍现在的摆法：还在手上的原样留在原来那一组，手上没有的剔掉，
+ * 手牌里多出来的（新进张）作为 rest 返回，由调用方决定摆哪儿。
+ *
+ * 只认牌面、从左往右配对 —— 这对"进张"是对的（新来的牌本来就没位置），
+ * 但对"出牌"不够：同字的两张分在两组里时，它总是留左边那张、剔掉右边那张。
+ * 所以**出牌要先用 dropCardAt 按位置拿走**，再走这一步。
+ */
+export function keepCols(cols: Kind[][], hand: Kind[]): { cols: Kind[][]; rest: Kind[] } {
+  const rest = hand.slice();
+  const out: Kind[][] = [];
+  for (const col of cols) {
+    const keep: Kind[] = [];
+    for (const k of col) { const i = rest.indexOf(k); if (i >= 0) { keep.push(k); rest.splice(i, 1); } }
+    if (keep.length) out.push(keep);
+  }
+  return { cols: out, rest };
+}

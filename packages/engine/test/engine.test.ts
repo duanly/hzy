@@ -1947,3 +1947,47 @@ test('「胡」字标在哪一组：认牌号不认牌面（吃了壹贰叁、�
   // 偎起胡 / 提龙胡：card 是 -1、cid 也缺着，一组都不标
   assert.equal(markInMelds(melds, undefined, -1 as any), -1, '没有"胡的那一张"就不标');
 });
+
+test('出牌要按位置拿牌，不能按牌面：手里两张同字分在两组时，走的必须是点的那一张', async () => {
+  const { dropCardAt, keepCols } = await import('../../../web/src/sort.ts');
+  /* 老板遇到的那一手：左边码好一组「肆伍陆」，右边单独摆着一张陆（刚摸进来的）。
+     手里两张陆，点的是**左边那组里**的陆。 */
+  const cols = [[S(4), S(5), S(6)], [S(7), S(8)], [S(6)]];
+  const card = S(6);
+
+  // 服务端认了之后我手里剩下的（引擎排过序，只是个多重集合）
+  const handAfter = [S(4), S(5), S(6), S(7), S(8)];
+
+  /* 老办法：只拿新手牌去对一遍摆法、按牌面从左往右配 ——
+     左边那组的陆先被配走，右边那张单摆的陆反而被剔掉。
+     画面上就是"点了左边的，左边又冒回来、右边那张不见了"。 */
+  const wrong = keepCols(cols, handAfter).cols;
+  assert.deepEqual(wrong, [[S(4), S(5), S(6)], [S(7), S(8)]],
+    '这一行记录的是**病**本身：按牌面配对总是留左剔右');
+
+  // 新办法：先按位置把点的那一张拿走，再去对手牌
+  const dropped = dropCardAt(cols, 0, 2, card);
+  assert.deepEqual(dropped, [[S(4), S(5)], [S(7), S(8)], [S(6)]], '走的是左边那组里的陆');
+  const right = keepCols(dropped!, handAfter).cols;
+  assert.deepEqual(right, [[S(4), S(5)], [S(7), S(8)], [S(6)]],
+    '右边那张单摆的陆原地不动 —— 玩家点哪张走哪张');
+  assert.notDeepEqual(right, wrong, '两种做法结果确实不同，这个用例没白写');
+});
+
+test('dropCardAt：位置过期就不动手，退回老办法', async () => {
+  const { dropCardAt } = await import('../../../web/src/sort.ts');
+  const cols = [[S(4), S(5), S(6)], [S(7)]];
+  assert.equal(dropCardAt(cols, 0, 1, S(9)), null, '这个位置上不是这张牌 —— 摆法已经变了');
+  assert.equal(dropCardAt(cols, 5, 0, S(4)), null, '列号越界');
+  assert.equal(dropCardAt(cols, 0, 9, S(4)), null, '牌号越界');
+  assert.deepEqual(dropCardAt(cols, 1, 0, S(7)), [[S(4), S(5), S(6)]], '拿空的那一列要整列去掉');
+  assert.deepEqual(cols, [[S(4), S(5), S(6)], [S(7)]], '原来那份不许被改');
+});
+
+test('keepCols：进张的牌当 rest 返回，不塞进原来的组里', async () => {
+  const { keepCols } = await import('../../../web/src/sort.ts');
+  const cols = [[S(4), S(5)], [S(7), S(8)]];
+  const r = keepCols(cols, [S(4), S(5), S(7), S(8), S(2)]);
+  assert.deepEqual(r.cols, [[S(4), S(5)], [S(7), S(8)]], '原来的摆法一张不动');
+  assert.deepEqual(r.rest, [S(2)], '新进来的那张单独交出去');
+});
