@@ -571,10 +571,23 @@ test('一局结束后亮出所有人的手牌和剩下的公共牌', () => {
   assert.ok(Array.isArray(after.pileRest), '结束后能看到剩下的公共牌');
 });
 
+/** 固定牌序：一副 80 张（20 个字各 4 张），拿定死的种子洗一次。
+    `g.start()` 不给牌就是真随机洗 —— 这一局要是恰好早早胡了，
+    下面"打到公共牌派出 15 张"那一段就走不到，用例随机红一次。
+    这一轮已经被同一类问题绊过三回（麻将流局、语音后缀、这条），一并钉死。 */
+function fixedDeck(seed = 20260925) {
+  const d: number[] = [];
+  for (let k = 0; k < 20; k++) for (let n = 0; n < 4; n++) d.push(k);
+  let a = seed >>> 0;
+  const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), 1 | t); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+  return d;
+}
+
 test('延时卡：开局一张，到点自动用掉一张续时间；公共牌派出 15 张后再发一张', () => {
   let now = 0;
   const g = new Game({ rules: getRules('hy_honghei'), baseScore: 1, dealer: 0, now: () => now });
-  g.start();
+  g.start(fixedDeck());
   assert.deepEqual(g.delayCards, [1, 1, 1], '开局每人一张');
 
   // 庄家出牌到点：先自动用掉一张延时卡，行动时间再续 30 秒，牌还没打出去

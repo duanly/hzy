@@ -385,14 +385,25 @@ server.on('upgrade', (req, socket) => {
     if (sess.room && sess.userId !== null) {
       const room = sess.room;
       room.unspectate(sess.userId);
-      // 断线：给 60 秒重连机会（私人房），大厅直接由机器人接管
-      if (room.cfg.isPrivate) {
-        const seat = room.seats[room.seatOf(sess.userId)];
-        if (seat) seat.client = null;
-        room.broadcast();
-        const uid = sess.userId;
-        setTimeout(() => { const s = room.seats[room.seatOf(uid)]; if (s && !s.client && room.status !== 'closed') room.leave(uid, 'disconnect'); }, 60000);
-      } else room.leave(sess.userId, 'disconnect');
+      /* 断线一律先给一段重连宽限，别当场把位子交出去。
+         以前大厅是 `else room.leave(..., 'disconnect')` —— **socket 一断，立刻 isBot = true**。
+         手机上锁个屏、切个后台、WiFi 跟 4G 一换手，WebSocket 就断一次，
+         于是"人就离开了一小会，回来发现机器人在替我打"。
+         宽限期内牌局照常往前走：没人应答就走超时那条路自动出牌，
+         真不回来的话，一局里超时两次照样会转成托管（见 room.ts 的 misses）——
+         所以这段宽限不会把桌子卡住，只是不再把"网络抖一下"当成"人跑了"。
+         大厅给的比私人房短：大厅的位子还等着别人来坐。 */
+      const grace = room.cfg.isPrivate ? 60000 : 25000;
+      const seat = room.seats[room.seatOf(sess.userId)];
+      if (seat) seat.client = null;
+      room.broadcast();
+      const uid = sess.userId;
+      setTimeout(() => {
+        const i = room.seatOf(uid);
+        if (i < 0 || room.status === 'closed') return;
+        const s = room.seats[i];
+        if (s && !s.client) room.leave(uid, 'disconnect');   // 还没回来才真交出去
+      }, grace);
     }
   });
 

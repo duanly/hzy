@@ -20,6 +20,10 @@ interface Seat {
   autoBot?: boolean;
   /** 连着超时几回了：**第二回**才交给机器人 —— 头一回可能只是走开倒个水 */
   misses?: number;
+  /* 刚（重）连上来、而这会儿还有帧没播完：这一批剩下的帧**不要发给他**。
+     他手里没有任何底子，那些帧是"当时的快照"、里头 myOptions 是被故意抹掉的
+     —— 发过去只会让他眼睁睁看着自己该出牌却一个按钮都没有。见 sendFrames。 */
+  freshJoin?: boolean;
   awayAt?: number;   // 玩家中途退出、交给机器人托管的时刻（回来可以接着打）
   vacatedAt?: number;   // 这个位子什么时候空出来的：补位按先后，谁先走空谁先被接
   /** 他什么时候坐下的：桌上最早坐下的那个真人就是「桌长」（几局一歇时由他点继续） */
@@ -125,6 +129,9 @@ export class Room {
     meld: 1000, bupai: 200, pass: 150, penalty: 700, tilong_score: 400, hu: 600,
   };
   /** 一帧到此为止：这些动作各自是一个"看得见的步骤" */
+  /** 客户端最多允许落后服务端多久（毫秒）。见 flush() 里"动画欠账封顶"那一段。
+      客户端自己的兜底是 4 秒整批丢弃，这儿留足余量。 */
+  private static MAX_ANIM_LAG_MS = 1800;
   private static SLICE_END = new Set(['draw', 'discard', 'play_drawn', 'dead', 'meld', 'penalty', 'tilong_score', 'hu', 'liuju', 'deal', 'dealer_card']);
 
   private onGameEvent(e: GameEvent) {
@@ -278,6 +285,11 @@ export class Room {
     if (existing >= 0) { // 重连 / 托管后回来接着打
       const s = this.seats[existing];
       s.client = client; s.isBot = false; s.awayAt = undefined; s.botAt = undefined; s.autoBot = false; s.misses = 0; s.stood = false;
+      /* 正在播动画的时候回来的：剩下那几帧跳过，直接给他实时状态。
+         不这么做的话，他会先收到一串旧快照（myOptions 被抹成 null），
+         于是"重连回来轮到我出牌，可吃碰过全不见了，读秒还在走" —— 三人房压测里
+         每次掉线重连必现，按钮空 2.5~3 秒；牌桌越忙、动画越长，空得越久。 */
+      s.freshJoin = this.frames.length > 0;
       s.seatedAt ??= Date.now();   // 老座位可能还没记过（回来的人排在原来的位置上）
       this.remember(this.publicUser(user));
       this.broadcast();
@@ -758,7 +770,13 @@ export class Room {
     if (this.game.tick(this.now())) {
       // 记录超时的人类玩家
       for (const e of this.game.events.slice(before)) {
-        if (e.t === 'pass' || e.t === 'discard' || e.t === 'play_drawn') {
+        /* **只认"轮到你出牌却没出"这一种超时。**
+           以前 pass 也算 —— 可 pass 是别人打了一张、你吃得起但不想吃，
+           到点自动放过。那是一个**正经的选择**，不是人不在：
+           牌局照样往下走，谁也没被耽误。按那个记，坐在桌上安安静静不吃两张牌
+           就被判成"跑了"交给机器人，正是老板说的"要不起也被接手"。
+           真不在的人跑不掉：轮到谁谁就得出牌，一局之内必然撞上这条。 */
+        if (e.t === 'discard' || e.t === 'play_drawn') {
           const s = this.seats[e.seat];
           if (s && !s.isBot && s.userId !== null && s.userId > 0) {
             this.db.bumpStats(s.userId, { timeouts: 1 });
@@ -1156,6 +1174,38 @@ export class Room {
         this.frames[i - 1].delay = Math.max(this.frames[i - 1].delay, Math.round(ms * k));
       }
     }
+    /* ── 动画欠账封顶 ──────────────────────────────────────────────
+     * 三个真人打的时候没有机器人提速，每一手的停顿都是实打实的：
+     * 一次"没人要得起"要捂 holdMs()（跟读秒成正比，12 秒读秒时约 1.2~2 秒），
+     * 后面 dead 那一帧再 900ms，胡牌前还要再想一拍。几手下来就积起来了 ——
+     * 三人真人房压测里量到队列最多压着 **4798ms** 的动画。
+     *
+     * 而客户端自己的兜底是"排队超过 4 秒就整批扔掉、直接跳到最新局面"。
+     * 两头一凑，玩家看到的就是老板描述的那样：读秒卡着不动（画面上是那张
+     * 早就过期的旧快照，圈贴着红），然后哗啦跳过好几个状态，轮到下一个人
+     * 又卡一下再跳 —— 一路这样转到胡牌或者流局，中间压根来不及出手。
+     * 落后一旦形成就还不回来，所以"节奏乱一次，这一局后面就全乱"。
+     *
+     * 封顶之后：桌面闲着的时候节奏照旧，忙起来就把这一批的停顿等比压缩，
+     * 宁可动画快一点，也不让人落在服务端后头。
+     *
+     * 代价说明白：压缩的时候"捂一下再揭晓"那段也会跟着短。那段本来是用来
+     * 遮掩"这张牌到底是没人要得起、还是有人弃了碰"的。忙起来遮得没那么严实 ——
+     * 但跟"整局都点不动"比，这个代价可以接受。 */
+    {
+      const pending = Math.max(0, this.frameAt - Date.now());      // 上一批还欠着多久
+      const total = this.frames.reduce((a, f) => a + f.delay, 0);  // 这一批要播多久
+      if (pending + total > Room.MAX_ANIM_LAG_MS) {
+        // 先把上一批欠的往回收一点，再给这一批留出剩下的额度
+        if (pending > Room.MAX_ANIM_LAG_MS) this.frameAt = Date.now() + Room.MAX_ANIM_LAG_MS;
+        const room = Math.max(250, Room.MAX_ANIM_LAG_MS - Math.min(pending, Room.MAX_ANIM_LAG_MS));
+        if (total > room) {
+          const shrink = room / total;
+          // 每帧至少留 40ms：全压成 0 的话客户端会一次性收到一大串，又成了"哗啦跳几个状态"
+          for (const f of this.frames) f.delay = Math.max(40, Math.round(f.delay * shrink));
+        }
+      }
+    }
     // 除了立刻发的第一帧，后面的帧要等各自的动画时间；这段等待里机器人也按住不动
     // 每一帧的 delay 决定"下一帧"什么时候发，所以总等待 = 除最后一帧外所有帧的 delay。
     // 注意 frameAt 只能往后走：上一批还没播完时有人出牌，不能把已经排好的停顿一笔勾销。
@@ -1201,6 +1251,9 @@ export class Room {
         const s = this.seats[i];
         if (!s.client || s.userId === null) continue;
         const mine = f.evs.filter(e => e.t !== 'options' || e.seat === i);
+        /* 半路回来的人：这一批的动画他从头就没看，补播没有意义，
+           还会把他的按钮按掉。直接给实时状态，让他立刻能打。 */
+        if (s.freshJoin) { s.client.send({ type: 'game.events', events: [], room: this.view(s.userId) }); continue; }
         const gv = last ? undefined : f.gviews[i];
         if (gv && this.game) {
           if (gv.phase === this.game.phase) {
@@ -1212,20 +1265,28 @@ export class Room {
             // 更要紧的是**服务端已经没有我的选项了**（窗口关了 / 这一轮已经定了）：
             // 那就把按钮收掉。以前这里只在 live 有值时才覆盖，live 为 null 时留着旧快照 ——
             // 于是碰的按钮还在那儿转圈，点下去却"没有任何反应"（错误码是静音的 already decided）。
-            if (gv.myOptions) {
-              if (!live) gv.myOptions = null;
-              else {
-                gv.myOptions.deadline = live.deadline;
-                (gv.myOptions as any).span = (live as any).span;
-                // 按钮本身也要跟着最新的来：快窗口一关，服务端手里就只剩「吃」了，
-                // 快照里那几个碰 / 跑 / 胡 再留着就是"看得见、点不动"
-                gv.myOptions.options = live.options;
-                (gv.myOptions as any).fastUntil = (live as any).fastUntil;
-                (gv.myOptions as any).fastSpan = (live as any).fastSpan;
-                (gv.myOptions as any).huUntil = (live as any).huUntil;
-                (gv.myOptions as any).huSpan = (live as any).huSpan;
-              }
-            }
+            /* **按钮一律以实时的为准，快照里有没有都一样。**
+               以前这儿外面套着 `if (gv.myOptions)` —— 只在"快照里本来就有按钮"时才去校正。
+               于是出现这么一种：快照是在**轮到我之前**拍的（myOptions 是 null），
+               可上面两行已经把 deadline 换成实时的了 —— 发出去就是
+               **读秒是新的、按钮是空的**，正好就是老板说的
+               「倒计时还在，我的吃、碰甚至过牌按钮都不见了」。
+               三人真人房压测里这条最常出现在 dead（这张牌没人要）那一帧后面：
+               牌一进池子就轮到我出牌了，可我收到的还是那张"还没轮到我"的快照。
+               既然已经认定 phase 跟实时一致、也已经采用了实时的 deadline，
+               那按钮就没有理由还用旧的 —— 半新半旧才是病根。 */
+            if (live) {
+              gv.myOptions = {
+                ...(gv.myOptions ?? {}),
+                options: live.options,
+                deadline: live.deadline,
+                span: (live as any).span,
+                fastUntil: (live as any).fastUntil,
+                fastSpan: (live as any).fastSpan,
+                huUntil: (live as any).huUntil,
+                huSpan: (live as any).huSpan,
+              } as any;
+            } else gv.myOptions = null;
           } else {
             // 这一帧是旧画面：局面早就往前走了，别把当时的按钮（比如摸牌那一瞬的「打出」）
             // 留在屏幕上，点了也没用，还会泄漏信息
@@ -1245,6 +1306,8 @@ export class Room {
        `staleTail`：这一批的最后一帧发的是**当时的快照**（引擎在这一帧发出去之前又往前走了一步，
        所以不敢发实时状态）—— 那客户端就停在那个快照上了，后面又没有帧来纠正它。
        出过一次这样的事：打出去的那张牌还留在手上，得等下一个动作才恢复。补一次实时状态。 */
+    // 这一批播完了：半路回来的人重新跟上正常节奏
+    if (!this.frames.length) for (const s of this.seats) s.freshJoin = false;
     if (!this.frames.length && (this.pendingBroadcast || staleTail)) this.broadcast();
   }
 

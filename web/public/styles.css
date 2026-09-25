@@ -1315,8 +1315,14 @@ html, body { background-color: #10452f; }
 /* 页面别跟着手指飘：关掉整页的回弹 / 下拉刷新；牌桌那一页干脆不让浏览器接管手势 */
 html, body { overscroll-behavior: none; overflow: hidden; }
 #root:not(.upright) { touch-action: none; overscroll-behavior: none; }
-/* 弹窗里的长列表（纪录表、回放）还是要能上下滑 */
-#root:not(.upright) .modal-bg, #root:not(.upright) .modal { touch-action: pan-y; overscroll-behavior: contain; }
+/* 弹窗里的长列表（纪录表、回放、胡牌详情）还是要能滑。
+   **两个方向都得放开**，不能只写 pan-y ——
+   竖着拿手机的时候整个 #root 是 rotate(90deg) 的（见上面那段强制横屏），
+   pan-y 指的是**元素自己的 Y 轴**，转过 90° 之后那已经是屏幕的横向了：
+   手指上下划＝元素的左右，于是怎么划都不动。
+   老板反馈的"竖屏时结算详情窗不能滚动"就是这么来的（横屏那会儿是好的，
+   所以一直没发现）。放开两轴，转不转都对。 */
+#root:not(.upright) .modal-bg, #root:not(.upright) .modal { touch-action: pan-x pan-y; overscroll-behavior: contain; }
 
 /* 装到桌面 */
 /* 挪到名片右边、跟头像平齐：图标在上、字在下的一颗方按钮 */

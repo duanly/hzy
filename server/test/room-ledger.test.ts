@@ -161,3 +161,55 @@ test('托管一局一清：同一局漏两手才交给机器人，新一局重�
   assert.equal(room.seats[0].misses, 0, '次数也跟着清零');
   assert.equal(room.seats[0].botAt, undefined, '机器人的排程也要撤掉，别新一局还替他出牌');
 });
+
+/**
+ * 什么样的超时才算"人不在"。
+ *
+ * 老板的原话：「如果长时间的牌我要不起（不需要行动），机器人就会接手」。
+ * 根子是以前把 pass 也当成超时记了一笔 —— 可 pass 是"别人打了一张、我吃得起但不想吃，
+ * 到点自动放过"，那是个正经选择，牌局照样往下走，谁也没被耽误。
+ * 安安静静不吃两张牌就被判成跑了，冤枉。
+ *
+ * 现在只认「轮到你出牌却没出」。真不在的人跑不掉 —— 轮到谁谁就得出牌。
+ */
+test('只有"该你出牌却没出"才算超时；不吃牌不算', () => {
+  const room: any = table([1, 2, 3]);
+  room.seats.forEach((s: any) => { s.client = { userId: s.userId, send() {} }; });
+  room.startRound();
+  const g = room.game;
+
+  /* 直接把事件塞进引擎的 events 里，再让房间按"超时"那条路数一遍 ——
+     比起真等三十秒读秒，这样能精确控制"这一次到底超的是哪一种"。 */
+  const countAfter = (evs: any[]) => {
+    room.seats.forEach((s: any) => { s.misses = 0; s.autoBot = false; });
+    const before = g.events.length;
+    g.events.push(...evs);
+    // 复刻 room.tick 里那一段（tick 真跑起来要等真实时间，这儿只验分类规则）
+    for (const e of g.events.slice(before)) {
+      if (e.t === 'discard' || e.t === 'play_drawn') {
+        const s = room.seats[e.seat];
+        if (s && !s.isBot && s.userId !== null && s.userId > 0) {
+          s.misses = (s.misses ?? 0) + 1;
+          if (s.misses >= 2) s.autoBot = true;
+        }
+      }
+    }
+    return room.seats[0].misses;
+  };
+
+  assert.equal(countAfter([{ t: 'pass', seat: 0, card: 1 }, { t: 'pass', seat: 0, card: 2 }]), 0,
+    '连着两张不吃：一笔都不该记，更不该托管');
+  assert.equal(room.seats[0].autoBot, false, '不吃牌不该被机器人接手');
+
+  assert.equal(countAfter([{ t: 'discard', seat: 0, card: 1 }]), 1, '该出牌没出：记一笔');
+  assert.equal(room.seats[0].autoBot, false, '头一回不接手 —— 可能只是走开倒杯水');
+
+  assert.equal(countAfter([{ t: 'discard', seat: 0, card: 1 }, { t: 'play_drawn', seat: 0, card: 2 }]), 2,
+    '同一局里连着两次该出牌没出');
+  assert.equal(room.seats[0].autoBot, true, '这才交给机器人');
+
+  // 混着来：pass 不该把 discard 那一笔顶成两笔
+  assert.equal(countAfter([{ t: 'pass', seat: 0, card: 1 }, { t: 'discard', seat: 0, card: 2 }, { t: 'pass', seat: 0, card: 3 }]), 1,
+    '中间夹着的 pass 不算数');
+  assert.equal(room.seats[0].autoBot, false, '只有一次真超时，还不到托管');
+});

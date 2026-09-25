@@ -33,8 +33,30 @@ export function Avatar({ user, size = 40, onClick, onHold, square, wide }: { use
   return <div className={cls} style={{ ...style, background: bg }} {...h}>{txt}</div>;
 }
 
+/**
+ * 弹窗。点背景关掉 —— 但**必须是"按下"也在背景上**才算。
+ *
+ * 为什么要这么讲究：行动按钮是 onPointerDown 就响应的（为了跟手）。
+ * 手指按在「吃」上 → 弹窗当场出来、盖在手指底下 → 手指一抬，
+ * 这一下的 click 落在了**刚冒出来的背景**上 → 立刻又把弹窗关了。
+ * 表现就是"吃牌选择框一闪而过，必须一直按住吃按钮才看得见" —— 按住不放就没有抬手、
+ * 没有 click，所以它才留得住。
+ *
+ * 记一下"按下"落在哪儿就解决了：开弹窗那一下的 pointerdown 在按钮上、不在背景上，
+ * 随后那个 click 自然就不算数。顺带还治好了另一个毛病 ——
+ * 从弹窗里往外拖再松手，以前也会误关。
+ */
 export function Modal({ children, onClose, top, className }: { children: React.ReactNode; onClose?: () => void; top?: boolean; className?: string }) {
-  return <div className={`modal-bg ${top ? 'at-top' : ''} ${className ?? ''}`} onClick={onClose}><div className="modal" onClick={e => e.stopPropagation()}>{children}</div></div>;
+  const downOnBg = useRef(false);
+  return <div className={`modal-bg ${top ? 'at-top' : ''} ${className ?? ''}`}
+    onPointerDown={e => { downOnBg.current = e.target === e.currentTarget; }}
+    onClick={e => {
+      const ok = downOnBg.current && e.target === e.currentTarget;
+      downOnBg.current = false;
+      if (ok) onClose?.();
+    }}>
+    <div className="modal" onClick={e => e.stopPropagation()}>{children}</div>
+  </div>;
 }
 
 let toastFn: ((s: string) => void) | null = null;
