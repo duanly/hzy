@@ -179,7 +179,7 @@ export type ServerMsg =
   | { type: 'auth.ok'; user: PublicUser }
   | { type: 'auth.fail'; reason: string }
   | { type: 'lobby.list'; tiers: TierInfo[]; resume?: string }   // resume：中途退出、机器人托管中的那一桌房号
-  | { type: 'lobby.tables'; variants: LobbyVariant[]; resume?: string; hosted?: HostedRoom[] }
+  | { type: 'lobby.tables'; variants: LobbyVariant[]; resume?: string; resumeName?: string; hosted?: HostedRoom[] }
   | { type: 'room.created'; roomId: string; name: string }   // 房开好了（房主没进去，页面上问他下一步）
   | { type: 'room.state'; room: RoomView }
   | { type: 'room.left' }

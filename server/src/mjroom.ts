@@ -437,7 +437,9 @@ export class MahjongRoom {
     const i = this.seatOf(userId);
     if (i < 0 || this.seats[i].stood) return false;
     if (this.status === 'playing' && this.game && !this.game.ended) return true;
-    return !this.cfg.isPrivate;
+    if (!this.cfg.isPrivate) return true;
+    // 私人房已经开过局：两局之间的空当也要送他回去，不然锁屏两秒位子就没了（见 Room.resumable）
+    return this.status === 'paused' || this.roundNo > 0;
   }
 
   spectate(user: UserRow, client: Client): string | null {

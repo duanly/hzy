@@ -1030,15 +1030,18 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
      手机壳里 confirm() 弹不出来（原生没接管弹窗），所以不再问：直接退出，
      座位和分数都留着，机器人先替你打，回大厅点「返回牌局」就能接着打 */
   const leaveTable = () => {
-    if (room.status === 'playing') toast(room.isPrivate ? '已退出，牌局暂停等你回来' : '已退出，机器人先替你打着，回来可接着打');
+    if (room.status === 'playing') toast('已退出，机器人先替你打着，回大厅点「返回牌局」接着打');
     socket.send({ type: 'room.leave' }); onLeft();
   };
   /* 起立离开：明说了不再回这一桌。
      正在打的那一局照样由机器人替你打完（账本来就按开局时坐这儿的人算），
      但位子打上"已起立"的印子 —— 断线重连不再把你送回来，这一局一结束位子就让出去。
-     跟上面那个「大厅」的区别就在这儿：那个是暂时走开，位子还给你留着。 */
+     私人房更直接：位子当场空出来，牌局暂停等人补位。
+     跟上面那个「返回大厅」的区别就在这儿：那个是暂时走开，位子还给你留着，桌子照转。 */
   const standUp = () => {
-    toast(room.status === 'playing' ? '已起立，这一局机器人替你打完，位子不再留' : '已起立离开');
+    toast(room.status !== 'playing' ? '已起立离开'
+      : room.isPrivate ? '已起立，位子让出去了，牌局暂停等人补位'
+      : '已起立，这一局机器人替你打完，位子不再留');
     socket.send({ type: 'room.leave', stand: true } as any); onLeft();
   };
   const [eave, setEave] = useState<string>(() => { try { return localStorage.getItem('phz_eave') ?? 'green'; } catch { return 'green'; } });

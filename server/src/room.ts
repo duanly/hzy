@@ -267,13 +267,19 @@ export class Room {
     const i = this.seatOf(userId);
     if (i < 0 || this.seats[i].stood) return false;
     if (this.status === 'playing' && this.game && !this.game.ended) return true;
-    /* 还没开局的桌子分两种看：
+    /* 还没在打牌的桌子分几种看：
        - **大厅的桌**：他是点了"开始游戏"随机坐下的，正排着队等人齐 ——
          网络抖一下就把他扔回大厅、还得再点一次，不合适，送他回原桌接着等。
-       - **私人房**：是他自己挑的地方（多半还是自己开的房）。人不在就别把他锁在这一桌上 ——
-         "开好房坐下、想去大厅打两把，结果点哪儿都回自己房"就是这么来的。
-         位子让出来，想回来从「我的房间」或者房号再进一次就是了。 */
-    return !this.cfg.isPrivate;
+       - **私人房、已经开过局**：两局之间的空当也算"这一摊还在打"。
+         以前这儿一律返回 false，于是上一局刚打完、手机锁屏两秒再回来，
+         位子就被当场收走了（auth 里那句 `r.leave(...)`）——
+         桌上从此 2/3 个人干等，谁也不知道第三个人去哪了。压测里那次
+         "打完第 1 局就一直卡在 waiting" 就是这么来的。真要走人有「起立」。
+       - **私人房、一局没打过**：开好房坐下就走开的那种。位子让出来，
+         别把他锁在自己这一桌上 —— "想去大厅打两把，结果点哪儿都回自己房"
+         就是这么来的。想回来从「我的房间」或者房号再进一次就是了。 */
+    if (!this.cfg.isPrivate) return true;
+    return this.status === 'paused' || this.roundNo > 0;
   }
 
   join(user: UserRow, client: Client, password?: string): string | null {
@@ -324,9 +330,11 @@ export class Room {
    * 离开这一桌。三种走法：
    * - `disconnect`：断线。座位给他留着（大厅由机器人托管、私人房另有 60 秒宽限），回来接着打。
    * - `leave`：点了返回大厅。跟断线一个待遇 —— 人多半还会回来。
-   * - `stand`：**起立离开**。明说了不再回这一桌：正在打的那一局照样由机器人替他打完
-   *   （账本来就按开局时坐这儿的人算），但座位打上"已起立"的印子 ——
-   *   重连不再把他送回来，本局一结束位子就真让出去。
+   * - `stand`：**起立离开**。明说了不再回这一桌。
+   *   大厅：正在打的那一局照样由机器人替他打完（账本来就按开局时坐这儿的人算），
+   *   座位打上"已起立"的印子 —— 重连不再把他送回来，本局一结束位子就真让出去。
+   *   私人房：位子当场空出来，牌局暂停等人补位（补位的人直接接手这手牌）。
+   *   私人房只有这一种走法会按停桌子。
    */
   leave(userId: number, reason: 'leave' | 'disconnect' | 'stand' = 'leave') {
     const idx = this.seatOf(userId);
@@ -334,14 +342,19 @@ export class Room {
     const s = this.seats[idx];
     if (reason === 'stand') s.stood = true;
     if (this.status === 'playing' && this.game && !this.game.ended) {
-      if (this.cfg.isPrivate) {
-        // 私人房：座位空出，牌局暂停，等人补位后继续（补位者接手该手牌）
+      /* 只有**起立**（明说了不回这一桌）才把私人房按停。
+         以前是私人房只要有人离桌就当场空位 + 暂停 —— 可"返回大厅看一眼"和"断线两分钟"
+         都会走到这儿，于是三个人打得好好的，一个人退出去，另外两个干坐着等。
+         退出和断线跟大厅一个待遇：机器人先替他打着，位子和分数都留着（awayAt），
+         桌子照转，他从大厅那条「返回牌局」点回来就接着打。
+         起立才是真的离开位置：位子当场空出来，三人桌少一个打不下去，这才暂停等人补位
+         （补位的人直接接手这手牌）。 */
+      if (this.cfg.isPrivate && reason === 'stand') {
         this.db.bumpStats(userId, { escapes: 1 });
         s.client = null; s.userId = null; s.isBot = false; s.ready = false; s.stood = false; s.vacatedAt = Date.now();
         this.pause();
       } else {
-        // 大厅：机器人接管本局，本局结束后离席
-        // 大厅：机器人接管，座位和分数都给他留着（`awayAt`），随时回来接着打
+        // 机器人接管，座位和分数都给他留着（`awayAt`），随时回来接着打
         s.client = null; s.isBot = true; s.awayAt = Date.now();
         // 自己走的（点返回 / 起立）才记一笔；断线不算逃跑
         if (reason !== 'disconnect') { s.botName = this.nameOf(userId) ?? undefined; this.db.bumpStats(userId, { escapes: 1 }); }

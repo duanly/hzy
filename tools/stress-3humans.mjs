@@ -169,6 +169,8 @@ clearInterval(cutter); clearInterval(sampler);
 console.log('\n');
 const r = humans.find(h => h.room)?.room;
 console.log(`跑完：打到第 ${r?.roundNo} 局，房间状态 ${r?.status}，总出手 ${humans.reduce((a, h) => a + h.acts, 0)} 次，掐线 ${cuts} 次`);
+if (process.env.DUMP) console.log('座位：', JSON.stringify(r?.seats?.map(s => ({ seat: s.seat, user: s.user?.nickname ?? null, ready: s.ready, online: s.online, isBot: s.isBot, auto: s.auto })), null, 0),
+  '\n暂停理由：', r?.pausedReason, ' nextRoundIn:', r?.nextRoundIn);
 console.log(problems.length ? `\n共 ${problems.length} 类问题：` : '\n没发现问题');
 for (const p of problems) console.log(`  · [${p.kind}] ${p.detail}`);
 process.exit(0);

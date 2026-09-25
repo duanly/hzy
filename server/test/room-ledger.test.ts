@@ -213,3 +213,84 @@ test('只有"该你出牌却没出"才算超时；不吃牌不算', () => {
     '中间夹着的 pass 不算数');
   assert.equal(room.seats[0].autoBot, false, '只有一次真超时，还不到托管');
 });
+
+/* ---------- 私人房中途退出：跟大厅一个待遇，别把整桌按停 ---------- */
+
+/** 造一张已经开打的三人私人桌 */
+function playing(ids: number[]) {
+  const room: any = table(ids);
+  room.start(ids[0]);
+  assert.equal(room.status, 'playing', '前提：牌局真的开起来了');
+  return room;
+}
+
+test('私人房点「返回大厅」：机器人接着替他打，桌子不停 —— 跟大厅一个样', () => {
+  const room = playing([1, 2, 3]);
+  room.leave(2, 'leave');
+
+  assert.equal(room.status, 'playing', '一个人退出，另外两个还要接着打，不许暂停');
+  assert.equal(room.pausedReason, null, '也不该挂个"暂停"的理由出来');
+  const s = room.seats[1];
+  assert.equal(s.userId, 2, '位子还是他的 —— 退出不等于让位');
+  assert.equal(s.isBot, true, '交给机器人托管');
+  assert.equal(s.stood, undefined, '没起立');
+  assert.ok(s.awayAt > 0, '记下托管的时刻，十分钟内回来都算数');
+  assert.equal(room.resumable(2), true, '大厅那条「返回牌局」要认得出这一桌');
+});
+
+test('私人房断线也一样：不暂停，回来接着打', () => {
+  const room = playing([1, 2, 3]);
+  room.leave(3, 'disconnect');
+  assert.equal(room.status, 'playing', '断线不该把整桌按停');
+  assert.equal(room.seats[2].userId, 3, '位子留着');
+  assert.equal(room.resumable(3), true, '回来找得到这一桌');
+});
+
+test('私人房「起立」才是真离开位置：位子当场空出，牌局暂停等人补位', () => {
+  const room = playing([1, 2, 3]);
+  room.leave(2, 'stand');
+
+  assert.equal(room.status, 'paused', '位子空了，三人桌打不下去，这时候才暂停');
+  const s = room.seats[1];
+  assert.equal(s.userId, null, '位子真让出去了');
+  assert.equal(s.isBot, false, '不是托管，是空位');
+  assert.equal(room.resumable(2), false, '他说了不回来，大厅就别再拽他回去');
+});
+
+test('大厅桌照旧：退出 / 起立都由机器人打完这一局', () => {
+  const db = new DB(':memory:');
+  const room: any = new Room({ id: 'L1', isPrivate: false, variant: 'hy_honghei', baseScore: 1 }, db);
+  seat(room, [1, 2, 3]);
+  room.start(1);
+  room.leave(2, 'leave');
+  assert.equal(room.status, 'playing');
+  assert.equal(room.seats[1].isBot, true);
+  room.leave(3, 'stand');
+  assert.equal(room.status, 'playing', '起立也是机器人打完这一局，不暂停');
+  assert.equal(room.seats[2].isBot, true);
+  assert.equal(room.seats[2].stood, true, '打上"已起立"的印子，这一局完了位子就让出去');
+});
+
+test('私人房两局之间断线重连：位子还是他的 —— 不能因为"这会儿没在打牌"就收走', () => {
+  const room = playing([1, 2, 3]);
+  // 一局打完，桌子回到 waiting 等下一局
+  room.status = 'waiting'; room.roundNo = 1; room.game = null;
+
+  assert.equal(room.resumable(2), true,
+    '上一局刚打完、手机锁屏两秒就回来，位子不该没了（不然桌上从此 2/3 人干等）');
+});
+
+test('私人房一局都没打过：开好房坐下就走开，位子让出来', () => {
+  const room: any = table([1, 2, 3]);   // status=waiting, roundNo=0
+  assert.equal(room.roundNo, 0, '前提：还没开过局');
+  assert.equal(room.resumable(2), false,
+    '开好房坐下、切出去逛大厅 —— 别把他锁在自己这一桌上');
+});
+
+test('私人房暂停等补位时：还坐着的人重连回得来', () => {
+  const room = playing([1, 2, 3]);
+  room.leave(2, 'stand');                 // 位子空出、暂停
+  assert.equal(room.status, 'paused');
+  assert.equal(room.resumable(1), true, '剩下两位重连要回到原桌');
+  assert.equal(room.resumable(2), false, '起立走的那个不算');
+});

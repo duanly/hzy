@@ -221,6 +221,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
   const [turnSec, setTurnSec] = useState(30);
   const [roomId, setRoomId] = useState('');
   const [resume, setResume] = useState<string | null>(null);
+  const [resumeName, setResumeName] = useState<string | null>(null);   // 那一桌叫什么（私人房报房号）
   const [hosted, setHosted] = useState<HostedRoom[]>([]);
   const [autoNext, setAutoNext] = useState(5);   // 私人房默认 5 秒接着下一局：真人房都在等，别干坐着
   const [capX, setCapX] = useState(100);   // 封顶 = 底分 × 倍数（0 = 不限）
@@ -236,7 +237,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
 
   useEffect(() => {
     const off = socket.on(m => {
-      if (m.type === 'lobby.tables') { setVs(m.variants); setResume(m.resume ?? null); setHosted(m.hosted ?? []); }
+      if (m.type === 'lobby.tables') { setVs(m.variants); setResume(m.resume ?? null); setResumeName((m as any).resumeName ?? null); setHosted(m.hosted ?? []); }
       if (m.type === 'auth.ok') socket.send({ type: 'lobby.tables' });   // 刚连上就要一次，别等轮询
       /* 点「进去看」时那间房刚好散了：列表是 4 秒一轮的，手上这份已经过期 ——
          马上再要一份，把那条已经没了的房间抹掉，别让人对着一个点不动的按钮猜。 */
@@ -375,7 +376,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
 
           {resume && (
             <button className="resume-bar" onClick={() => socket.send({ type: 'room.join', roomId: resume })}>
-              你还有一桌在打（机器人托管中）· 返回牌局
+              {resumeName ?? '你还有一桌'}还在打（机器人托管中）· 点这儿返回牌局
             </button>
           )}
 

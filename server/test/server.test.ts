@@ -291,8 +291,23 @@ test('私人房：房主自己也上桌打、凭房号进、满员锁房、暂�
     // 房主坐在桌上，看得见自己的牌
     const mine = await conns[0].until(m => m.room?.game?.players, 8000);
     assert.ok((mine.room.game.hand ?? mine.room.game.players[0].hand ?? []).length > 0, '房主该有自己的手牌');
-    // 乙 退出 → 暂停；戊 补位 → 继续，接手他的座位
+    /* 乙 点「返回大厅」：跟大厅一个待遇 —— 机器人先替他打着，桌子照转。
+       （以前这儿是当场空位 + 暂停：三个人打得好好的，一个人出去看一眼，
+       另外两个就干坐着等。只有「起立」才该按停。） */
     conns[1].send({ type: 'room.leave' });
+    const away = await conns[0].until(m => m.room?.seats?.[1]?.isBot === true, 8000);
+    assert.equal(away.room.status, 'playing', '一个人退出，另外两个接着打，不许暂停');
+    assert.ok(away.room.seats[1].user, '位子还是他的 —— 退出不等于让位');
+    // 退到大厅：那条「返回牌局」要认得出这一桌，不然人就找不着自己那间房了
+    conns[1].send({ type: 'lobby.tables' });
+    const lob = await conns[1].until(m => m.type === 'lobby.tables');
+    assert.equal(lob.resume, roomId, '大厅能一键点回来');
+    assert.match(lob.resumeName ?? '', /房间/, '横幅上要写清楚是哪一间');
+    // 点回来，接着打
+    conns[1].send({ type: 'room.join', roomId });
+    await conns[1].until(m => m.type === 'room.state' && m.room.mySeat === 1);
+    // 乙 起立 → 这才是真的离开位置：位子空出来，牌局暂停；戊 补位 → 继续，接手他的座位
+    conns[1].send({ type: 'room.leave', stand: true });
     const paused = await conns[0].until(m => m.room?.status === 'paused');
     assert.equal(paused.room.seats[1].user, null);
     conns[4].send({ type: 'room.join', roomId });
