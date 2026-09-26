@@ -24,7 +24,9 @@ interface Seat {
      他手里没有任何底子，那些帧是"当时的快照"、里头 myOptions 是被故意抹掉的
      —— 发过去只会让他眼睁睁看着自己该出牌却一个按钮都没有。见 sendFrames。 */
   freshJoin?: boolean;
-  awayAt?: number;   // 玩家中途退出、交给机器人托管的时刻（回来可以接着打）
+  awayAt?: number;   // 玩家中途退出、暂时离开的时刻（回来可以接着打）
+  /** 是不是**主动**点「返回大厅」走的：主动走显示「离开一会儿」，断线才显示「离线」 */
+  awaySelf?: boolean;
   vacatedAt?: number;   // 这个位子什么时候空出来的：补位按先后，谁先走空谁先被接
   /** 他什么时候坐下的：桌上最早坐下的那个真人就是「桌长」（几局一歇时由他点继续） */
   seatedAt?: number;
@@ -290,7 +292,7 @@ export class Room {
     const existing = this.seatOf(user.id);
     if (existing >= 0) { // 重连 / 托管后回来接着打
       const s = this.seats[existing];
-      s.client = client; s.isBot = false; s.awayAt = undefined; s.botAt = undefined; s.autoBot = false; s.misses = 0; s.stood = false;
+      s.client = client; s.isBot = false; s.awayAt = undefined; s.awaySelf = undefined; s.botAt = undefined; s.autoBot = false; s.misses = 0; s.stood = false;
       /* 正在播动画的时候回来的：剩下那几帧跳过，直接给他实时状态。
          不这么做的话，他会先收到一串旧快照（myOptions 被抹成 null），
          于是"重连回来轮到我出牌，可吃碰过全不见了，读秒还在走" —— 三人房压测里
@@ -357,12 +359,12 @@ export class Room {
         this.pause();
       } else if (this.cfg.isPrivate) {
         // 私人房：临时退出 / 断线不立刻交给机器人，只摘掉连接、记下离开时刻（awayAt）
-        s.client = null; s.awayAt = Date.now();
+        s.client = null; s.awayAt = Date.now(); s.awaySelf = reason === 'leave';
         // 自己走的（点返回）才记一笔；断线不算逃跑
         if (reason !== 'disconnect') this.db.bumpStats(userId, { escapes: 1 });
       } else {
         // 大厅：位子要留给别人坐，临时退出 / 断线照旧交给机器人代打，随时回来接着打
-        s.client = null; s.isBot = true; s.awayAt = Date.now();
+        s.client = null; s.isBot = true; s.awayAt = Date.now(); s.awaySelf = reason === 'leave';
         // 自己走的（点返回 / 起立）才记一笔；断线不算逃跑
         if (reason !== 'disconnect') { s.botName = this.nameOf(userId) ?? undefined; this.db.bumpStats(userId, { escapes: 1 }); }
       }
@@ -1102,6 +1104,7 @@ export class Room {
       isBot: s.isBot,
       kickable: s.isBot && (s.userId ?? 0) < 0,
       auto: !!s.autoBot,
+      away: s.awaySelf === true,
       total: s.userId === null ? 0 : (this.totals.get(s.userId) ?? 0),
     }));
     const g = gView ?? (this.game ? this.game.view(mySeat >= 0 ? mySeat : null) : null);

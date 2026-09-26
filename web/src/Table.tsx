@@ -823,8 +823,24 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   const mySeat = room.mySeat ?? 0;
   const rel = (seat: number) => (seat - mySeat + n) % n; // 0=我 1=下家 2=上家
   const [selected, setSelected] = useState<{ col: number; idx: number } | null>(null);
-  const [cols, setCols] = useState<Kind[][]>([]);
-  const manualRef = useRef(false);
+  /* 手牌分列（含"是否手动理过"）持久化到本地：断线 / 冷启动重连后，别一进来就重新
+     智能理牌、把玩家码好的牌打乱。按「房间 + 局号」分开存，换局 / 换房自然作废。 */
+  const colsKey = `phz_cols_${room.id}_${room.roundNo}`;
+  const [cols, setCols] = useState<Kind[][]>(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(colsKey) ?? 'null');
+      return Array.isArray(s?.c) && s.c.every((c: any) => Array.isArray(c)) ? s.c : [];
+    } catch { return []; }
+  });
+  const manualRef = useRef(() => {
+    try { return JSON.parse(localStorage.getItem(colsKey) ?? 'null')?.m === true; } catch { return false; }
+  }());
+  useEffect(() => {
+    try {
+      if (cols.length) localStorage.setItem(colsKey, JSON.stringify({ c: cols, m: manualRef.current }));
+      else localStorage.removeItem(colsKey);
+    } catch { /* ignore */ }
+  }, [cols, colsKey]);
   /* 玩家自己拖出来的牌组：记下来「钉住」，之后自动理牌一律不动它们。
      只认牌面（同一组牌不管在第几列都算数），手里没有这几张了自然就失效。 */
   const pinsRef = useRef<Kind[][]>([]);
@@ -3608,7 +3624,7 @@ function SeatBox({ seat, mySeat, rel, label, g, isTurn, dealer, onAvatar, onKick
               {!seat.user && (onInvite
                 ? <button className="ghost seat-invite" onClick={() => onInvite(seat.seat)}>＋ 请机器人</button>
                 : '等待加入')}
-              {!seat.online && seat.user && <span className="badge">离线</span>}</div>}
+              {!seat.online && seat.user && <span className="badge">{seat.away ? '离开一会儿' : '离线'}</span>}</div>}
             <StatusTags p={p} delay={g?.delayCards?.[seat.seat] ?? 0} melds={p?.melds as Meld[]} fouls={fouls?.[seat.seat] ?? 0} />
           </div>
         </div>

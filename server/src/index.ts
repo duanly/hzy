@@ -153,7 +153,7 @@ const server = createServer(async (req, res) => {
           if (net.ip) { ipSeed(net.ip, net.loc); ipLookup(net.ip, (a, b) => db.setIpLoc(a, b)); }
           return {
             seat: i, name: uid === null ? null : (r.users.get(uid)?.nickname ?? null),
-            isBot: s.isBot, online: s.isBot || !!s.client, auto: !!s.autoBot,
+            isBot: s.isBot, online: s.isBot || !!s.client, auto: !!s.autoBot, away: s.awaySelf === true,
             total: uid === null ? 0 : (r.totals.get(uid) ?? 0),
             games: st?.games ?? 0, hu: st?.hu ?? 0, dianpao: st?.dianpao ?? 0,
             ip: net.ip, ipLoc: net.loc || cachedLoc(net.ip),

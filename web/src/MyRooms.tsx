@@ -12,7 +12,7 @@ import { RoomHistoryModal } from './Replay.tsx';
 import { TileArt } from './TileArt.tsx';
 
 type Seat = {
-  seat: number; name: string | null; isBot: boolean; online: boolean; auto?: boolean;
+  seat: number; name: string | null; isBot: boolean; online: boolean; auto?: boolean; away?: boolean;
   total: number; games: number; hu: number; dianpao: number; ip: string; ipLoc: string; dev?: string;
 };
 type MyRoom = {
@@ -184,7 +184,7 @@ export function MyRoomsPage({ onBack, onEnter, onCreate }: { onBack: () => void;
                         {s.name ?? '空位'}
                         {s.isBot && <i className="mr-tag">机器人</i>}
                         {s.auto && <i className="mr-tag">托管</i>}
-                        {s.name && !s.isBot && !s.online && <i className="mr-tag off">离线</i>}
+                        {s.name && !s.isBot && !s.online && <i className="mr-tag off">{s.away ? '离开' : '离线'}</i>}
                         {/* 这三个标记挂在名字后面 —— 地址那一行会截断，挂那儿就看不见了 */}
                         {same && <i className="mr-tag same">同 IP</i>}
                         {sameNet && <i className="mr-tag same">同网段</i>}

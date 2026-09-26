@@ -40,6 +40,7 @@ export interface SeatView {
   isBot: boolean;
   kickable?: boolean;   // 真机器人（负数 id）：可以被请走；托管中的真人座位不行
   auto?: boolean;       // 真人超时了、暂时由机器人替他打（头像上挂个机器人标；他一动手就解除）
+  away?: boolean;       // 主动点「返回大厅」暂时离开（座位还留着）；断线是另一回事（online=false 且 !away）
   total: number;        // 本房间累计输赢
 }
 
