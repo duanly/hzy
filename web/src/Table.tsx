@@ -832,9 +832,10 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
       return Array.isArray(s?.c) && s.c.every((c: any) => Array.isArray(c)) ? s.c : [];
     } catch { return []; }
   });
-  const manualRef = useRef(() => {
+  const manualInit = (() => {
     try { return JSON.parse(localStorage.getItem(colsKey) ?? 'null')?.m === true; } catch { return false; }
-  }());
+  })();
+  const manualRef = useRef(manualInit);
   useEffect(() => {
     try {
       if (cols.length) localStorage.setItem(colsKey, JSON.stringify({ c: cols, m: manualRef.current }));
