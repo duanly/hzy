@@ -250,13 +250,23 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
     return () => { off(); clearInterval(t); };
   }, []);
 
-  // 点开"加入房间"时，剪贴板里要是刚好有 6 位数字（牌友发过来的房号），就先填上
-  const pasteRoomId = async () => {
-    try {
-      const t = await navigator.clipboard?.readText?.();
-      const m = t && t.match(/\d{6}/);
-      if (m) setRoomId(m[0]);
-    } catch { /* 没授权就算了，手输 */ }
+  /* 进「加入房间」、输入框聚焦之后才自动粘一次剪贴板：要刚好是 6 位数字（牌友发来的房号）才填上。
+     以前在点「密码房」那一下就 `readText` —— iOS 读剪贴板会先弹系统的「允许粘贴」，
+     抢在加入房间的对话框前面，看着就像"点密码房没弹对话框、反而弹了个粘贴"。
+     挪到输入框聚焦之后再读：对话框先出来，粘贴只是给输入框补一个默认值。
+     只自动一次 —— 往后他爱输什么输什么，别正打字又被剪贴板里的内容盖掉。 */
+  const pasteTried = useRef(false);
+  useEffect(() => { if (join) pasteTried.current = false; }, [join]);
+  const onRoomIdFocus = () => {
+    if (pasteTried.current) return;
+    pasteTried.current = true;
+    (async () => {
+      try {
+        const t = await navigator.clipboard?.readText?.();
+        const m = t && t.match(/\d{6}/);
+        if (m) setRoomId(m[0]);
+      } catch { /* 没授权就算了，手输 */ }
+    })();
   };
 
   /* 账号 ID 亮出来之后**自己会盖回去**（10 秒），复制完也立刻盖上 ——
@@ -407,7 +417,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
                 <span className="tile-sub">{hosted.length ? `开着 ${hosted.length} 个 · 读秒 / 数据 / 暂停` : '开好的房间在这儿管'}</span>
               </button>
             )}
-            <button className="tile tile-pw" onClick={() => { setJoin(true); pasteRoomId(); }}>
+            <button className="tile tile-pw" onClick={() => setJoin(true)}>
               <TileArt kind="pw" />
               <span className="tile-art">房</span>
               <span className="tile-name">密码房</span>
@@ -550,7 +560,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
               {pauseEvery ? `每打满 ${pauseEvery} 局歇一次，房主或桌上第一位玩家点「继续」接着打。` : ''}</div>
             <button onClick={() => { socket.send({ type: 'room.create', variant, baseScore: base, turnMs: turnSec * 1000, autoNextSec: autoNext, swingCap: capX ? base * capX : 0, pauseEvery,
                 play: { deal: dealMode, noXiHu, raiseHand, redBlack, huCardDun } }); setCreate(false); }}>创建</button>
-            <button className="ghost" onClick={() => { setCreate(false); setJoin(true); pasteRoomId(); }}>我有房号，直接加入</button>
+            <button className="ghost" onClick={() => { setCreate(false); setJoin(true); }}>我有房号，直接加入</button>
           </div>
         </Modal>
       )}
@@ -559,6 +569,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
           <div className="col" style={{ minWidth: 280 }}>
             <b>加入房间</b>
             <input inputMode="numeric" placeholder="房号（6 位）" value={roomId} autoFocus
+              onFocus={onRoomIdFocus}
               onChange={e => setRoomId(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             <div className="muted">房号是唯一的，输房号就能进（房主会把房号发给你）。</div>
             <button onClick={() => { if (!/^\d{6}$/.test(roomId)) return toast('请输入 6 位房号'); socket.send({ type: 'room.join', roomId }); setJoin(false); }}>加入</button>
