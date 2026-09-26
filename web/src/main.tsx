@@ -191,18 +191,36 @@ const HAND_HELD = TOUCH ? 4096 : 760;
  * 横着看（手机横过来、平板、电脑）不转，窄边是**可视高度** ——
  * 注意是"可视"：浏览器上下那几条工具栏会把它压到三百出头，按它算才不会把最底下那排手牌切掉。
  */
+/* 上次的「横竖屏 + 视口」结果。视口只要有一两像素在抖（iOS 地址栏、滚动条、键盘、
+   进房那一瞬间的横竖屏过渡…），fitScreen 就被 resize 反复触发、反复重设 #root 的宽高
+   和 transform，牌桌在两个尺寸之间来回跳，看着就像"横竖屏疯狂切换"。
+   结果没变就跳过，别去扰动视口 —— 两边互相拉扯只会越抖越厉害。 */
+let lastFitKey = '';
+let lastRotate: boolean | null = null;
 function fitScreen() {
   const root = document.getElementById('root');
   if (!root) return;
   const clear = () => { root.style.width = ''; root.style.height = ''; root.style.transform = ''; };
-  if (root.classList.contains('upright')) { clear(); announce(); return; }   // 主页 / 登录那种竖着用的页面
+  if (root.classList.contains('upright')) {   // 主页 / 登录那种竖着用的页面
+    lastRotate = null;
+    if (lastFitKey !== 'upright') { lastFitKey = 'upright'; clear(); announce(); }
+    return;
+  }
   const vv = window.visualViewport;
   const vw = Math.round(vv?.width ?? window.innerWidth);
   const vh = Math.round(vv?.height ?? window.innerHeight);
   if (!vw || !vh) return;
-  const rotate = vh > vw && vw <= 900;        // 竖着拿的手机：转 90° 当横屏用
+  /* 竖着拿的手机转 90° 当横屏用。判断加一道滞回：竖横相差要超过 8px 才切换方向，
+     不然宽高在临界值附近一抖，rotate 就在 true / false 之间反复跳。 */
+  const diff = vh - vw;
+  const rotate = vw <= 900 && (lastRotate === null ? diff > 0 : lastRotate ? diff > -8 : diff > 8);
   const narrow = rotate ? vw : vh;            // 屏幕的窄边
   const k = narrow > DESIGN_H && narrow > HAND_HELD ? 1 : narrow / DESIGN_H;
+  /* 视口（取整后）没变、旋转方向也没变：什么都不用做，重设一遍只会再给视口一个扰动。 */
+  const key = `${rotate}|${vw}|${vh}`;
+  if (key === lastFitKey) return;
+  lastFitKey = key;
+  lastRotate = rotate;
   if (Math.abs(k - 1) < 0.005 && !rotate) { clear(); announce(); return; }   // 正好 1:1，什么都不用做
   root.style.width = `${(rotate ? vh : vw) / k}px`;
   root.style.height = `${(rotate ? vw : vh) / k}px`;
