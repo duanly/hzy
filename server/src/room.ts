@@ -91,6 +91,8 @@ export class Room {
   /** 这一批坐着的是哪几位（按座位，含机器人）：封存的时候当那一段的表头 */
   private batchSeats: number[] = [];
   users = new Map<number, PublicUser>();
+  /** 进过这间房的人（只增不减）：主页「加入房间」里列出"进过的、还在的房间"就靠它 */
+  joinedUids = new Set<number>();
   /* 名字册：只进不出。房间里的 users 是"现在还在这儿的人"，人一走就删 ——
      于是纪录表、结算详情事后去查名字，只剩一串 userId（机器人是负数，更难看）。
      这本册子记着每个坐过这张桌的人当时叫什么，谁走了都还在。 */
@@ -300,6 +302,7 @@ export class Room {
       s.freshJoin = this.frames.length > 0;
       s.seatedAt ??= Date.now();   // 老座位可能还没记过（回来的人排在原来的位置上）
       this.remember(this.publicUser(user));
+      this.joinedUids.add(user.id);
       this.broadcast();
       return null;
     }
@@ -320,6 +323,7 @@ export class Room {
       if (hist[hist.length - 1] !== user.id) hist.push(user.id);
     }
     this.remember(this.publicUser(user));
+    this.joinedUids.add(user.id);
     if (!this.totals.has(user.id)) this.totals.set(user.id, 0);
     this.lastActivity = Date.now();
     if (this.waitingSince === null) this.waitingSince = Date.now();

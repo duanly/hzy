@@ -1,6 +1,6 @@
 /** 主页（竖屏）：衡之娱标题 + 玩法入口 + 密码房；点进玩法是固定的桌子列表 */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PublicUser, LobbyVariant, HostedRoom } from '../../server/src/protocol.ts';
+import type { PublicUser, LobbyVariant, HostedRoom, JoinedRoom } from '../../server/src/protocol.ts';
 import type { VariantId } from '../../packages/engine/src/index.ts';
 import { HistoryModal } from './Replay.tsx';
 import { TileArt } from './TileArt.tsx';
@@ -223,6 +223,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
   const [resume, setResume] = useState<string | null>(null);
   const [resumeName, setResumeName] = useState<string | null>(null);   // 那一桌叫什么（私人房报房号）
   const [hosted, setHosted] = useState<HostedRoom[]>([]);
+  const [joined, setJoined] = useState<JoinedRoom[]>([]);
   const [autoNext, setAutoNext] = useState(5);   // 私人房默认 5 秒接着下一局：真人房都在等，别干坐着
   const [capX, setCapX] = useState(100);   // 封顶 = 底分 × 倍数（0 = 不限）
   const [pauseEvery, setPauseEvery] = useState(0);   // 几局一歇（0 = 一直打下去）
@@ -237,7 +238,7 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
 
   useEffect(() => {
     const off = socket.on(m => {
-      if (m.type === 'lobby.tables') { setVs(m.variants); setResume(m.resume ?? null); setResumeName((m as any).resumeName ?? null); setHosted(m.hosted ?? []); }
+      if (m.type === 'lobby.tables') { setVs(m.variants); setResume(m.resume ?? null); setResumeName((m as any).resumeName ?? null); setHosted(m.hosted ?? []); setJoined((m as any).joined ?? []); }
       if (m.type === 'auth.ok') socket.send({ type: 'lobby.tables' });   // 刚连上就要一次，别等轮询
       /* 点「进去看」时那间房刚好散了：列表是 4 秒一轮的，手上这份已经过期 ——
          马上再要一份，把那条已经没了的房间抹掉，别让人对着一个点不动的按钮猜。 */
@@ -552,6 +553,18 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
         <Modal onClose={() => setJoin(false)}>
           <div className="col" style={{ minWidth: 280 }}>
             <b>加入房间</b>
+            {joined.length > 0 && (
+              <div className="col" style={{ gap: 6 }}>
+                <div className="muted" style={{ fontSize: 12 }}>进过的房间（还在的，点一下直接进）</div>
+                {joined.map(j => (
+                  <button key={j.id} className="ghost" style={{ display: 'flex', justifyContent: 'space-between' }}
+                    onClick={() => { socket.send({ type: 'room.join', roomId: j.id }); setJoin(false); }}>
+                    <span>{j.name}</span>
+                    <span className="muted">{j.seated ? '回到这桌' : j.players >= j.seats ? '满' : j.status === 'playing' ? '牌局中' : '可进'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <input inputMode="numeric" placeholder="房号（6 位）" value={roomId} autoFocus
               onChange={e => setRoomId(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             <div className="muted">房号是唯一的，输房号就能进（房主会把房号发给你）。</div>

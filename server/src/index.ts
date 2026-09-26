@@ -10,7 +10,7 @@ import { setAliKey, hasAliKey } from './alitts.ts';
 import { handleAuth } from './auth.ts';
 import { badWord, badWordMsg } from './badwords.ts';
 import { json } from './util.ts';
-import type { HostedRoom, ClientMsg, ServerMsg, ProfileView, PublicUser } from './protocol.ts';
+import type { HostedRoom, JoinedRoom, ClientMsg, ServerMsg, ProfileView, PublicUser } from './protocol.ts';
 import type { Room } from './room.ts';
 import { MJ_VARIANT_ID } from './protocol.ts';
 
@@ -456,10 +456,15 @@ server.on('upgrade', (req, socket) => {
           .map((r): HostedRoom => ({ id: r.cfg.id, name: r.cfg.name ?? `房 ${r.cfg.id}`,
             variant: isMj(r) ? MJ_VARIANT_ID : r.cfg.variant, status: r.status,
             players: r.seats.filter(x => x.userId !== null).length, seats: r.seats.length, seated: r.seatOf(uid) >= 0 }));
+        /* 进过的、还在的私人房（排除自己开的 —— 那些在 hosted）：点「加入房间」列出来，不用再输房号 */
+        const joined = uid === null ? [] : [...lobby.rooms.values()]
+          .filter((r): r is Room => !isMj(r) && r.cfg.isPrivate && r.status !== 'closed' && r.cfg.hostId !== uid && r.joinedUids.has(uid))
+          .map((r): JoinedRoom => ({ id: r.cfg.id, name: r.cfg.name ?? `房 ${r.cfg.id}`, variant: r.cfg.variant, status: r.status,
+            players: r.seats.filter(x => x.userId !== null).length, seats: r.seats.length, seated: r.seatOf(uid) >= 0 }));
         /* resumeName：那一桌叫什么。私人房要报房号 ——
            "退出去一眼找不到自己那间房"就是因为横幅上只写"你还有一桌在打"。 */
         const backName = back ? (back.cfg.isPrivate ? `房间 ${back.cfg.name ?? back.cfg.id}` : (back.cfg.name ?? '大厅牌桌')) : undefined;
-        return send({ type: 'lobby.tables', variants: lobby.tables(uid), resume: back?.cfg.id, resumeName: backName, hosted: mine });
+        return send({ type: 'lobby.tables', variants: lobby.tables(uid), resume: back?.cfg.id, resumeName: backName, hosted: mine, joined });
       }
       case 'room.bots': {
         const u = requireUser();

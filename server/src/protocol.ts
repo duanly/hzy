@@ -80,6 +80,8 @@ export interface RoomView {
 export interface LobbyTable { id: string; name: string; baseScore: number; variantName?: string; turnSec?: number; seats: number; humans: number; bots: number; status: 'waiting' | 'playing' | 'paused' | 'closed'; mine?: boolean }
 /** 我开的私人房（大厅里给房主用：进去打 / 观战） */
 export interface HostedRoom { id: string; name: string; variant: AnyVariantId; status: string; players: number; seats: number; seated: boolean }
+/** 进过、还在的私人房（主页「加入房间」里列出来，点一下直接进） */
+export interface JoinedRoom { id: string; name: string; variant: AnyVariantId; status: string; players: number; seats: number; seated: boolean }
 export interface LobbyVariant { variant: VariantId; name: string; open: boolean; tables: LobbyTable[] }
 
 export interface LedgerEntry {
@@ -180,7 +182,7 @@ export type ServerMsg =
   | { type: 'auth.ok'; user: PublicUser }
   | { type: 'auth.fail'; reason: string }
   | { type: 'lobby.list'; tiers: TierInfo[]; resume?: string }   // resume：中途退出、机器人托管中的那一桌房号
-  | { type: 'lobby.tables'; variants: LobbyVariant[]; resume?: string; resumeName?: string; hosted?: HostedRoom[] }
+  | { type: 'lobby.tables'; variants: LobbyVariant[]; resume?: string; resumeName?: string; hosted?: HostedRoom[]; joined?: JoinedRoom[] }
   | { type: 'room.created'; roomId: string; name: string }   // 房开好了（房主没进去，页面上问他下一步）
   | { type: 'room.state'; room: RoomView }
   | { type: 'room.left' }
