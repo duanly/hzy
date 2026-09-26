@@ -337,7 +337,7 @@ export async function handleAdmin(
       if (body.newPack) {
         const name = String(body.newPack).trim().slice(0, 16);
         if (!name) return json(res, 400, { error: '起个名字' });
-        const id = `p${Date.now().toString(36)}`;
+        const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
         const d = join(voiceDir, 'packs', id);
         mkdirSync(d, { recursive: true });
         writeFileSync(join(d, 'pack.json'), JSON.stringify({ name }));
