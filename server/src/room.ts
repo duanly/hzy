@@ -345,16 +345,23 @@ export class Room {
       /* 只有**起立**（明说了不回这一桌）才把私人房按停。
          以前是私人房只要有人离桌就当场空位 + 暂停 —— 可"返回大厅看一眼"和"断线两分钟"
          都会走到这儿，于是三个人打得好好的，一个人退出去，另外两个干坐着等。
-         退出和断线跟大厅一个待遇：机器人先替他打着，位子和分数都留着（awayAt），
-         桌子照转，他从大厅那条「返回牌局」点回来就接着打。
+         现在退出 / 断线不立刻交给机器人：位子和分数都留着（awayAt），桌子照转，
+         轮到他要出牌却没人操作，就走普通超时那套 —— 同一局里累计两次超时（autoBot）
+         才由机器人接手，他从大厅那条「返回牌局」点回来就接着打，
+         中途不会撞见机器人替他碰了牌。
          起立才是真的离开位置：位子当场空出来，三人桌少一个打不下去，这才暂停等人补位
          （补位的人直接接手这手牌）。 */
       if (this.cfg.isPrivate && reason === 'stand') {
         this.db.bumpStats(userId, { escapes: 1 });
         s.client = null; s.userId = null; s.isBot = false; s.ready = false; s.stood = false; s.vacatedAt = Date.now();
         this.pause();
+      } else if (this.cfg.isPrivate) {
+        // 私人房：临时退出 / 断线不立刻交给机器人，只摘掉连接、记下离开时刻（awayAt）
+        s.client = null; s.awayAt = Date.now();
+        // 自己走的（点返回）才记一笔；断线不算逃跑
+        if (reason !== 'disconnect') this.db.bumpStats(userId, { escapes: 1 });
       } else {
-        // 机器人接管，座位和分数都给他留着（`awayAt`），随时回来接着打
+        // 大厅：位子要留给别人坐，临时退出 / 断线照旧交给机器人代打，随时回来接着打
         s.client = null; s.isBot = true; s.awayAt = Date.now();
         // 自己走的（点返回 / 起立）才记一笔；断线不算逃跑
         if (reason !== 'disconnect') { s.botName = this.nameOf(userId) ?? undefined; this.db.bumpStats(userId, { escapes: 1 }); }
@@ -924,11 +931,13 @@ export class Room {
     const endEv = g.events.find(e => e.t === 'end') as Extract<GameEvent, { t: 'end' }> | undefined;
     this.dealer = endEv ? endEv.dealerNext : (this.dealer + 1) % this.seats.length;
     this.status = 'waiting';
-    // 大厅：托管的座位给他留 Room.AWAY_KEEP_MS，过了这个点还不回来才真正让出去
+    // 真人座位：起立了、或者临时离开超过 Room.AWAY_KEEP_MS 的，本局结束把位子让出去。
+    // 私人房临时退出不再把 isBot 置真，所以这里按"人在不在、走没走"判，不再看 isBot。
     for (const s of this.seats) {
-      // 起立走的不等这十分钟：他已经说了不回来，这一局打完位子就让出去
-      if (s.isBot && s.userId !== null && s.userId > 0 && (s.stood || Date.now() - (s.awayAt ?? 0) > Room.AWAY_KEEP_MS)) {
-        s.userId = null; s.isBot = false; s.ready = false; s.awayAt = undefined; s.stood = false; s.vacatedAt = Date.now();
+      const gone = s.userId !== null && s.userId > 0 && !s.client
+        && (s.stood || (s.awayAt !== undefined && Date.now() - s.awayAt > Room.AWAY_KEEP_MS));
+      if (gone) {
+        s.userId = null; s.isBot = false; s.autoBot = false; s.ready = false; s.awayAt = undefined; s.stood = false; s.vacatedAt = Date.now();
       }
     }
     if (!this.keepAlive() && this.humanCount() === 0 && this.awayCount() === 0 && this.spectators.size === 0) { this.close(); return; }

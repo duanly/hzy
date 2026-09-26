@@ -224,7 +224,7 @@ function playing(ids: number[]) {
   return room;
 }
 
-test('私人房点「返回大厅」：机器人接着替他打，桌子不停 —— 跟大厅一个样', () => {
+test('私人房点「返回大厅」：桌子不停、位子留着，不立刻交给机器人（等超时两次才托管）', () => {
   const room = playing([1, 2, 3]);
   room.leave(2, 'leave');
 
@@ -232,9 +232,9 @@ test('私人房点「返回大厅」：机器人接着替他打，桌子不停 �
   assert.equal(room.pausedReason, null, '也不该挂个"暂停"的理由出来');
   const s = room.seats[1];
   assert.equal(s.userId, 2, '位子还是他的 —— 退出不等于让位');
-  assert.equal(s.isBot, true, '交给机器人托管');
+  assert.equal(s.isBot, false, '不立刻交给机器人 —— 等超时两次（autoBot）才托管');
   assert.equal(s.stood, undefined, '没起立');
-  assert.ok(s.awayAt > 0, '记下托管的时刻，十分钟内回来都算数');
+  assert.ok(s.awayAt > 0, '记下离开的时刻，十分钟内回来都算数');
   assert.equal(room.resumable(2), true, '大厅那条「返回牌局」要认得出这一桌');
 });
 

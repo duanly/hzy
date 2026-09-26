@@ -291,13 +291,15 @@ test('私人房：房主自己也上桌打、凭房号进、满员锁房、暂�
     // 房主坐在桌上，看得见自己的牌
     const mine = await conns[0].until(m => m.room?.game?.players, 8000);
     assert.ok((mine.room.game.hand ?? mine.room.game.players[0].hand ?? []).length > 0, '房主该有自己的手牌');
-    /* 乙 点「返回大厅」：跟大厅一个待遇 —— 机器人先替他打着，桌子照转。
+    /* 乙 点「返回大厅」：桌子照转、位子留着，但**不立刻**交给机器人 ——
+       等超时两次（autoBot）才托管，出去一下回来不会撞见机器人替他碰了牌。
        （以前这儿是当场空位 + 暂停：三个人打得好好的，一个人出去看一眼，
        另外两个就干坐着等。只有「起立」才该按停。） */
     conns[1].send({ type: 'room.leave' });
-    const away = await conns[0].until(m => m.room?.seats?.[1]?.isBot === true, 8000);
+    const away = await conns[0].until(m => m.room?.seats?.[1]?.online === false, 8000);
     assert.equal(away.room.status, 'playing', '一个人退出，另外两个接着打，不许暂停');
     assert.ok(away.room.seats[1].user, '位子还是他的 —— 退出不等于让位');
+    assert.equal(away.room.seats[1].isBot, false, '不立刻交给机器人 —— 等超时两次（autoBot）才托管');
     // 退到大厅：那条「返回牌局」要认得出这一桌，不然人就找不着自己那间房了
     conns[1].send({ type: 'lobby.tables' });
     const lob = await conns[1].until(m => m.type === 'lobby.tables');
