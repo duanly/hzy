@@ -1654,9 +1654,11 @@ export class Game {
       // 含胡牌的那一组：有好几组都带这个字时取**最后那一组**（新成的句子排在后面）
       huGroupIdx: card >= 0 ? part.groups.map(g => g.cards.includes(card)).lastIndexOf(true) : -1,
       // 胡的方式：下地那几种直接用 bigMeldType；胡一张牌的，看这张牌在哪种句子里 ——
-      // 三张同字就是碰胡（坎胡），凑成顺子就是吃胡
+      // 三张同字就是碰胡（坎胡），凑成顺子就是吃胡。
+      // 注意别用"手里有没有一坎这个字"去判：手里已有叁叁叁、再吃一张叁胡壹贰叁时，
+      // 那张叁落在顺子里，是吃胡不是碰胡 —— 认 asPeng（引擎按"进的这张凑成三张同字"标的）才准。
       huWay: card < 0 ? (this.bigMeldType || 'ti')
-        : (part.groups.some(g => g.cards.includes(card) && g.cards.length === 3 && g.cards.every(k => k === card)) ? 'peng' : 'chi'),
+        : (part.groups.some(g => (g as any).asPeng) ? 'peng' : 'chi'),
       huDelta: delta.slice(), penalty: this.penaltyScores.slice(), tilong: this.tilongScores.slice(),
     };
     return { detail, delta };

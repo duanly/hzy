@@ -2650,8 +2650,10 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   /** 要标记的那张胡牌：引擎在 detail.huMarkCard 里直接给（直接胡=card，提龙/开跑/偎起=下地的字，
       天胡/地胡=庄家亮的阳张）。 */
   const huMarkCard: Kind = huMarkOf(lastHu as any);
-  // 亮牌时我手里的「胡」字：只标一个 —— 胡的那张在哪一组，就标那一组打头的那张
-  const myMarkCol = gs?.ended && lastHu && lastHu.seat === mySeat && huMarkCard >= 0
+  // 亮牌时我手里的「胡」字：只标一个。只有胡牌**在手里、没下地**（天胡标阳张）才标手牌；
+  // 吃 / 碰 / 自摸 / 接炮 的胡牌在 myHuCol 那组里、已经摆到下地区标过了，提龙 / 开跑 / 偎起 在下地牌里，
+  // 都不能再照牌面在手牌里找一个同字的来标（吃胡大叁时手牌里还有个叁叁叁坎，按牌面就会标错到坎上）。
+  const myMarkCol = gs?.ended && lastHu && lastHu.seat === mySeat && lastHu.card < 0 && huMarkCard >= 0
     ? cols.findIndex(c => c.includes(huMarkCard)) : -1;
   // 我下地的那几组里，含胡牌的是哪一组（提龙胡 / 开跑胡 / 偎起胡 的胡牌在下地，不在手里）
   const myMeldMark = gs?.ended && lastHu && lastHu.seat === mySeat && lastHu.card < 0 && huMarkCard >= 0
@@ -3816,7 +3818,9 @@ export function HuPanel({ hu, names, round }: { hu: { seat: number; card: number
       // 胡的那张牌手里可能有好几张：整张面板只标一个「胡」——
       // 先看下地牌，再看手里的句子，最后看那一对
       const want: Kind | null = huMarkOf(hu) >= 0 ? huMarkOf(hu) : null;
-      const hMark = markIn(d.handGroups.map((gr: any) => gr.cards as Kind[]), want);
+      // 引擎给的组号优先：吃胡大叁时手牌里还有叁叁叁坎，按牌面找会标到坎上
+      const gi = typeof d.huGroupIdx === 'number' && d.huGroupIdx >= 0 ? d.huGroupIdx : -1;
+      const hMark = gi >= 0 ? gi : markIn(d.handGroups.map((gr: any) => gr.cards as Kind[]), want);
       const mMark = hMark >= 0 ? -1 : markInMelds(d.melds as any, (hu as any).cid, want);
       const pMark = mMark < 0 && hMark < 0 && d.pair && want !== null && (d.pair as Kind[]).includes(want);
       return <div className="row hu-cards" style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -3871,6 +3875,9 @@ function RevealPanel({ rv, names, huCard, hu }: { rv: NonNullable<LedgerEntry['r
     if (d.pair) gps.push((d.pair as Kind[]).slice());
     const card: Kind = huMarkOf(hu);
     if (card < 0) return null;
+    // 引擎给的组号优先：吃胡大叁时手牌里还有叁叁叁坎，按牌面 find 会标到坎上
+    const gi = typeof d.huGroupIdx === 'number' ? d.huGroupIdx : -1;
+    if (gi >= 0 && gi < gps.length) return gps[gi];
     return gps.find(gp => gp.includes(card)) ?? null;
   })();
   return <div className="col" style={{ gap: 6 }}>
