@@ -227,7 +227,9 @@ export class MahjongRoom {
       if (!isBot || !g.optionsFor(i)) { s.botAt = undefined; continue; }
       if (s.botAt === undefined) {
         const t = this.cfg.turnSec ?? 15;
-        s.botAt = now + (this.cfg.botThink ? Math.round(t * 80 + Math.random() * t * 40) : 0);
+        // 机器人装着想一下再打（1~2 秒），跟字牌一个节奏 —— 别一张接一张，真人反应不过来
+        const think = this.cfg.botThink ? Math.round(t * 80 + Math.random() * t * 40) : 900 + Math.random() * 900;
+        s.botAt = now + think;
       }
     }
   }

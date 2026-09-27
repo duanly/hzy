@@ -122,7 +122,7 @@ function MjTags({ p }: { p: MjSeatView }) {
 }
 
 /** 一方：头像在角上，手牌在左，下地在右 */
-function SeatSide({ p, rel, mine, onDiscard, picked }: {
+function SeatSide({ p, rel, mine, onDiscard, picked, ringFrac }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
   onDiscard?: (t: Tile, i: number) => void; picked?: number; ringFrac?: number;
 }) {
