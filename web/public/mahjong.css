@@ -125,15 +125,28 @@
 .mj-left   { grid-area: 2 / 1; }
 .mj-right  { grid-area: 2 / 3; }
 
-/* 一方：头像钉在角上，手牌横着排。四家都一样横向，只是头像甩到哪一头不同 */
+/* 一方：头像钉在角上。对家和我横着排；左右两家竖着贴边、牌旋转 90° */
 .mj-side { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 0; }
-.mj-bottom { flex-direction: row; }         /* 我：头像在左下 */
-.mj-top    { flex-direction: row-reverse; } /* 对家：头像在右上 */
-.mj-left   { flex-direction: row; }         /* 上家：头像在左上 */
-.mj-right  { flex-direction: row-reverse; } /* 下家：头像在右下 */
-/* 手牌都横着排、居中摆（头像还是钉在角上） */
+.mj-bottom { flex-direction: row; }                                    /* 我：头像在左下 */
+.mj-top    { flex-direction: row-reverse; }                            /* 对家：头像在右上 */
+.mj-left   { flex-direction: column; align-items: flex-start; }        /* 上家：头像在左上 */
+.mj-right  { flex-direction: column-reverse; align-items: flex-end; }  /* 下家：头像在右下 */
+/* 手牌 / 下地都居中摆（头像还是钉在角上） */
 .mj-side .mj-row { justify-content: center; flex: 1; }
-/* 对家（上）那一行反过来：跟我的视角镜像 */
+/* 左右两家竖着排：牌旋转 90°，竖着一溜贴边 */
+.mj-left .mj-row, .mj-right .mj-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+.mj-left .mj-hand, .mj-left .mj-melds,
+.mj-right .mj-hand, .mj-right .mj-melds { flex-direction: column; align-items: flex-start; }
+.mj-left .mj-hand .mj-tile, .mj-right .mj-hand .mj-tile,
+.mj-left .mj-meld .mj-tile, .mj-right .mj-meld .mj-tile { transform: rotate(90deg); }
+/* 盖着的牌紧凑，不留间距 */
+.mj-left .mj-hand .mj-tile + .mj-tile,
+.mj-right .mj-hand .mj-tile + .mj-tile,
+.mj-left .mj-meld .mj-tile + .mj-tile,
+.mj-right .mj-meld .mj-tile + .mj-tile { margin-top: -16px; }
+.mj-left .mj-melds, .mj-right .mj-melds { gap: 4px; }
+.mj-right .mj-row, .mj-right .mj-hand, .mj-right .mj-melds { align-items: flex-end; }
+/* 对家（上）反过来，跟我的视角镜像 */
 .mj-top .mj-row { flex-direction: row-reverse; }
 .mj-top .mj-hand, .mj-top .mj-melds { flex-direction: row-reverse; }
 
@@ -295,6 +308,36 @@
 /* 锁住期间：点过的那个亮着（让人知道自己点的是哪个），没点的暗下去 */
 .mj-act.chosen { box-shadow: 0 0 0 3px #ffd98a, 0 3px 8px rgba(0,0,0,.45); }
 .mj-act.idle { opacity: .35; filter: saturate(.2); }
+
+/* 出牌弧线：手上方一条线，拖过去松手出牌 */
+.mj-arc {
+  position: absolute; left: 18%; right: 18%; bottom: 92px; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; pointer-events: none;
+}
+.mj-arc::before {
+  content: ''; width: 100%; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(214,183,106,.55), transparent);
+}
+.mj-arc.on::before {
+  background: linear-gradient(90deg, transparent, #ffd98a, transparent);
+  box-shadow: 0 0 10px rgba(255,217,138,.6);
+}
+.mj-arc-tip {
+  margin-top: 6px; font-size: 12px; font-weight: 700; color: #f2e6c4;
+  background: rgba(16,48,33,.92); padding: 2px 10px; border-radius: 10px;
+  border: 1px solid rgba(214,183,106,.4);
+}
+.mj-arc.on .mj-arc-tip { color: #ffd98a; }
+
+/* 选中的牌：右下角一个「打」按钮 */
+.mj-discard {
+  position: absolute; right: 10px; bottom: 8px; z-index: 6;
+  width: 56px; height: 56px; border-radius: 50%; border: none;
+  font-size: 20px; font-weight: 900; color: #fff7e2;
+  background: linear-gradient(#c2465a, #8c1f2e);
+  box-shadow: 0 3px 8px rgba(0,0,0,.45);
+  cursor: pointer; touch-action: manipulation; user-select: none;
+}
 
 .mj-gangpick {
   position: absolute; right: 10px; bottom: 72px; z-index: 7;

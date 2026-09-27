@@ -148,6 +148,9 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   /** 点过之后到下一张快照到达之前先锁住，免得连点两次发两条 */
   const [sent, setSent] = useState<{ deadline: number; act: string } | null>(null);
   const [showEnd, setShowEnd] = useState(false);
+  /** 拖牌出牌的拖动状态：按下那一下记起点，拖出弧线就出牌 */
+  const dragRef = useRef<{ i: number; tile: Tile; y0: number; started: boolean } | null>(null);
+  const [dragOut, setDragOut] = useState(false);
 
   const opts: string[] = g?.options ?? [];
   const canDiscard = opts.includes('discard');
@@ -161,7 +164,7 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
      不靠"收到任何一张快照就解锁"：同一个窗口里快照会来好几张（别人碰了杠了都会广播）。 */
   useEffect(() => { setSent(null); }, [g?.deadline, g?.phase]);
   /* 轮次一变，手里选中的那张就作废 —— 不然上一轮抬起来的牌会一直举着 */
-  useEffect(() => { setPicked(undefined); setGangPick(false); }, [g?.turn, g?.phase]);
+  useEffect(() => { setPicked(undefined); setGangPick(false); dragRef.current = null; setDragOut(false); }, [g?.turn, g?.phase]);
 
   /* 一局结束：弹结算。用 winner/phase 作触发，不用事件 —— 事件可能因为断线丢掉，
      而快照一定会到。关掉之后不再自动弹回来（看牌桌是玩家主动要看的）。 */
@@ -211,10 +214,34 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     setGangPick(true);
   };
 
-  const onDiscard = (t: Tile, i: number) => {
+  /** 拖牌出牌：手上方一条弧线，拖过去就出牌；没拖动就是点一下抬起、再点一下出牌 */
+  const onTilePointerDown = (e: React.PointerEvent, t: Tile, i: number) => {
     if (!canDiscard) { toast('还没轮到你出牌'); return; }
-    if (picked !== i) { setPicked(i); return; }   // 第一下：抬起来
-    send('discard', t);                            // 第二下：打出去
+    const wasPicked = picked === i;
+    dragRef.current = { i, tile: t, y0: e.clientY, started: false };
+    setDragOut(false);
+    const move = (ev: PointerEvent) => {
+      const d = dragRef.current; if (!d) return;
+      const dy = d.y0 - ev.clientY;
+      if (!d.started && Math.abs(dy) > 6) d.started = true;
+      setDragOut(!!d.started && dy > 22);
+    };
+    const up = (ev: PointerEvent) => {
+      const d = dragRef.current; dragRef.current = null;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!d) return;
+      const dy = d.y0 - ev.clientY;
+      if (d.started && dy > 22) {           // 拖出弧线 → 出牌
+        setDragOut(false); setPicked(undefined);
+        send('discard', d.tile);
+      } else if (!d.started) {              // 没拖动 → 点一下抬起，再点一下出牌
+        if (wasPicked) { setPicked(undefined); send('discard', d.tile); }
+        else setPicked(d.i);
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   };
 
   const v: MjTableView | null = useMemo(() => {
@@ -264,7 +291,20 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
         <button className="btn ghost sm" onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>离开</button>
       </div>
 
-      <MjTable v={v} onDiscard={onDiscard} picked={picked} ringFrac={turnRing?.frac} />
+      <MjTable v={v} picked={picked} ringFrac={turnRing?.frac} onTilePointerDown={onTilePointerDown} />
+
+      {/* 出牌弧线：手上方一条线，拖过去松手出牌 */}
+      {canDiscard && picked !== undefined && (
+        <div className={`mj-arc ${dragOut ? 'on' : ''}`}>
+          <span className="mj-arc-tip">{dragOut ? '松手出牌' : '拖出弧线出牌'}</span>
+        </div>
+      )}
+      {/* 选中的牌：给一个「打」按钮，跟拖出弧线、再点一下三种方式随便用哪个 */}
+      {canDiscard && picked !== undefined && v && (
+        <button className="mj-discard" onClick={() => { const h = (v.players[mySeat ?? 0]?.hand ?? []) as Tile[]; if (h[picked] !== undefined) send('discard', h[picked]); }}>
+          打
+        </button>
+      )}
 
       {/* 行动按钮：竖着一排贴右下角，拇指够得着 */}
       {btnActs.length > 0 && (

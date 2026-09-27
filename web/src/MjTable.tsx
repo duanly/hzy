@@ -122,9 +122,10 @@ function MjTags({ p }: { p: MjSeatView }) {
 }
 
 /** 一方：头像在角上，手牌在左，下地在右 */
-function SeatSide({ p, rel, mine, onDiscard, picked, ringFrac }: {
+function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
-  onDiscard?: (t: Tile, i: number) => void; picked?: number; ringFrac?: number;
+  picked?: number; ringFrac?: number;
+  onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
   /* 四家都横着排：自己的牌最大（md），别家一律 sm（背面，看清张数就够） */
@@ -151,7 +152,7 @@ function SeatSide({ p, rel, mine, onDiscard, picked, ringFrac }: {
             ? p.hand.map((t, i) => (
               <MjTile key={i} tile={t} size={size}
                 selected={picked === i}
-                onClick={onDiscard ? () => onDiscard(t, i) : undefined}
+                onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
                 className={[
                   i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined,
                   p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
@@ -177,8 +178,9 @@ function SeatSide({ p, rel, mine, onDiscard, picked, ringFrac }: {
   );
 }
 
-export function MjTable({ v, onDiscard, picked, ringFrac }: {
-  v: MjTableView; onDiscard?: (t: Tile, i: number) => void; picked?: number; ringFrac?: number;
+export function MjTable({ v, picked, ringFrac, onTilePointerDown }: {
+  v: MjTableView; picked?: number; ringFrac?: number;
+  onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
 }) {
   // 四家按"我在下方"转一圈：我 0、下家 1（右）、对家 2（上）、上家 3（左）
   const rel = (seat: number) => ((seat - v.mySeat + 4) % 4) as 0 | 1 | 2 | 3;
@@ -206,8 +208,9 @@ export function MjTable({ v, onDiscard, picked, ringFrac }: {
 
       {v.players.map(p => (
         <SeatSide key={p.seat} p={p} rel={rel(p.seat)} mine={p.seat === v.mySeat}
-          onDiscard={p.seat === v.mySeat ? onDiscard : undefined} picked={p.seat === v.mySeat ? picked : undefined}
-          ringFrac={ringFrac} />
+          picked={p.seat === v.mySeat ? picked : undefined}
+          ringFrac={ringFrac}
+          onTilePointerDown={p.seat === v.mySeat ? onTilePointerDown : undefined} />
       ))}
     </div>
   );
