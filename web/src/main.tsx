@@ -214,20 +214,23 @@ function fitScreen() {
      不然宽高在临界值附近一抖，rotate 就在 true / false 之间反复跳。 */
   const diff = vh - vw;
   const rotate = vw <= 900 && (lastRotate === null ? diff > 0 : lastRotate ? diff > -8 : diff > 8);
-  const narrow = rotate ? vw : vh;            // 屏幕的窄边
+  /* 手机上地址栏是"浮"的（会塌陷）：窄边 / 长边都按全屏算（screen 是固定值，不随方向、不随地址栏变）。
+     竖屏：窄边=手机宽、长边=手机高（地址栏在手机底部，转 90° 后落在内容右侧）；
+     横屏：窄边=手机高、长边=手机宽（地址栏在顶部，落在内容上方）。
+     桌面（鼠标）地址栏是窗口的一部分，按窗口可视区算，不动。 */
+  const fullShort = TOUCH ? Math.round(window.screen?.width ?? (rotate ? vw : vh)) : (rotate ? vw : vh);
+  const fullLong = TOUCH ? Math.round(window.screen?.height ?? (rotate ? vh : vw)) : (rotate ? vh : vw);
+  const narrow = fullShort;            // 屏幕的窄边
   const k = narrow > DESIGN_H && narrow > HAND_HELD ? 1 : narrow / DESIGN_H;
-  /* 竖屏时长边 = 手机的高。地址栏在手机底部，转 90° 后落在内容右侧：用可视高
-     （visualViewport.height）会把那块空出来、还跟着地址栏塌陷来回抖；
-     用全屏高（screen.height）才填满，而且它不随地址栏变，从根上不抖。 */
-  const longEdge = rotate ? Math.round(window.screen?.height ?? vh) : vw;
+  const longEdge = fullLong;
   /* 视口（取整后）没变、旋转方向也没变：什么都不用做，重设一遍只会再给视口一个扰动。 */
-  const key = `${rotate}|${vw}|${rotate ? longEdge : vh}`;
+  const key = `${rotate}|${fullShort}|${fullLong}`;
   if (key === lastFitKey) return;
   lastFitKey = key;
   lastRotate = rotate;
   if (Math.abs(k - 1) < 0.005 && !rotate) { clear(); announce(); return; }   // 正好 1:1，什么都不用做
   root.style.width = `${longEdge / k}px`;
-  root.style.height = `${(rotate ? vw : vh) / k}px`;
+  root.style.height = `${narrow / k}px`;
   root.style.transform = rotate ? `rotate(90deg) translateY(-${vw}px) scale(${k})` : `scale(${k})`;
   root.style.transformOrigin = 'top left';
   announce();
