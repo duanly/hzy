@@ -893,28 +893,6 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   }
   /** 牌组是否已经够整齐：只有一张的不超过 1 组，两张及以下的不超过 2 组 */
   const tidyOk = (cs: Kind[][]) => cs.filter(c => c.length === 1).length <= 1 && cs.filter(c => c.length <= 2).length <= 2;
-  /**
-   * 把零碎的牌组两两并起来（每组不超过 3 张），直到够整齐。
-   * 挑哪两组来并：先看"搭不搭"（同字 / 大小夹 / 连牌 / 一二三 / 二七十），再看并完是不是最小。
-   * 例：三三 + 八 + 九玖 → 八 跟 九玖 并成「八九玖」，而不是把八塞进「三三」。
-   */
-  function tidy(cs: Kind[][]): Kind[][] {
-    const out = cs.filter(c => c.length).map(c => c.slice());
-    let guard = 20;
-    while (!tidyOk(out) && guard-- > 0) {
-      let a = -1, b = -1, bestAff = -1, bestLen = 99;
-      for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
-        const len = out[i].length + out[j].length;
-        if (len > 3) continue;
-        const aff = affinity(out[i], out[j]);
-        if (aff > bestAff || (aff === bestAff && len < bestLen)) { bestAff = aff; bestLen = len; a = i; b = j; }
-      }
-      if (a < 0) break;                       // 并不动了就算了
-      out[a] = [...out[a], ...out[b]];
-      out.splice(b, 1);
-    }
-    return out;
-  }
   /** 不是成句的牌组，按"连得紧的放下面、落单的放上面"摆 */
   const finishCols = (cs: Kind[][]) => cs.map(c => (c.length === 3 && partition(c, false).complete ? sortCol(c) : orderCol(c)));
   // 自动理牌：直接照 autoSort 的结果摆（坎在最左、成句其次、散牌按进张价值凑堆），
@@ -929,13 +907,37 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     meldXi: (((gs ?? g)?.players?.[mySeat]?.melds ?? []) as Meld[]).reduce((a, m) => a + (m.xi ?? 0), 0),
   });
   const autoCols = (hand: Kind[]) => autoSort(hand, sortOpts()).map(gp => gp.cards);
-  /** 自动理牌（保留手码的三张一组）：自己码好的三张原样不动，只把其余的牌重新理一遍 */
+  /** 组数超过 7：把两张一组的拆开，一张一张并到不满三张的组里（三张的组一律不碰） */
+  const fitToMax = (cs: Kind[][]): Kind[][] => {
+    const out = cs.filter(c => c.length).map(c => c.slice());
+    let guard = 40;
+    while (out.length > MAX_COLS && guard-- > 0) {
+      let two = -1;
+      for (let i = out.length - 1; i >= 0; i--) if (out[i].length === 2) { two = i; break; }
+      if (two < 0) break;                       // 没有两张组可拆了
+      const cards = out.splice(two, 1)[0].slice();
+      let placed = true;
+      for (const k of cards) {
+        let t = -1, bestAff = -1;
+        for (let i = 0; i < out.length; i++) {
+          if (out[i].length >= 3) continue;     // 只并进不满三张的
+          const aff = affinity(out[i], [k]);
+          if (aff > bestAff) { bestAff = aff; t = i; }
+        }
+        if (t < 0) { out.push([k]); placed = false; }
+        else out[t] = sortCol([...out[t], k]);
+      }
+      if (!placed) break;                       // 并不动了，别原地打转
+    }
+    return out;
+  };
+  /** 自动理牌：三张的组（成句 / 坎 / 还没成句的）原样不动，只把两张组和散牌重新归集 */
   const autoColsKeep = (hand: Kind[], prev: Kind[][]) => {
     const rest = hand.slice();
     const kept: Kind[][] = [];
     /** 这一组还能从剩下的手牌里凑齐吗？能就摘出来钉住 */
     const take = (col: Kind[]) => {
-      if (col.length < 3) return false;
+      if (col.length < 3) return false;      // 只认三张及以上：两张的搭子 / 对子还要重新归集
       const tmp = rest.slice();
       if (!col.every(k => { const i = tmp.indexOf(k); if (i < 0) return false; tmp.splice(i, 1); return true; })) return false;
       kept.push(col.slice());
@@ -944,13 +946,12 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     };
     // ① 玩家自己码好的三张（或四张）一律不动；手里已经没这几张的钉子顺手清掉
     pinsRef.current = pinsRef.current.filter(take);
-    // ② 再把已经码成三张的列留着 —— 那也是他的思路，别给人拆了
+    // ② 已经码成三张的列也留着 —— 成句也好、没成句也好，都交给玩家自己调，别动它
     for (const col of prev) { if (col.length === 3) take(col); }
-    /* 收尾按**左右次序**排（orderCols），不是按"哪组牌多"排。
-       以前这儿是 byLen —— 只看张数：钉住的那几组只要是三张就一路排到最左边，
-       哪怕它根本不成句。于是就有了"最左边冒出一组凑不成句的牌"。
+    /* 剩下的（两张组 + 散牌）合成一句 / 归集到一组；组数超了再拆两张组。
+       收尾按**左右次序**排（orderCols），不是按"哪组牌多"排 ——
        张数多≠该靠左，该靠左的是"已经成了、不用再动"的那几组。 */
-    return orderCols([...kept, ...autoCols(rest)]);
+    return orderCols(fitToMax([...kept, ...autoCols(rest)]));
   };
   const [chiPick, setChiPick] = useState<ActionOption | null>(null);
   const [chiStep, setChiStep] = useState<number | null>(null);   // 第二步：选了哪个吃法，正在确认下伙
@@ -2617,13 +2618,8 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
       return;
     }
     if (autoSortRef.current && !manualRef.current) { setCols(autoColsKeep(myHand, next)); return; }
-    // 不自动理牌：码好的三张以上原封不动，只把剩下的散牌（连同新进的牌）重新归集一下，摆到右边
-    if (!autoSortRef.current) {
-      const big = next.filter(c => c.length >= 3);
-      const loose = [...next.filter(c => c.length < 3).flat(), ...remaining];
-      setCols([...big, ...packCols(tidy(loose.map(k => [k])), 3)]);
-      return;
-    }
+    // 不自动理牌也照同一套规矩：三张的组不动，两张组 + 散牌合成一句 / 归集到一组，最多 7 组
+    if (!autoSortRef.current) { setCols(autoColsKeep(myHand, next)); return; }
     for (const k of remaining) next.push([k]);
     // 牌组零碎了就重新智能理一次
     if (!tidyOk(next)) { manualRef.current = false; setCols(autoColsKeep(myHand, next)); return; }
@@ -2643,9 +2639,16 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     const d: any = gs?.ended && lastHu && lastHu.seat === seat ? (lastHu as any).detail : null;
     return typeof d?.huGroupIdx === 'number' ? d.huGroupIdx : -1;
   };
+  /** 要标记的那张胡牌：直接胡（碰 / 吃 / 自摸）就是 card；提龙胡 / 开跑胡 / 偎起胡 没有"那一张"，
+      就取下地的那个字（引擎已算好放在 detail.huKind 里）。 */
+  const huMarkCard: Kind = lastHu ? (lastHu.card >= 0 ? lastHu.card : (((lastHu.detail as any)?.huKind ?? -1) as Kind)) : -1;
   // 亮牌时我手里的「胡」字：只标一个 —— 胡的那张在哪一组，就标那一组打头的那张
-  const myMarkCol = gs?.ended && lastHu && lastHu.seat === mySeat && lastHu.card >= 0
-    ? cols.findIndex(c => c.includes(lastHu.card as Kind)) : -1;
+  const myMarkCol = gs?.ended && lastHu && lastHu.seat === mySeat && huMarkCard >= 0
+    ? cols.findIndex(c => c.includes(huMarkCard)) : -1;
+  // 我下地的那几组里，含胡牌的是哪一组（提龙胡 / 开跑胡 / 偎起胡 的胡牌在下地，不在手里）
+  const myMeldMark = gs?.ended && lastHu && lastHu.seat === mySeat && lastHu.card < 0 && huMarkCard >= 0
+    ? markInMelds((gs.players?.[mySeat]?.melds ?? []) as any, undefined, huMarkCard)
+    : -1;
   // 我胡牌时：把"含胡牌的那一句"摆到下地区，手牌列里就不再重复显示
   const myHuCol = useMemo(() => {
     const gps = huGroupsOf(mySeat);
@@ -3016,9 +3019,9 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
 
       {/* 中区：上家 | 中央 | 下家 */}
       <div className="table-mid">
-        <SeatBox seat={leftSeat} mySeat={mySeat} huTag={huTagFor(leftSeat.seat)} holdCard={fx && fx.seat === leftSeat.seat ? fx.card : null} holdCid={fx && fx.seat === leftSeat.seat ? fx.cid : undefined} landDone={!!land?.done} landCard={ghostOf(leftSeat.seat) ?? null} holdMeldCard={fx?.meld && fx.seat === leftSeat.seat ? fx.card : null} landMeldCard={land?.meld && land.seat === leftSeat.seat ? land.card : null} landMeldSize={land?.meldSize} landMeldAgain={land?.again} holdMeldsFrom={fx?.meld && fx.seat === leftSeat.seat && preMeldRef.current?.seat === leftSeat.seat ? preMeldRef.current.melds : undefined} holdCount={fx?.meld && fx.seat === leftSeat.seat && preMeldRef.current?.seat === leftSeat.seat ? preMeldRef.current.count : undefined} label="上家" side="left" ringFrac={ringFrac} g={gs} rel={n - 1} isTurn={actingSeat === leftSeat.seat} dealer={g?.dealer === leftSeat.seat} onAvatar={id => setProfile(id)} onKick={s => setKick(s)} onInvite={canInvite ? (st => socket.send({ type: 'room.bots', add: true, seat: st })) : undefined} bubbles={bubbles} huMark={gs?.ended && lastHu && lastHu.card >= 0 && lastHu.seat === leftSeat.seat ? (lastHu.card as Kind) : null} huCid={gs?.ended && lastHu ? (lastHu as any).cid : undefined} huGroups={huGroupsOf(leftSeat.seat)} huGroupIdx={huGroupIdxOf(leftSeat.seat)} fouls={fouls} />
+        <SeatBox seat={leftSeat} mySeat={mySeat} huTag={huTagFor(leftSeat.seat)} holdCard={fx && fx.seat === leftSeat.seat ? fx.card : null} holdCid={fx && fx.seat === leftSeat.seat ? fx.cid : undefined} landDone={!!land?.done} landCard={ghostOf(leftSeat.seat) ?? null} holdMeldCard={fx?.meld && fx.seat === leftSeat.seat ? fx.card : null} landMeldCard={land?.meld && land.seat === leftSeat.seat ? land.card : null} landMeldSize={land?.meldSize} landMeldAgain={land?.again} holdMeldsFrom={fx?.meld && fx.seat === leftSeat.seat && preMeldRef.current?.seat === leftSeat.seat ? preMeldRef.current.melds : undefined} holdCount={fx?.meld && fx.seat === leftSeat.seat && preMeldRef.current?.seat === leftSeat.seat ? preMeldRef.current.count : undefined} label="上家" side="left" ringFrac={ringFrac} g={gs} rel={n - 1} isTurn={actingSeat === leftSeat.seat} dealer={g?.dealer === leftSeat.seat} onAvatar={id => { socket.send({ type: 'seat.wake' } as any); setProfile(id); }} onKick={s => setKick(s)} onInvite={canInvite ? (st => socket.send({ type: 'room.bots', add: true, seat: st })) : undefined} bubbles={bubbles} huMark={gs?.ended && lastHu && huMarkCard >= 0 && lastHu.seat === leftSeat.seat ? huMarkCard : null} huCid={gs?.ended && lastHu ? (lastHu as any).cid : undefined} huGroups={huGroupsOf(leftSeat.seat)} huGroupIdx={huGroupIdxOf(leftSeat.seat)} fouls={fouls} />
         <div className="center-area">
-          {topSeat && <SeatBox seat={topSeat} mySeat={mySeat} huTag={huTagFor(topSeat.seat)} holdCard={fx && fx.seat === topSeat.seat ? fx.card : null} holdCid={fx && fx.seat === topSeat.seat ? fx.cid : undefined} landDone={!!land?.done} landCard={ghostOf(topSeat.seat) ?? null} holdMeldCard={fx?.meld && fx.seat === topSeat.seat ? fx.card : null} landMeldCard={land?.meld && land.seat === topSeat.seat ? land.card : null} landMeldSize={land?.meldSize} landMeldAgain={land?.again} holdMeldsFrom={fx?.meld && fx.seat === topSeat.seat && preMeldRef.current?.seat === topSeat.seat ? preMeldRef.current.melds : undefined} holdCount={fx?.meld && fx.seat === topSeat.seat && preMeldRef.current?.seat === topSeat.seat ? preMeldRef.current.count : undefined} label="对家" ringFrac={ringFrac} g={gs} rel={2} isTurn={actingSeat === topSeat.seat} dealer={g?.dealer === topSeat.seat} onAvatar={id => setProfile(id)} onKick={s => setKick(s)} onInvite={canInvite ? (st => socket.send({ type: 'room.bots', add: true, seat: st })) : undefined} bubbles={bubbles} huMark={gs?.ended && lastHu && lastHu.card >= 0 && topSeat && lastHu.seat === topSeat.seat ? (lastHu.card as Kind) : null} huCid={gs?.ended && lastHu ? (lastHu as any).cid : undefined} huGroups={huGroupsOf(topSeat.seat)} huGroupIdx={huGroupIdxOf(topSeat.seat)} fouls={fouls} horizontal />}
+          {topSeat && <SeatBox seat={topSeat} mySeat={mySeat} huTag={huTagFor(topSeat.seat)} holdCard={fx && fx.seat === topSeat.seat ? fx.card : null} holdCid={fx && fx.seat === topSeat.seat ? fx.cid : undefined} landDone={!!land?.done} landCard={ghostOf(topSeat.seat) ?? null} holdMeldCard={fx?.meld && fx.seat === topSeat.seat ? fx.card : null} landMeldCard={land?.meld && land.seat === topSeat.seat ? land.card : null} landMeldSize={land?.meldSize} landMeldAgain={land?.again} holdMeldsFrom={fx?.meld && fx.seat === topSeat.seat && preMeldRef.current?.seat === topSeat.seat ? preMeldRef.current.melds : undefined} holdCount={fx?.meld && fx.seat === topSeat.seat && preMeldRef.current?.seat === topSeat.seat ? preMeldRef.current.count : undefined} label="对家" ringFrac={ringFrac} g={gs} rel={2} isTurn={actingSeat === topSeat.seat} dealer={g?.dealer === topSeat.seat} onAvatar={id => { socket.send({ type: 'seat.wake' } as any); setProfile(id); }} onKick={s => setKick(s)} onInvite={canInvite ? (st => socket.send({ type: 'room.bots', add: true, seat: st })) : undefined} bubbles={bubbles} huMark={gs?.ended && lastHu && huMarkCard >= 0 && topSeat && lastHu.seat === topSeat.seat ? huMarkCard : null} huCid={gs?.ended && lastHu ? (lastHu as any).cid : undefined} huGroups={huGroupsOf(topSeat.seat)} huGroupIdx={huGroupIdxOf(topSeat.seat)} fouls={fouls} horizontal />}
           {waiting ? <WaitingPanel room={room} me={me} isHost={isHost} nextRoundIn={nextRoundIn} /> : (
             <>
               <div className="deck-wrap" ref={deckRef}>
@@ -3043,11 +3046,11 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
                 </div>}
                 {!gs?.ended && ringSec <= 5 && ringSec > 0 && <span key={ringSec} className="deck-num">{ringSec}</span>}
                 {/* 亮牌：胡的那张牌 + 没翻出来的公共牌，一条摆在我手牌的底端（正好盖住那一排小红印） */}
-                {((gs?.ended && lastHu && lastHu.card >= 0) || (gs?.pileRest && (gs.pileRest as Kind[]).length > 0)) && (
+                {((gs?.ended && lastHu && huMarkCard >= 0) || (gs?.pileRest && (gs.pileRest as Kind[]).length > 0)) && (
                   <div className="reveal-strip">
-                    {gs?.ended && lastHu && lastHu.card >= 0 && (
+                    {gs?.ended && lastHu && huMarkCard >= 0 && (
                       <span className="deck-hu" title="胡的这张牌">
-                        <Card kind={lastHu.card as Kind} size="sm" head className="card-mark" />
+                        <Card kind={huMarkCard} size="sm" head className="card-mark" />
                       </span>
                     )}
                     {gs?.pileRest && (gs.pileRest as Kind[]).length > 0 && (
@@ -3075,7 +3078,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
           )}
           {room.status === 'paused' && <div className="big-msg">暂停中 · 等待玩家补位</div>}
         </div>
-        <SeatBox seat={rightSeat} mySeat={mySeat} huTag={huTagFor(rightSeat.seat)} holdCard={fx && fx.seat === rightSeat.seat ? fx.card : null} holdCid={fx && fx.seat === rightSeat.seat ? fx.cid : undefined} landDone={!!land?.done} landCard={ghostOf(rightSeat.seat) ?? null} holdMeldCard={fx?.meld && fx.seat === rightSeat.seat ? fx.card : null} landMeldCard={land?.meld && land.seat === rightSeat.seat ? land.card : null} landMeldSize={land?.meldSize} landMeldAgain={land?.again} holdMeldsFrom={fx?.meld && fx.seat === rightSeat.seat && preMeldRef.current?.seat === rightSeat.seat ? preMeldRef.current.melds : undefined} holdCount={fx?.meld && fx.seat === rightSeat.seat && preMeldRef.current?.seat === rightSeat.seat ? preMeldRef.current.count : undefined} label="下家" side="right" ringFrac={ringFrac} g={gs} rel={1} isTurn={actingSeat === rightSeat.seat} dealer={g?.dealer === rightSeat.seat} onAvatar={id => setProfile(id)} onKick={s => setKick(s)} onInvite={canInvite ? (st => socket.send({ type: 'room.bots', add: true, seat: st })) : undefined} bubbles={bubbles} huMark={gs?.ended && lastHu && lastHu.card >= 0 && lastHu.seat === rightSeat.seat ? (lastHu.card as Kind) : null} huCid={gs?.ended && lastHu ? (lastHu as any).cid : undefined} huGroups={huGroupsOf(rightSeat.seat)} huGroupIdx={huGroupIdxOf(rightSeat.seat)} fouls={fouls} />
+        <SeatBox seat={rightSeat} mySeat={mySeat} huTag={huTagFor(rightSeat.seat)} holdCard={fx && fx.seat === rightSeat.seat ? fx.card : null} holdCid={fx && fx.seat === rightSeat.seat ? fx.cid : undefined} landDone={!!land?.done} landCard={ghostOf(rightSeat.seat) ?? null} holdMeldCard={fx?.meld && fx.seat === rightSeat.seat ? fx.card : null} landMeldCard={land?.meld && land.seat === rightSeat.seat ? land.card : null} landMeldSize={land?.meldSize} landMeldAgain={land?.again} holdMeldsFrom={fx?.meld && fx.seat === rightSeat.seat && preMeldRef.current?.seat === rightSeat.seat ? preMeldRef.current.melds : undefined} holdCount={fx?.meld && fx.seat === rightSeat.seat && preMeldRef.current?.seat === rightSeat.seat ? preMeldRef.current.count : undefined} label="下家" side="right" ringFrac={ringFrac} g={gs} rel={1} isTurn={actingSeat === rightSeat.seat} dealer={g?.dealer === rightSeat.seat} onAvatar={id => { socket.send({ type: 'seat.wake' } as any); setProfile(id); }} onKick={s => setKick(s)} onInvite={canInvite ? (st => socket.send({ type: 'room.bots', add: true, seat: st })) : undefined} bubbles={bubbles} huMark={gs?.ended && lastHu && huMarkCard >= 0 && lastHu.seat === rightSeat.seat ? huMarkCard : null} huCid={gs?.ended && lastHu ? (lastHu as any).cid : undefined} huGroups={huGroupsOf(rightSeat.seat)} huGroupIdx={huGroupIdxOf(rightSeat.seat)} fouls={fouls} />
       </div>
 
       {/* 我的头像：贴左下角（方头像，昵称在头像上面，分数在下面） */}
@@ -3098,7 +3101,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
       {/* 底区：我 —— 下地牌在扇形左上，打出的牌在扇形右上，行动按钮在右下；双击空白处自动理牌 */}
       <div className="table-bottom" ref={tbRef} onDoubleClick={e => {
         if ((e.target as HTMLElement).closest('.hand-col, button, .meld, .discard-pile, .seat')) return;
-        // 自己码好的三张一组先不动，只理其余的牌
+        // 三张的组先不动，只把两张组和散牌重新归集
         const keepCols = autoColsKeep(myHand, cols);
         socket.send({ type: 'seat.wake' } as any);
         manualRef.current = keepCols.some(c => c.length === 3);
@@ -3115,7 +3118,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
             ...(anchors.meldsBottom != null ? { bottom: anchors.meldsBottom } : null),
           }}>
             {holdMelds(mySeat, (gs?.players?.[mySeat]?.melds ?? []) as Meld[]).map((m, i) =>
-              <MeldBox key={(m as any).cids?.join('-') ?? i} m={m} size="sm" bare />)}
+              <MeldBox key={(m as any).cids?.join('-') ?? i} m={m} size="sm" bare mark={i === myMeldMark ? huMarkCard : null} />)}
             {/* 正往我这边下地区飞的那一组：先占位（三张宽），落点量得到，不会糊到旁边那组上。
                 重提 / 重跑不摆这个占位 —— 那张牌是加到原来那一组上的，那一组自己就在，
                 再摆一个"新一组"只会把落点顶到外面一格去。 */}
