@@ -63,12 +63,20 @@
 /* 一手牌：紧挨着排，最后一张（刚摸的）单独空开一点 */
 .mj-hand { display: flex; gap: 2px; align-items: flex-end; }
 .mj-hand .mj-drawn { margin-left: 10px; }
+/* 左右两家的手牌竖着放不下 13 张，只露一张背面，角上挂个红圈标张数 */
+.mj-hand-count { position: relative; display: inline-flex; flex: none; }
+.mj-hand-count > i {
+  position: absolute; right: -7px; bottom: -7px; z-index: 2;
+  min-width: 17px; height: 17px; padding: 0 3px; border-radius: 9px;
+  font-style: normal; font-size: 10px; font-weight: 900; line-height: 17px; text-align: center;
+  color: #fff; background: #c8322b; box-shadow: 0 1px 3px rgba(0,0,0,.55);
+  white-space: nowrap;
+}
 /* 下地的牌组（碰 / 杠）：一组之间留空 */
 .mj-melds { display: flex; gap: 6px; flex-wrap: wrap; }
 .mj-meld { display: flex; gap: 1px; }
-/* 暗杠：中间两张扣着 */
-.mj-meld.mj-angang .mj-tile:nth-child(2),
-.mj-meld.mj-angang .mj-tile:nth-child(3) { }
+/* 暗杠：别人的整组扣着（服务端只发 tile=-1，四张都走 .mj-back），
+   扣不扣由 JSX 的 back 属性决定，这儿不留空规则 */
 
 /* 弃牌区：红虚线框 + 角上一个「弃」的圆戳，跟字牌那边一个规矩 */
 .mj-discards {
@@ -266,6 +274,15 @@
 /* 自己的手牌点得动 */
 .mj-bottom .mj-hand .mj-tile { cursor: pointer; }
 .mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }
+/* 自己的手牌「立起来」：给点透视、上边微微后仰，跟下地「平铺」的牌一眼区分开。
+   选中 / 悬停是在「立起来」的基础上再抬一下 —— 得把透视一起带上写，
+   不然 .mj-sel / :hover 各自的 transform 会把透视整个盖掉。 */
+.mj-stand {
+  transform: perspective(220px) rotateX(10deg);
+  transform-origin: 50% 100%;
+}
+.mj-stand.mj-sel { transform: perspective(220px) rotateX(10deg) translateY(-18%); }
+.mj-bottom .mj-hand .mj-stand:hover { transform: perspective(220px) rotateX(10deg) translateY(-10%); }
 
 /* ================= 一整屏：顶栏 + 行动按钮 + 结算 ================= */
 /* **别在这儿写 position: relative**。.screen 本身是 position:absolute; inset:0 ——

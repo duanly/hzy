@@ -128,9 +128,8 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
-  /* 自己的手牌「立起来」最大（lg），别家背面 sm；下地的碰/杠「平铺」用 md */
-  const handSize: 'sm' | 'lg' = mine ? 'lg' : 'sm';
-  const meldSize: 'sm' | 'md' = mine ? 'md' : 'sm';
+  /* 手牌和下地牌一样大（md）：自己的手牌「立起来」、下地「平铺」，只是加不加透视的区别 */
+  const size: 'sm' | 'md' = mine ? 'md' : 'sm';
   return (
     <div className={`mj-side mj-${pos} ${p.isTurn ? 'mj-turn' : ''}`}>
       {/* 头像钉在这一方的左端 —— 四个人的头像就落在四个角上 */}
@@ -147,29 +146,36 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
         </div>
       </div>
       <div className="mj-row">
-        {/* 手牌：自己的露面，别家只给背面 */}
+        {/* 手牌：自己的露面（立起来），对家背面横排，左右两家只露一张背面 + 张数 */}
         <div className="mj-hand">
-          {p.hand
-            ? p.hand.map((t, i) => (
-              <MjTile key={i} tile={t} size={handSize}
+          {mine ? (
+            p.hand!.map((t, i) => (
+              <MjTile key={i} tile={t} size={size}
                 selected={picked === i}
                 onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
                 className={[
+                  'mj-stand',
                   i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined,
                   p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
                 ].filter(Boolean).join(' ') || undefined} />
             ))
-            : Array.from({ length: p.handCount }, (_, i) => <MjTile key={i} back size={handSize} />)}
+          ) : (rel === 1 || rel === 3) ? (
+            /* 左右两家竖着放不下 13 张：只露一张背面，角上标张数 */
+            <span className="mj-hand-count"><MjTile back size={size} /><i>{p.handCount}</i></span>
+          ) : (
+            Array.from({ length: p.handCount }, (_, i) => <MjTile key={i} back size={size} />)
+          )}
         </div>
-        {/* 下地：碰 / 杠。暗杠中间两张扣着 */}
+        {/* 下地：碰 / 杠。暗杠整组扣着 —— 服务端对别人的暗杠只发 tile=-1，
+            (view() 里就是「暗杠只露张数」)，所以四张全走背面，不能露出牌面 */}
         <div className="mj-melds">
           {p.melds.map((m, i) => (
             <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
               {m.type === 'peng'
-                ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={meldSize} />)
+                ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} />)
                 : [0, 1, 2, 3].map(k => (
-                  <MjTile key={k} tile={m.tile} size={meldSize}
-                    back={m.gang === 'an' && !mine && (k === 1 || k === 2)} />
+                  <MjTile key={k} tile={m.tile} size={size}
+                    back={m.gang === 'an' && !mine} />
                 ))}
             </span>
           ))}
