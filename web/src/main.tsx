@@ -216,17 +216,13 @@ function fitScreen() {
   const rotate = vw <= 900 && (lastRotate === null ? diff > 0 : lastRotate ? diff > -8 : diff > 8);
   const narrow = rotate ? vw : vh;            // 屏幕的窄边
   const k = narrow > DESIGN_H && narrow > HAND_HELD ? 1 : narrow / DESIGN_H;
-  /* 竖屏时长边 = 手机的高。地址栏在手机底部，转 90° 后落在内容右侧：用可视高
-     （visualViewport.height）会把那块空出来、还跟着地址栏塌陷来回抖；
-     用全屏高（screen.height）才填满，而且它不随地址栏变，从根上不抖。 */
-  const longEdge = rotate ? Math.round(window.screen?.height ?? vh) : vw;
   /* 视口（取整后）没变、旋转方向也没变：什么都不用做，重设一遍只会再给视口一个扰动。 */
-  const key = `${rotate}|${vw}|${rotate ? longEdge : vh}`;
+  const key = `${rotate}|${vw}|${vh}`;
   if (key === lastFitKey) return;
   lastFitKey = key;
   lastRotate = rotate;
   if (Math.abs(k - 1) < 0.005 && !rotate) { clear(); announce(); return; }   // 正好 1:1，什么都不用做
-  root.style.width = `${longEdge / k}px`;
+  root.style.width = `${(rotate ? vh : vw) / k}px`;
   root.style.height = `${(rotate ? vw : vh) / k}px`;
   root.style.transform = rotate ? `rotate(90deg) translateY(-${vw}px) scale(${k})` : `scale(${k})`;
   root.style.transformOrigin = 'top left';
