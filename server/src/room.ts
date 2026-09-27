@@ -333,14 +333,11 @@ export class Room {
   }
 
   /**
-   * 离开这一桌。三种走法：
-   * - `disconnect`：断线。座位给他留着（大厅由机器人托管、私人房另有 60 秒宽限），回来接着打。
+   * 离开这一桌。三种走法（私人房和大厅一个样）：
+   * - `disconnect`：断线。正在打的那一局由机器人托管，本人随时回来接着打。
    * - `leave`：点了返回大厅。跟断线一个待遇 —— 人多半还会回来。
-   * - `stand`：**起立离开**。明说了不再回这一桌。
-   *   大厅：正在打的那一局照样由机器人替他打完（账本来就按开局时坐这儿的人算），
+   * - `stand`：**起立离开**。明说了不再回这一桌。正在打的那一局照样由机器人替他打完，
    *   座位打上"已起立"的印子 —— 重连不再把他送回来，本局一结束位子就真让出去。
-   *   私人房：位子当场空出来，牌局暂停等人补位（补位的人直接接手这手牌）。
-   *   私人房只有这一种走法会按停桌子。
    */
   leave(userId: number, reason: 'leave' | 'disconnect' | 'stand' = 'leave') {
     const idx = this.seatOf(userId);
@@ -348,30 +345,14 @@ export class Room {
     const s = this.seats[idx];
     if (reason === 'stand') s.stood = true;
     if (this.status === 'playing' && this.game && !this.game.ended) {
-      /* 只有**起立**（明说了不回这一桌）才把私人房按停。
-         以前是私人房只要有人离桌就当场空位 + 暂停 —— 可"返回大厅看一眼"和"断线两分钟"
-         都会走到这儿，于是三个人打得好好的，一个人退出去，另外两个干坐着等。
-         现在退出 / 断线不立刻交给机器人：位子和分数都留着（awayAt），桌子照转，
-         轮到他要出牌却没人操作，就走普通超时那套 —— 同一局里累计两次超时（autoBot）
-         才由机器人接手，他从大厅那条「返回牌局」点回来就接着打，
-         中途不会撞见机器人替他碰了牌。
-         起立才是真的离开位置：位子当场空出来，三人桌少一个打不下去，这才暂停等人补位
-         （补位的人直接接手这手牌）。 */
-      if (this.cfg.isPrivate && reason === 'stand') {
-        this.db.bumpStats(userId, { escapes: 1 });
-        s.client = null; s.userId = null; s.isBot = false; s.ready = false; s.stood = false; s.vacatedAt = Date.now();
-        this.pause();
-      } else if (this.cfg.isPrivate) {
-        // 私人房：临时退出 / 断线不立刻交给机器人，只摘掉连接、记下离开时刻（awayAt）
-        s.client = null; s.awayAt = Date.now(); s.awaySelf = reason === 'leave';
-        // 自己走的（点返回）才记一笔；断线不算逃跑
-        if (reason !== 'disconnect') this.db.bumpStats(userId, { escapes: 1 });
-      } else {
-        // 大厅：位子要留给别人坐，临时退出 / 断线照旧交给机器人代打，随时回来接着打
-        s.client = null; s.isBot = true; s.awayAt = Date.now(); s.awaySelf = reason === 'leave';
-        // 自己走的（点返回 / 起立）才记一笔；断线不算逃跑
-        if (reason !== 'disconnect') { s.botName = this.nameOf(userId) ?? undefined; this.db.bumpStats(userId, { escapes: 1 }); }
-      }
+      // 私人房也跟大厅一个节奏：临时退出 / 断线 / 起立，本局一律交给机器人代打，
+      // 本人随时回来接着打。起立只是打上"已起立"的印子（本局结束位子才真让出去），
+      // 不再当场暂停等人补位 —— 那样只要没人进来，整桌就冻在那儿。
+      s.client = null; s.isBot = true; s.awayAt = Date.now(); s.awaySelf = reason === 'leave';
+      // 自己走的（点返回 / 起立）才记一笔；断线不算逃跑
+      if (reason !== 'disconnect') { s.botName = this.nameOf(userId) ?? undefined; this.db.bumpStats(userId, { escapes: 1 }); }
+      // 正好轮到他的话，马上排上机器人，别让整桌等他超时
+      this.scheduleBots();
     } else {
       // 没在打牌：不管怎么走的，位子当场就空出来
       s.client = null; s.userId = null; s.isBot = false; s.ready = false; s.stood = false; s.vacatedAt = Date.now();
