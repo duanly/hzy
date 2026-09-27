@@ -15,6 +15,26 @@
 import React, { useMemo } from 'react';
 import { MjTile, mjName, HONG, type Tile } from './MjTile.tsx';
 
+/** 倒计时圈颜色：绿 → 黄 → 红（跟跑胡子同一个函数） */
+function ringColor(f: number) {
+  const x = Math.max(0, Math.min(1, f));
+  const hue = x > 0.4 ? 35 + ((x - 0.4) / 0.6) * (140 - 35) : 2 + (x / 0.4) * (35 - 2);
+  const sat = 78 + (1 - x) * 12, light = 48 + (1 - x) * 6;
+  return `hsl(${hue.toFixed(0)}, ${sat.toFixed(0)}%, ${light.toFixed(0)}%)`;
+}
+/** 头像外圈那一圈倒计时（方头像用圆角框），照跑胡子 */
+function TurnRing({ frac, size }: { frac: number; size: number }) {
+  const GAP = 4, box = size + GAP * 2, h = size + GAP * 2;
+  const pad = 2, bw = box - pad * 2, bh = h - pad * 2, r = Math.min(10, Math.round(bh / 3));
+  const len = 2 * (bw - 2 * r) + 2 * (bh - 2 * r) + 2 * Math.PI * r;
+  return <svg className="turn-ring" width={box} height={h} viewBox={`0 0 ${box} ${h}`}
+    style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }}>
+    <rect x={pad} y={pad} width={bw} height={bh} rx={r} fill="none" stroke="rgba(0,0,0,.35)" strokeWidth="3" />
+    <rect x={pad} y={pad} width={bw} height={bh} rx={r} fill="none" stroke={ringColor(frac)} strokeWidth="3" strokeLinecap="round"
+      strokeDasharray={`${len}`} strokeDashoffset={`${len * (1 - frac)}`} />
+  </svg>;
+}
+
 export interface MjSeatView {
   seat: number;
   hand: Tile[] | null;      // 别人的看不见，只给张数
@@ -29,6 +49,8 @@ export interface MjSeatView {
   delay?: number;
   /** 违规罚分次数 */
   fouls?: number;
+  /** 胡的那一张（亮牌时标个「胡」） */
+  huTile?: Tile;
 }
 
 export interface MjTableView {
@@ -102,19 +124,19 @@ function MjTags({ p }: { p: MjSeatView }) {
 /** 一方：头像在角上，手牌在左，下地在右 */
 function SeatSide({ p, rel, mine, onDiscard, picked }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
-  onDiscard?: (t: Tile, i: number) => void; picked?: number;
+  onDiscard?: (t: Tile, i: number) => void; picked?: number; ringFrac?: number;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
-  /* 左右两家是**竖着**排的：13 张手牌再加下地，用 xs 一列就下去 400 多像素，
-     手机横屏根本装不下。侧面用 xxs，对家（横着排）用 xs。 */
-  /* 别家的牌也放大一档：xxs 那会儿太小了，一眼扫过去看不出有几张、下地了几组。
-     侧面（竖着排）靠加大重叠来腾地方，对家横着排、宽度够，直接给 sm。 */
-  const size: 'xs' | 'sm' | 'md' = mine ? 'md' : (rel === 1 || rel === 3) ? 'xs' : 'sm';
+  /* 四家都横着排：自己的牌最大（md），别家一律 sm（背面，看清张数就够） */
+  const size: 'sm' | 'md' = mine ? 'md' : 'sm';
   return (
     <div className={`mj-side mj-${pos} ${p.isTurn ? 'mj-turn' : ''}`}>
       {/* 头像钉在这一方的左端 —— 四个人的头像就落在四个角上 */}
       <div className="mj-who">
-        <div className="mj-avatar">{p.name.slice(0, 2)}</div>
+        <span className="mj-avatar-wrap">
+          <div className="mj-avatar">{p.name.slice(0, 2)}</div>
+          {p.isTurn && ringFrac !== undefined && ringFrac > 0 && <TurnRing frac={ringFrac} size={34} />}
+        </span>
         <div className="mj-who-txt">
           {/* 昵称给足四个字，跟跑胡子那边一个规矩（再长就截断） */}
           <b className="mj-nick">{p.name.slice(0, 4)}{p.isDealer && <i className="mj-zhuang">庄</i>}</b>
@@ -130,7 +152,10 @@ function SeatSide({ p, rel, mine, onDiscard, picked }: {
               <MjTile key={i} tile={t} size={size}
                 selected={picked === i}
                 onClick={onDiscard ? () => onDiscard(t, i) : undefined}
-                className={i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined} />
+                className={[
+                  i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined,
+                  p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
+                ].filter(Boolean).join(' ') || undefined} />
             ))
             : Array.from({ length: p.handCount }, (_, i) => <MjTile key={i} back size={size} />)}
         </div>
@@ -152,8 +177,8 @@ function SeatSide({ p, rel, mine, onDiscard, picked }: {
   );
 }
 
-export function MjTable({ v, onDiscard, picked }: {
-  v: MjTableView; onDiscard?: (t: Tile, i: number) => void; picked?: number;
+export function MjTable({ v, onDiscard, picked, ringFrac }: {
+  v: MjTableView; onDiscard?: (t: Tile, i: number) => void; picked?: number; ringFrac?: number;
 }) {
   // 四家按"我在下方"转一圈：我 0、下家 1（右）、对家 2（上）、上家 3（左）
   const rel = (seat: number) => ((seat - v.mySeat + 4) % 4) as 0 | 1 | 2 | 3;
@@ -181,7 +206,8 @@ export function MjTable({ v, onDiscard, picked }: {
 
       {v.players.map(p => (
         <SeatSide key={p.seat} p={p} rel={rel(p.seat)} mine={p.seat === v.mySeat}
-          onDiscard={p.seat === v.mySeat ? onDiscard : undefined} picked={p.seat === v.mySeat ? picked : undefined} />
+          onDiscard={p.seat === v.mySeat ? onDiscard : undefined} picked={p.seat === v.mySeat ? picked : undefined}
+          ringFrac={ringFrac} />
       ))}
     </div>
   );

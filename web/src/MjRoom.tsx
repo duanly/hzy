@@ -153,6 +153,8 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   const canDiscard = opts.includes('discard');
   const btnActs = ACT_ORDER.filter(a => opts.includes(a));
   const ring = useRing(opts.length ? (g?.deadline ?? 0) : 0, g?.optionsSpan ?? 0, now);
+  // 头像那圈倒计时：跟"是不是轮到我"无关，只看当前 deadline —— 谁在行动就绕谁的头像转
+  const turnRing = useRing(g?.deadline ?? 0, g?.optionsSpan ?? 0, now);
   const locked = !!sent && sent.deadline === (g?.deadline ?? 0);
 
   /* 服务端换了新窗口（deadline 变了）＝ 上一步已经揭晓，锁可以松了。
@@ -217,6 +219,9 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
 
   const v: MjTableView | null = useMemo(() => {
     if (!g) return null;
+    // 胡牌的那一张：亮牌时标在赢家手牌上
+    const hu = room.ledger[room.ledger.length - 1]?.hu as any;
+    const huSeat = hu?.seat, huTile = hu?.card;
     const players: MjSeatView[] = g.players.map((p: any, i: number) => ({
       seat: i,
       hand: p.hand, handCount: p.handCount, melds: p.melds, discards: p.discards,
@@ -224,12 +229,13 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       total: room.seats[i]?.total ?? 0,
       isDealer: i === g.dealer,
       isTurn: g.phase === 'claim' ? false : i === g.turn,
+      huTile: i === huSeat ? huTile : undefined,
     }));
     return {
       players, mySeat: mySeat ?? 0, wallLeft: g.wallLeft, table: g.table,
       ma: g.ma, roundNo: room.roundNo, baseScore: room.baseScore,
     };
-  }, [g, room.seats, mySeat, room.roundNo, room.baseScore]);
+  }, [g, room.seats, room.ledger, mySeat, room.roundNo, room.baseScore]);
 
   if (!g || !v) {
     return (
@@ -258,7 +264,7 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
         <button className="btn ghost sm" onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>离开</button>
       </div>
 
-      <MjTable v={v} onDiscard={onDiscard} picked={picked} />
+      <MjTable v={v} onDiscard={onDiscard} picked={picked} ringFrac={turnRing?.frac} />
 
       {/* 行动按钮：竖着一排贴右下角，拇指够得着 */}
       {btnActs.length > 0 && (
