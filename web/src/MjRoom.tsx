@@ -151,6 +151,8 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   /** 拖牌出牌的拖动状态：按下那一下记起点，拖出弧线就出牌 */
   const dragRef = useRef<{ i: number; tile: Tile; y0: number; started: boolean } | null>(null);
   const [dragOut, setDragOut] = useState(false);
+  /** 拖动时跟着手指的虚影 */
+  const [dragGhost, setDragGhost] = useState<{ tile: Tile; x: number; y: number } | null>(null);
 
   const opts: string[] = g?.options ?? [];
   const canDiscard = opts.includes('discard');
@@ -225,11 +227,13 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       const dy = d.y0 - ev.clientY;
       if (!d.started && Math.abs(dy) > 6) d.started = true;
       setDragOut(!!d.started && dy > 22);
+      if (d.started) setDragGhost({ tile: d.tile, x: ev.clientX, y: ev.clientY });
     };
     const up = (ev: PointerEvent) => {
       const d = dragRef.current; dragRef.current = null;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      setDragGhost(null);
       if (!d) return;
       const dy = d.y0 - ev.clientY;
       if (d.started && dy > 22) {           // 拖出弧线 → 出牌
@@ -304,6 +308,13 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
         <button className="mj-discard" onClick={() => { const h = (v.players[mySeat ?? 0]?.hand ?? []) as Tile[]; if (h[picked] !== undefined) send('discard', h[picked]); }}>
           打
         </button>
+      )}
+
+      {/* 拖牌虚影：跟着手指走 */}
+      {dragGhost && (
+        <div className="mj-drag-ghost" style={{ left: dragGhost.x, top: dragGhost.y }}>
+          <MjTile tile={dragGhost.tile} size="lg" />
+        </div>
       )}
 
       {/* 行动按钮：竖着一排贴右下角，拇指够得着 */}

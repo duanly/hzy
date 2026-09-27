@@ -128,8 +128,9 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
-  /* 四家都横着排：自己的牌最大（md），别家一律 sm（背面，看清张数就够） */
-  const size: 'sm' | 'md' = mine ? 'md' : 'sm';
+  /* 自己的手牌「立起来」最大（lg），别家背面 sm；下地的碰/杠「平铺」用 md */
+  const handSize: 'sm' | 'lg' = mine ? 'lg' : 'sm';
+  const meldSize: 'sm' | 'md' = mine ? 'md' : 'sm';
   return (
     <div className={`mj-side mj-${pos} ${p.isTurn ? 'mj-turn' : ''}`}>
       {/* 头像钉在这一方的左端 —— 四个人的头像就落在四个角上 */}
@@ -150,7 +151,7 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
         <div className="mj-hand">
           {p.hand
             ? p.hand.map((t, i) => (
-              <MjTile key={i} tile={t} size={size}
+              <MjTile key={i} tile={t} size={handSize}
                 selected={picked === i}
                 onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
                 className={[
@@ -158,16 +159,16 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
                   p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
                 ].filter(Boolean).join(' ') || undefined} />
             ))
-            : Array.from({ length: p.handCount }, (_, i) => <MjTile key={i} back size={size} />)}
+            : Array.from({ length: p.handCount }, (_, i) => <MjTile key={i} back size={handSize} />)}
         </div>
         {/* 下地：碰 / 杠。暗杠中间两张扣着 */}
         <div className="mj-melds">
           {p.melds.map((m, i) => (
             <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
               {m.type === 'peng'
-                ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} />)
+                ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={meldSize} />)
                 : [0, 1, 2, 3].map(k => (
-                  <MjTile key={k} tile={m.tile} size={size}
+                  <MjTile key={k} tile={m.tile} size={meldSize}
                     back={m.gang === 'an' && !mine && (k === 1 || k === 2)} />
                 ))}
             </span>
@@ -193,15 +194,14 @@ export function MjTable({ v, picked, ringFrac, onTilePointerDown }: {
 
   return (
     <div className="mj-table">
-      {/* 中央：牌墙一圈 + 弃牌一堆 */}
+      {/* 中央：只剩个「剩 N 张」角标 + 弃牌堆（牌墙不画了，腾地方） */}
       <div className="mj-center">
-        <Wall left={v.wallLeft} />
         <div className="mj-pool-box">
           <span className="mj-wall-count">剩 {v.wallLeft} 张</span>
           <DiscardPool lanes={lanes} />
         </div>
-        {/* 刚打出来那张：亮一下，让人看清是哪一张 */}
-        {v.table && <div className="mj-just"><MjTile tile={v.table.tile} size="sm" className="mj-table-tile" /></div>}
+        {/* 明牌区：刚打出来、还在等人要的那张，亮在中央 */}
+        {v.table && <div className="mj-just"><span className="mj-just-tag">明</span><MjTile tile={v.table.tile} size="sm" className="mj-table-tile" /></div>}
         {/* 翻出来的马 */}
         {v.ma !== null && <div className="mj-ma-box"><MjTile tile={v.ma} size="sm" className="mj-ma" /></div>}
       </div>

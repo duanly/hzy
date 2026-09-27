@@ -21,6 +21,7 @@
 .mj-xs  { width: 21px; height: 28px; border-radius: 3px; }
 .mj-sm  { width: 30px; height: 40px; border-radius: 4px; }
 .mj-md  { width: 46px; height: 61px; border-radius: 6px; }
+.mj-lg  { width: 54px; height: 72px; border-radius: 7px; }
 
 /* 墨色 / 红 / 绿：牌面上就这三种颜色 */
 .mj-ink-fill   { fill: #2b2b2b; }
@@ -241,6 +242,13 @@
 
 /* 刚打出来那张：从堆里拎出来单独亮着 */
 .mj-just { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; }
+/* 明牌角标：左上角一个红「明」字 */
+.mj-just-tag {
+  position: absolute; left: -4px; top: -14px; z-index: 2;
+  font-size: 11px; font-weight: 900; color: #fff;
+  background: #c8322b; padding: 1px 5px; border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
 .mj-ma-box { position: absolute; right: 6px; bottom: 6px; z-index: 3; }
 
 /* 头像旁边那排标识：样式跟跑胡子那套对齐，两个玩法长一个样 */
@@ -329,14 +337,21 @@
 }
 .mj-arc.on .mj-arc-tip { color: #ffd98a; }
 
-/* 选中的牌：右下角一个「打」按钮 */
+/* 选中的牌：右下角一个「打」按钮（照字牌的矩形按钮） */
 .mj-discard {
   position: absolute; right: 10px; bottom: 8px; z-index: 6;
-  width: 56px; height: 56px; border-radius: 50%; border: none;
-  font-size: 20px; font-weight: 900; color: #fff7e2;
-  background: linear-gradient(#c2465a, #8c1f2e);
+  width: 62px; height: 44px; border-radius: 8px; border: none;
+  font-size: 21px; font-weight: 900; color: #3a2a06;
+  background: linear-gradient(#d6b76a, #b58a1a);
   box-shadow: 0 3px 8px rgba(0,0,0,.45);
   cursor: pointer; touch-action: manipulation; user-select: none;
+}
+
+/* 拖牌虚影：跟着手指走 */
+.mj-drag-ghost {
+  position: fixed; z-index: 20; pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-6deg);
+  opacity: .85; filter: drop-shadow(0 4px 8px rgba(0,0,0,.5));
 }
 
 .mj-gangpick {

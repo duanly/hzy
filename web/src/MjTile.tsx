@@ -117,7 +117,7 @@ export function MjFace({ tile }: { tile: Tile }) {
  * back = 背面（别人的手牌）。
  */
 export function MjTile({ tile, size = 'md', back, className, onClick, onPointerDown, selected, dim, style }: {
-  tile?: Tile; size?: 'xxs' | 'xs' | 'sm' | 'md'; back?: boolean;
+  tile?: Tile; size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg'; back?: boolean;
   className?: string; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; selected?: boolean; dim?: boolean;
   style?: React.CSSProperties;
 }) {
