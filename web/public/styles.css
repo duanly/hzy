@@ -761,6 +761,8 @@ button.ghost.sq { padding: 8px 10px; font-size: 13px; white-space: nowrap; }
 .tile-lh { background: linear-gradient(150deg, #3a4a55, #1b2329); }
 .tile-pw { background: linear-gradient(150deg, #6b4a1d, #3a2a10); }
 .tile-my { background: linear-gradient(150deg, #1d5a6b, #102c3a); }
+/* 红中麻将：跟牌桌同一块墨绿桌布，一眼是麻将 */
+.tile-mj { background: linear-gradient(150deg, #1e5a3e 0%, #17452f 45%, #0f3122 100%); }
 .tile-off { opacity: .55; }
 
 .tables { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; overflow-y: auto; padding-bottom: 8px; }

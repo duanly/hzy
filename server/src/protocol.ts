@@ -151,6 +151,7 @@ export type ClientMsg =
   | { type: 'auth'; token: string; deviceId?: string }   // deviceId 只是"这次从哪台机器进来的"，不改绑定
   | { type: 'lobby.list' }
   | { type: 'lobby.join'; tier: string }
+  | { type: 'lobby.joinMj' }                        // 大厅「红中麻将」：直接进一桌（人机），没有场次之分
   | { type: 'lobby.tables' }                        // 大厅：按玩法列出固定桌
   | { type: 'room.bots'; add: boolean; seat?: number }   // seat = 只补这一个空位（点空位请机器人）
   | { type: 'room.kick'; seat: number }             // 桌上真人：一键请机器人 / 把机器人请出去

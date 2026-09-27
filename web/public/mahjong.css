@@ -201,12 +201,10 @@
 .mj-wall-left .mj-stack-b, .mj-wall-right .mj-stack-b { transform: translateX(4px); }
 .mj-stack-t { box-shadow: 0 1px 1px rgba(0,0,0,.4); }
 
-/* 虚线框**裹着**弃牌堆，不写死大小 —— 牌多了框跟着长，牌少的时候不会空一大片 */
+/* 虚线框裹着弃牌堆：四家各占一边，写死一块方地，牌多牌少都不晃 */
 .mj-pool-box {
-  position: relative; padding: 12px 14px;
+  position: relative; width: 214px; height: 214px; flex: none;
   border: 2px dashed rgba(214,183,106,.22); border-radius: 10px;
-  min-width: 180px; min-height: 90px;
-  display: flex; align-items: center; justify-content: center;
 }
 /* 「剩 N 张」这个角标原先也叫 .mj-wall-left，跟西边那道牌墙撞了名 ——
    后面那条把前面的覆盖掉，西墙被拽到正中间去了。改叫 count，别再撞。 */
@@ -215,10 +213,13 @@
   font-size: 10px; color: rgba(242,230,196,.75); background: #17452f; padding: 0 6px; white-space: nowrap;
 }
 
-/* ---- 中央：弃牌堆。横七竖八，但每张都露着面 ---- */
-.mj-pool { display: grid; gap: 0; align-content: center; justify-items: center; }
-/* 每张牌在自己的格子里歪一点、挪一点：乱是乱，但压不着旁边那张 */
-.mj-pool-cell { display: flex; align-items: center; justify-content: center; width: 31px; height: 39px; }
+/* ---- 中央：弃牌堆。四家各占一边、各排一行（6 张一行），照欢乐麻将 ---- */
+.mj-pool { position: absolute; inset: 12px; }
+.mj-lane { position: absolute; display: flex; flex-wrap: wrap; gap: 1px; }
+.mj-lane-top    { top: 0;    left: 50%; transform: translateX(-50%); width: 122px; justify-content: center; align-content: flex-start; }
+.mj-lane-bottom { bottom: 0; left: 50%; transform: translateX(-50%); width: 122px; justify-content: center; align-content: flex-end; }
+.mj-lane-left   { left: 0;   top: 50%;  transform: translateY(-50%); width: 82px;  align-content: center; }
+.mj-lane-right  { right: 0;  top: 50%;  transform: translateY(-50%); width: 82px;  align-content: center; justify-content: flex-end; }
 /* 矮屏（手机横屏，375 高）装不下大牌。
    这儿**直接改尺寸**，不靠 JS 去挑小一号的类 —— 那样两处都要记着改，
    而且 JS 不知道屏幕多高。尺寸归 CSS 管，这一段就是唯一的真相。 */
@@ -235,13 +236,14 @@
   /* 对家横着排，宽度不紧张，只缩一点点 */
   .mj-top .mj-tile { width: 19px; height: 25px; border-radius: 3px; }
   /* 中央那堆和牌墙也收一档 */
-  .mj-pool-cell { width: 23px; height: 29px; }
-  .mj-pool-cell .mj-tile { width: 19px; height: 25px; border-radius: 3px; }
-  .mj-pool-box { padding: 8px 10px; min-height: 70px; }
+  .mj-pool-box { width: 180px; height: 180px; }
+  .mj-pool { inset: 8px; }
+  .mj-lane-top, .mj-lane-bottom { width: 102px; }
+  .mj-lane-left, .mj-lane-right { width: 68px; }
+  .mj-lane .mj-tile { width: 16px; height: 21px; border-radius: 3px; }
   .mj-stack { width: 14px; height: 18px; }
   .mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 18px; height: 14px; }
 }
-.mj-pool-cell .mj-tile { transition: none; }
 
 /* 刚打出来那张：从堆里拎出来单独亮着 */
 .mj-just { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; }

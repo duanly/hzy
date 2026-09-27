@@ -4,7 +4,7 @@
  * 耒阳提龙 —— 一条龙盘着华表，云纹绕在中间。
  * 一律画在 viewBox 0 0 200 140 里，卡片多大都铺满。
  */
-export function TileArt({ kind }: { kind: 'hh' | 'tl' | 'lh' | 'pw' }) {
+export function TileArt({ kind }: { kind: 'hh' | 'tl' | 'lh' | 'pw' | 'mj' }) {
   if (kind === 'hh') return (
     <svg className="tile-svg" viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice" aria-hidden>
       <defs>
@@ -141,6 +141,21 @@ export function TileArt({ kind }: { kind: 'hh' | 'tl' | 'lh' | 'pw' }) {
       <g fill="none" stroke="#ffffff" strokeOpacity=".28" strokeWidth="1.8" strokeLinecap="round">
         <path d="M118 62 C 112 52, 116 42, 124 38" />
         <path d="M118 62 l-1 -6 M118 62 l6 -2" />
+      </g>
+    </svg>
+  );
+
+  if (kind === 'mj') return (
+    <svg className="tile-svg" viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice" aria-hidden>
+      {/* 红中麻将：一圈牌墙 + 中央一张翘起来的红中 */}
+      <g fill="#ffffff" fillOpacity=".08" stroke="#ffffff" strokeOpacity=".3" strokeWidth="1.6">
+        {[[22, 34], [48, 34], [74, 34], [100, 34], [126, 34], [152, 34]].map(([x, y], i) => (
+          <rect key={i} x={x} y={y} width="22" height="30" rx="4" />
+        ))}
+      </g>
+      <g transform="rotate(-10 100 72)">
+        <rect x="84" y="50" width="32" height="44" rx="6" fill="#fffdf5" fillOpacity=".95" stroke="#ffffff" strokeOpacity=".5" strokeWidth="1.5" />
+        <text x="100" y="71" textAnchor="middle" dominantBaseline="central" fill="#c8322b" fontSize="34" fontWeight="900" fontFamily="var(--mj-font, 'KaiTi', serif)">中</text>
       </g>
     </svg>
   );

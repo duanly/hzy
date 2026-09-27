@@ -205,6 +205,19 @@ export class Lobby {
     return room;
   }
 
+  /** 大厅「红中麻将」：找一桌有空位、还没开局的公共麻将房，没有就新建一桌（进房后由路由补机器人 + 开局） */
+  quickJoinMahjong(): MahjongRoom {
+    for (const r of this.rooms.values()) {
+      if (isMj(r) && !r.cfg.isPrivate && r.status === 'waiting' && r.filledCount() < 4) return r;
+    }
+    let id: string;
+    do { id = 'MJ' + randomInt(1000, 9999); } while (this.rooms.has(id));
+    const room = new MahjongRoom({ id, isPrivate: false, baseScore: 1 }, this.db);
+    this.rooms.set(id, room);
+    room.onClosed = r => this.rooms.delete(r.cfg.id);
+    return room;
+  }
+
   createPrivate(hostId: number, variant: VariantId, baseScore: number, password = '',
                 opt: { turnMs?: number; name?: string; autoNextMs?: number; swingCap?: number; pauseEvery?: number;
                        play?: import('./protocol.ts').PlayOpts } = {}): Room {

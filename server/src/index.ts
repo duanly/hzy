@@ -498,6 +498,17 @@ server.on('upgrade', (req, socket) => {
         const err = room.join(u, client); if (err) throw new Error(err);
         sess.room = room; return;
       }
+      case 'lobby.joinMj': {
+        const u = requireUser();
+        if (sess.room) { sess.room.leave(u.id); sess.room = null; }
+        // 中途退出、机器人还在替他打的那一桌麻将，优先回去接着打
+        const back = [...lobby.rooms.values()].find(r => isMj(r) && r.resumable(u.id));
+        const room = back ?? lobby.quickJoinMahjong();
+        const err = room.join(u, client); if (err) throw new Error(err);
+        // 补满机器人直接开局，点一下就开打
+        if (room.status !== 'playing') { room.fillBots(); room.start(); }
+        sess.room = room; return;
+      }
       case 'room.create': {
         const u = requireUser();
         if (!u.vip && !u.can_open_room) throw new Error('没有开房权限');

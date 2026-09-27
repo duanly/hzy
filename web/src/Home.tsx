@@ -395,6 +395,11 @@ export function Home({ me, canOpenRoom, onLogout, onMe }: { me: PublicUser; canO
                 </button>
               );
             })}
+            <button className="tile tile-mj" onClick={() => socket.send({ type: 'lobby.joinMj' })}>
+              <TileArt kind="mj" />
+              <span className="tile-name">红中麻将</span>
+              <span className="tile-sub">4 人 · 红中翻马 · 点一下人机体验</span>
+            </button>
             {canOpenRoom && (
               <button className="tile tile-my" onClick={() => setMyRooms(true)}>
                 <span className="tile-art">管</span>

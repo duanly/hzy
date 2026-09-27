@@ -41,18 +41,6 @@ export interface MjTableView {
   baseScore: number;
 }
 
-/** 固定的伪随机：同一张牌永远歪同一个角度，重绘不会跳 */
-function jitter(seed: number) {
-  let a = (seed * 2654435761) >>> 0;
-  a ^= a >>> 15; a = Math.imul(a, 0x2545f491); a ^= a >>> 13;
-  const r1 = ((a >>> 0) % 1000) / 1000;
-  a = Math.imul(a ^ (a >>> 7), 0x9e3779b1);
-  const r2 = ((a >>> 0) % 1000) / 1000;
-  a = Math.imul(a ^ (a >>> 11), 0x85ebca6b);
-  const r3 = ((a >>> 0) % 1000) / 1000;
-  return { rot: (r1 - 0.5) * 44, dx: (r2 - 0.5) * 9, dy: (r3 - 0.5) * 9 };
-}
-
 /**
  * 牌墙：**两张一叠**码在四边 —— 就是真桌上那个样子。
  * 112 张全码起来是 56 墩、四面各 14 墩；摸一张就从最前头少半墩，摸两张少一整墩。
@@ -76,21 +64,18 @@ function Wall({ left }: { left: number }) {
   </>;
 }
 
-/** 中央那一堆弃牌：按格子铺开，每张在自己格子里歪一点、挪一点 —— 乱但不互相压 */
-function DiscardPool({ tiles }: { tiles: { tile: Tile; from: number; i: number }[] }) {
-  // 每行放几张：牌多了就铺宽一点，始终塞得进中央那块地方
-  const per = tiles.length <= 24 ? 8 : tiles.length <= 40 ? 10 : 12;
+/** 中央弃牌：四家各占一边、各排一行（6 张一行、按打出顺序）—— 照欢乐麻将的摆法，不再混成一堆 */
+function DiscardPool({ lanes }: { lanes: Tile[][] }) {
+  // lanes 按相对座位：0=我（下）、1=下家（右）、2=对家（上）、3=上家（左）
+  const lane = (ts: Tile[], cls: string) => (
+    <div className={`mj-lane ${cls}`}>{ts.map((t, i) => <MjTile key={i} tile={t} size="xs" />)}</div>
+  );
   return (
-    <div className="mj-pool" style={{ gridTemplateColumns: `repeat(${per}, 1fr)` }}>
-      {tiles.map(({ tile, i }) => {
-        const j = jitter(i * 31 + tile);
-        return (
-          <span key={i} className="mj-pool-cell">
-            <MjTile tile={tile} size="sm"
-              style={{ transform: `translate(${j.dx}px, ${j.dy}px) rotate(${j.rot}deg)` }} />
-          </span>
-        );
-      })}
+    <div className="mj-pool">
+      {lane(lanes[2], 'mj-lane-top')}
+      {lane(lanes[3], 'mj-lane-left')}
+      {lane(lanes[0], 'mj-lane-bottom')}
+      {lane(lanes[1], 'mj-lane-right')}
     </div>
   );
 }
@@ -172,11 +157,11 @@ export function MjTable({ v, onDiscard, picked }: {
 }) {
   // 四家按"我在下方"转一圈：我 0、下家 1（右）、对家 2（上）、上家 3（左）
   const rel = (seat: number) => ((seat - v.mySeat + 4) % 4) as 0 | 1 | 2 | 3;
-  // 中央那一堆：四家的弃牌混在一起，按打出的先后铺
-  const pool = useMemo(() => {
-    const all: { tile: Tile; from: number; i: number }[] = [];
-    for (const p of v.players) p.discards.forEach((t, k) => all.push({ tile: t, from: p.seat, i: p.seat * 100 + k }));
-    return all;
+  // 中央弃牌：四家按相对座位分列，各家按打出顺序排
+  const lanes = useMemo(() => {
+    const lanes: Tile[][] = [[], [], [], []];
+    for (const p of v.players) lanes[rel(p.seat)] = p.discards.slice();
+    return lanes;
   }, [v.players]);
 
   return (
@@ -186,7 +171,7 @@ export function MjTable({ v, onDiscard, picked }: {
         <Wall left={v.wallLeft} />
         <div className="mj-pool-box">
           <span className="mj-wall-count">剩 {v.wallLeft} 张</span>
-          <DiscardPool tiles={pool} />
+          <DiscardPool lanes={lanes} />
         </div>
         {/* 刚打出来那张：亮一下，让人看清是哪一张 */}
         {v.table && <div className="mj-just"><MjTile tile={v.table.tile} size="sm" className="mj-table-tile" /></div>}
