@@ -63,12 +63,12 @@
 /* 一手牌：紧挨着排，最后一张（刚摸的）单独空开一点 */
 .mj-hand { display: flex; gap: 2px; align-items: flex-end; }
 .mj-hand .mj-drawn { margin-left: 10px; }
-/* 左右两家的手牌竖着放不下 13 张，只露一张背面，角上挂个红圈标张数 */
+/* 左右两家的手牌竖着放不下 13 张，只露一张背面，右上角挂个红圈标张数 */
 .mj-hand-count { position: relative; display: inline-flex; flex: none; }
 .mj-hand-count > i {
-  position: absolute; right: -7px; bottom: -7px; z-index: 2;
-  min-width: 17px; height: 17px; padding: 0 3px; border-radius: 9px;
-  font-style: normal; font-size: 10px; font-weight: 900; line-height: 17px; text-align: center;
+  position: absolute; top: -6px; right: -6px; z-index: 2;
+  min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  font-style: normal; font-size: 11px; font-weight: 900; line-height: 18px; text-align: center;
   color: #fff; background: #c8322b; box-shadow: 0 1px 3px rgba(0,0,0,.55);
   white-space: nowrap;
 }
@@ -413,9 +413,6 @@
   .mj-gangpick { bottom: 60px; }
 }
 
-/* 窄屏（小手机横屏 667）：14 张手牌 + 头像 + 按钮那一条，横着摆不下。
-   **缩牌不叠牌** —— 叠起来省地方，但自己的手牌是要一张张看清楚再挑的，
-   叠了反而选错。别家的牌才叠。 */
-@media (max-width: 720px) {
-  .mj-bottom .mj-hand .mj-tile { width: 26px; height: 35px; border-radius: 4px; }
-}
+/* 窄屏（小手机横屏 667）：不再单独缩自己的手牌。
+   手牌要跟下地牌一样大，只缩手牌会让它比下地牌小 —— 要缩就一起缩 md/sm。 */
+
