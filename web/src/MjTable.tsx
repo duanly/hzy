@@ -154,6 +154,7 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
                 selected={picked === i}
                 onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
                 className={[
+                  'mj-stand',
                   i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined,
                   p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
                 ].filter(Boolean).join(' ') || undefined} />

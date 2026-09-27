@@ -61,15 +61,14 @@
 .mj-dim { opacity: 1; }
 
 /* 一手牌：紧挨着排，最后一张（刚摸的）单独空开一点 */
-.mj-hand { display: flex; gap: 2px; align-items: flex-end; }
+.mj-hand { display: flex; gap: 0; align-items: flex-end; }
 .mj-hand .mj-drawn { margin-left: 10px; }
-/* 左右两家的手牌竖着放不下 13 张，只露一张背面，右上角挂个红圈标张数 */
+/* 左右两家的手牌竖着放不下 13 张，只露一张背面，张数写在牌背正中间 */
 .mj-hand-count { position: relative; display: inline-flex; flex: none; }
 .mj-hand-count > i {
-  position: absolute; top: -6px; right: -6px; z-index: 2;
-  min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
-  font-style: normal; font-size: 11px; font-weight: 900; line-height: 18px; text-align: center;
-  color: #fff; background: #c8322b; box-shadow: 0 1px 3px rgba(0,0,0,.55);
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-style: normal; font-weight: 900; font-size: 15px; line-height: 1;
+  color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8);
   white-space: nowrap;
 }
 /* 下地的牌组（碰 / 杠）：一组之间留空 */
@@ -129,7 +128,9 @@
 /* 自己的手牌往下压一点，跟中央那块拉开距离 —— 贴太近的时候，
    刚打出去那张落到中央，看着像是从手牌里"漏"下去的 */
 .mj-bottom .mj-row { margin-top: 14px; }
-.mj-bottom { align-items: flex-end; padding-bottom: 2px; }
+.mj-bottom { position: relative; align-items: flex-end; padding-bottom: 2px; }
+/* 头像从流里摘出来钉在左下角，别占地方 —— 手牌才能在整个底边居中 */
+.mj-bottom .mj-who { position: absolute; left: 0; bottom: 0; z-index: 2; }
 .mj-top    { grid-area: 1 / 1 / 2 / 4; }
 .mj-left   { grid-area: 2 / 1; }
 .mj-right  { grid-area: 2 / 3; }
@@ -148,6 +149,9 @@
 .mj-right .mj-hand, .mj-right .mj-melds { flex-direction: column; align-items: flex-start; }
 .mj-left .mj-hand .mj-tile, .mj-right .mj-hand .mj-tile,
 .mj-left .mj-meld .mj-tile, .mj-right .mj-meld .mj-tile { transform: rotate(90deg); }
+/* 左右两家的手牌别贴死桌边，跟桌边留 2px 的缝 */
+.mj-left .mj-hand { padding-left: 2px; }
+.mj-right .mj-hand { padding-right: 2px; }
 /* 盖着的牌紧凑，不留间距 */
 .mj-left .mj-hand .mj-tile + .mj-tile,
 .mj-right .mj-hand .mj-tile + .mj-tile,
@@ -160,7 +164,7 @@
 .mj-top .mj-hand, .mj-top .mj-melds { flex-direction: row-reverse; }
 
 .mj-row { display: flex; align-items: flex-end; gap: 12px; min-width: 0; }
-.mj-hand { display: flex; gap: 2px; align-items: flex-end; }
+.mj-hand { display: flex; gap: 0; align-items: flex-end; }
 .mj-melds { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; }
 .mj-meld { display: flex; gap: 1px; }
 
@@ -274,6 +278,14 @@
 /* 自己的手牌点得动 */
 .mj-bottom .mj-hand .mj-tile { cursor: pointer; }
 .mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }
+/* 自己的手牌「立起来」：短边立在桌上，加透视让上边微微收窄、像真牌立着。
+   选中 / 悬停是在立起来的基础上再抬一下，得把透视一起带上，不然各自的 transform 会盖掉透视 */
+.mj-stand {
+  transform: perspective(170px) rotateX(16deg);
+  transform-origin: 50% 100%;
+}
+.mj-stand.mj-sel { transform: perspective(170px) rotateX(16deg) translateY(-18%); }
+.mj-bottom .mj-hand .mj-stand:hover { transform: perspective(170px) rotateX(16deg) translateY(-10%); }
 
 /* ================= 一整屏：顶栏 + 行动按钮 + 结算 ================= */
 /* **别在这儿写 position: relative**。.screen 本身是 position:absolute; inset:0 ——
