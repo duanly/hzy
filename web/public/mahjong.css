@@ -274,15 +274,6 @@
 /* 自己的手牌点得动 */
 .mj-bottom .mj-hand .mj-tile { cursor: pointer; }
 .mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }
-/* 自己的手牌「立起来」：给点透视、上边微微后仰，跟下地「平铺」的牌一眼区分开。
-   选中 / 悬停是在「立起来」的基础上再抬一下 —— 得把透视一起带上写，
-   不然 .mj-sel / :hover 各自的 transform 会把透视整个盖掉。 */
-.mj-stand {
-  transform: perspective(220px) rotateX(10deg);
-  transform-origin: 50% 100%;
-}
-.mj-stand.mj-sel { transform: perspective(220px) rotateX(10deg) translateY(-18%); }
-.mj-bottom .mj-hand .mj-stand:hover { transform: perspective(220px) rotateX(10deg) translateY(-10%); }
 
 /* ================= 一整屏：顶栏 + 行动按钮 + 结算 ================= */
 /* **别在这儿写 position: relative**。.screen 本身是 position:absolute; inset:0 ——

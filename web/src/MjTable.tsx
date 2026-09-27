@@ -128,7 +128,7 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
-  /* 手牌和下地牌一样大（md）：自己的手牌「立起来」、下地「平铺」，只是加不加透视的区别 */
+  /* 手牌和下地牌一样大（md）：自己的手牌和下地牌平铺、一个尺寸，别家的背面 sm */
   const size: 'sm' | 'md' = mine ? 'md' : 'sm';
   return (
     <div className={`mj-side mj-${pos} ${p.isTurn ? 'mj-turn' : ''}`}>
@@ -146,7 +146,7 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
         </div>
       </div>
       <div className="mj-row">
-        {/* 手牌：自己的露面（立起来），对家背面横排，左右两家只露一张背面 + 张数 */}
+        {/* 手牌：自己的露面，对家背面横排，左右两家只露一张背面 + 张数 */}
         <div className="mj-hand">
           {mine ? (
             p.hand!.map((t, i) => (
@@ -154,7 +154,6 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
                 selected={picked === i}
                 onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
                 className={[
-                  'mj-stand',
                   i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined,
                   p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
                 ].filter(Boolean).join(' ') || undefined} />
