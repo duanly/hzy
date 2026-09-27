@@ -135,6 +135,7 @@ export interface HuDetail {
   bigMeldType?: string; // 'ti' | 'long' = 提龙胡；'pao' = 开跑胡
   huWay?: string;       // 胡的方式：'chi' 吃胡 / 'peng' 碰胡 / 'ti' 提龙胡 / 'pao' 开跑胡 / 'wei' 偎起胡
   huKind?: Kind;        // 胡的是哪个字（提龙胡 / 开跑胡这些没有"那一张"，就是下地的那个字）
+  huMarkCard?: Kind;    // 要标记的那张胡牌：直接胡=card，提龙/开跑/偎起=下地的字，天胡/地胡=庄家亮的阳张（第 21 张）
   /* 胡的那一张落在 handGroups 的第几组（-1 = 不在手牌里，比如提龙胡 / 开跑胡）。
      同一个字手里可能有好几张（一二三 里的二、二七十 里的二），
      光看牌面永远分不清该标哪一组 —— 由引擎按这一手真正的拆法说了算。 */
@@ -1639,11 +1640,17 @@ export class Game {
       ? `${dun}敦${multTxt}${baseTxt} = ${unit} 分 × 放炮${R.dianPaoMultiplier}倍 → 共 +${pay} 分`
       : `${dun}敦${multTxt}${baseTxt} = ${unit} 分 → 共 +${unit * (this.n - 1)} 分`);
     const scores = this.scores.map((v, i) => v + delta[i]);
+    // 要标记的那张胡牌：直接胡就是 card；提龙 / 开跑 / 偎起 是下地的那个字；天胡 / 地胡 是庄家亮的阳张（第 21 张）
+    const markCard = card >= 0 ? card
+      : this.bigMeldKind >= 0 ? this.bigMeldKind
+      : tianHu ? this.dealerCard
+      : -1;
     const detail: HuDetail = {
       handGroups: part.groups, pair: part.pairs[0] ?? null, melds: p.melds, xi, extraXi, dun, huCardCount, multiplier,
       redCount, redName, tianHu, diHu, raiseHand, ziMo, unit, dianPao: dianPao && fromSeat !== seat, breakdown, scores,
       bigMeldType: card < 0 ? this.bigMeldType : '',
       huKind: huKind >= 0 ? huKind : undefined,
+      huMarkCard: markCard >= 0 ? markCard : undefined,
       // 含胡牌的那一组：有好几组都带这个字时取**最后那一组**（新成的句子排在后面）
       huGroupIdx: card >= 0 ? part.groups.map(g => g.cards.includes(card)).lastIndexOf(true) : -1,
       // 胡的方式：下地那几种直接用 bigMeldType；胡一张牌的，看这张牌在哪种句子里 ——

@@ -725,6 +725,14 @@ function markIn(groups: Kind[][], card: Kind | null | undefined): number {
   if (card === null || card === undefined || card < 0) return -1;
   return groups.findIndex(g => g.includes(card));
 }
+/** 这一胡要标的那张牌：新引擎算好放在 detail.huMarkCard（含天胡 / 地胡的阳张）；
+    老纪录没这字段就退回 card / huKind。 */
+function huMarkOf(hu: { card: number; detail: any } | null | undefined): Kind {
+  if (!hu) return -1;
+  const d = hu.detail as any;
+  const m = d?.huMarkCard ?? (hu.card >= 0 ? hu.card : (d?.huKind ?? -1));
+  return m >= 0 ? m : -1;
+}
 const MELD_NAME: Record<string, string> = { peng: '碰', wei: '偎', pao: '开跑', ti: '提龙', long: '龙', chi: '吃' };
 /** 牌组上的小标签：一个字够了（开跑→跑、提龙→提、下伙→伙） */
 const MELD_TAG: Record<string, string> = { peng: '碰', wei: '偎', pao: '跑', ti: '提', long: '龙', chi: '吃' };
@@ -2639,9 +2647,9 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     const d: any = gs?.ended && lastHu && lastHu.seat === seat ? (lastHu as any).detail : null;
     return typeof d?.huGroupIdx === 'number' ? d.huGroupIdx : -1;
   };
-  /** 要标记的那张胡牌：直接胡（碰 / 吃 / 自摸）就是 card；提龙胡 / 开跑胡 / 偎起胡 没有"那一张"，
-      就取下地的那个字（引擎已算好放在 detail.huKind 里）。 */
-  const huMarkCard: Kind = lastHu ? (lastHu.card >= 0 ? lastHu.card : (((lastHu.detail as any)?.huKind ?? -1) as Kind)) : -1;
+  /** 要标记的那张胡牌：引擎在 detail.huMarkCard 里直接给（直接胡=card，提龙/开跑/偎起=下地的字，
+      天胡/地胡=庄家亮的阳张）。 */
+  const huMarkCard: Kind = huMarkOf(lastHu as any);
   // 亮牌时我手里的「胡」字：只标一个 —— 胡的那张在哪一组，就标那一组打头的那张
   const myMarkCol = gs?.ended && lastHu && lastHu.seat === mySeat && huMarkCard >= 0
     ? cols.findIndex(c => c.includes(huMarkCard)) : -1;
@@ -3536,7 +3544,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
           : <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--gold)' }}>
               <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>第 {huBack.round} 局 · </span>黄庄（流局）
             </div>}
-        {huBack.reveal && <RevealPanel rv={huBack.reveal} names={huBack.seatNames ?? room.seats.map(s => s.user?.nickname ?? '')} hu={huBack.hu} huCard={huBack.hu ? (huBack.hu.card >= 0 ? huBack.hu.card : (huBack.hu.detail as any)?.huKind ?? null) : null} />}
+        {huBack.reveal && <RevealPanel rv={huBack.reveal} names={huBack.seatNames ?? room.seats.map(s => s.user?.nickname ?? '')} hu={huBack.hu} huCard={huMarkOf(huBack.hu) >= 0 ? huMarkOf(huBack.hu) : null} />}
         {/* 耒阳可以弃胡：谁弃了哪张、当时值多少分，跟实际胡了多少分摆一块看 */}
         {!!huBack.declines?.length && (() => {
           const names = huBack.seatNames ?? room.seats.map(s => s.user?.nickname ?? '');
@@ -3807,7 +3815,7 @@ export function HuPanel({ hu, names, round }: { hu: { seat: number; card: number
     {(() => {
       // 胡的那张牌手里可能有好几张：整张面板只标一个「胡」——
       // 先看下地牌，再看手里的句子，最后看那一对
-      const want: Kind | null = hu.card >= 0 ? (hu.card as Kind) : null;
+      const want: Kind | null = huMarkOf(hu) >= 0 ? huMarkOf(hu) : null;
       const hMark = markIn(d.handGroups.map((gr: any) => gr.cards as Kind[]), want);
       const mMark = hMark >= 0 ? -1 : markInMelds(d.melds as any, (hu as any).cid, want);
       const pMark = mMark < 0 && hMark < 0 && d.pair && want !== null && (d.pair as Kind[]).includes(want);
@@ -3827,7 +3835,7 @@ export function HuPanel({ hu, names, round }: { hu: { seat: number; card: number
     {/* 算分就三行：① 胡的哪个字 ② 胡息 → 敦数 ③ 翻倍 → 总分（谁出、出几家） */}
     <div className="hu-calc">
       {(() => {
-        const k = hu.card >= 0 ? (hu.card as Kind) : ((d.huKind ?? -1) as Kind);
+        const k = huMarkOf(hu);
         if (k < 0) return null;
         // 牌名本身就是一个字（八 / 捌），直接圈起来；大写的（捌＝大八）在圈外标一个"大"
         const nm = nameOf(k);
@@ -3861,7 +3869,7 @@ function RevealPanel({ rv, names, huCard, hu }: { rv: NonNullable<LedgerEntry['r
     const d: any = hu.detail;
     const gps: Kind[][] = (d.handGroups ?? []).map((g: any) => (g.cards as Kind[]).slice());
     if (d.pair) gps.push((d.pair as Kind[]).slice());
-    const card: Kind = (hu.card >= 0 ? hu.card : d.huKind ?? -1) as Kind;
+    const card: Kind = huMarkOf(hu);
     if (card < 0) return null;
     return gps.find(gp => gp.includes(card)) ?? null;
   })();
