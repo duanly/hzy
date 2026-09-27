@@ -1289,6 +1289,9 @@ export class Room {
             gv.deadline = this.game.deadline;
             (gv as any).deadlineSpan = (this.game as any).deadlineSpan ?? (gv as any).deadlineSpan;
             const live = this.game.optionsFor(i);
+            // 只认"这一帧拍的还是同一张牌"：引擎已经翻到下一张牌（tableCard 换了）时，
+            // 实时 options 是给下一张牌的，绝不能亮出来 —— 不然玩家对着还没看见的下一张牌点碰/过。
+            const sameCard = ((gv as any).tableCard?.cid ?? -1) === ((this.game as any).tableCard?.cid ?? -1);
             // 快照是"当时"拍的，期限在切片播放期间被整体往后推过 —— 按钮那圈倒计时也得用最新的，
             // 不然玩家看到的窗口比服务端真正给的短一截。
             // 更要紧的是**服务端已经没有我的选项了**（窗口关了 / 这一轮已经定了）：
@@ -1304,7 +1307,7 @@ export class Room {
                牌一进池子就轮到我出牌了，可我收到的还是那张"还没轮到我"的快照。
                既然已经认定 phase 跟实时一致、也已经采用了实时的 deadline，
                那按钮就没有理由还用旧的 —— 半新半旧才是病根。 */
-            if (live) {
+            if (live && sameCard) {
               gv.myOptions = {
                 ...(gv.myOptions ?? {}),
                 options: live.options,

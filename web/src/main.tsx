@@ -317,10 +317,18 @@ if (new URLSearchParams(location.search).has('diag')) {
         })();
   }, 500);
 }
-window.addEventListener('resize', fitScreen);
+/* iOS 竖屏时底部地址栏塌陷是一段动画：resize / visualViewport.resize 会连着跳好几十次，
+   每次都去重设 #root 的宽高和 transform，牌桌就在两个尺寸之间来回抖。
+   地址栏塌陷是"动一下、停住"，所以 debounce 一小段：等它停稳了再算一次，就不抖了。 */
+let fitTimer: ReturnType<typeof setTimeout> | null = null;
+function fitSoon() {
+  if (fitTimer) clearTimeout(fitTimer);
+  fitTimer = setTimeout(fitScreen, 220);
+}
+window.addEventListener('resize', fitSoon);
 window.addEventListener('orientationchange', () => setTimeout(fitScreen, 120));
-window.visualViewport?.addEventListener('resize', fitScreen);
-// 登录页那种"不转屏"的状态切换时也要重算
+window.visualViewport?.addEventListener('resize', fitSoon);
+// 登录页那种"不转屏"的状态切换时也要重算（一次性的，不用 debounce）
 new MutationObserver(fitScreen).observe(document.getElementById('root')!, { attributes: true, attributeFilter: ['class'] });
 
 createRoot(document.getElementById('root')!).render(<><App /><ToastHost /></>);
