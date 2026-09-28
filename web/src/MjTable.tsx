@@ -23,14 +23,14 @@ function ringColor(f: number) {
   return `hsl(${hue.toFixed(0)}, ${sat.toFixed(0)}%, ${light.toFixed(0)}%)`;
 }
 /** 头像外圈那一圈倒计时（方头像用圆角框），照跑胡子 */
-function TurnRing({ frac, size }: { frac: number; size: number }) {
-  const GAP = 4, box = size + GAP * 2, h = size + GAP * 2;
-  const pad = 2, bw = box - pad * 2, bh = h - pad * 2, r = Math.min(10, Math.round(bh / 3));
-  const len = 2 * (bw - 2 * r) + 2 * (bh - 2 * r) + 2 * Math.PI * r;
-  return <svg className="turn-ring" width={box} height={h} viewBox={`0 0 ${box} ${h}`}
+function TurnRing({ frac, w, h }: { frac: number; w: number; h: number }) {
+  const GAP = 4, W = w + GAP * 2, H = h + GAP * 2;
+  const pad = 2, iw = W - pad * 2, ih = H - pad * 2, r = Math.min(10, Math.round(ih / 3));
+  const len = 2 * (iw - 2 * r) + 2 * (ih - 2 * r) + 2 * Math.PI * r;
+  return <svg className="turn-ring" width={W} height={H} viewBox={`0 0 ${W} ${H}`}
     style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }}>
-    <rect x={pad} y={pad} width={bw} height={bh} rx={r} fill="none" stroke="rgba(0,0,0,.35)" strokeWidth="3" />
-    <rect x={pad} y={pad} width={bw} height={bh} rx={r} fill="none" stroke={ringColor(frac)} strokeWidth="3" strokeLinecap="round"
+    <rect x={pad} y={pad} width={iw} height={ih} rx={r} fill="none" stroke="rgba(0,0,0,.35)" strokeWidth="3" />
+    <rect x={pad} y={pad} width={iw} height={ih} rx={r} fill="none" stroke={ringColor(frac)} strokeWidth="3" strokeLinecap="round"
       strokeDasharray={`${len}`} strokeDashoffset={`${len * (1 - frac)}`} />
   </svg>;
 }
@@ -135,12 +135,11 @@ function SeatSide({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
       {/* 头像钉在这一方的左端 —— 四个人的头像就落在四个角上 */}
       <div className="mj-who">
         <span className="mj-avatar-wrap">
-          <div className="mj-avatar">{p.name.slice(0, 2)}</div>
-          {p.isTurn && ringFrac !== undefined && ringFrac > 0 && <TurnRing frac={ringFrac} size={34} />}
+          <div className="mj-avatar">{p.name.slice(0, 4)}</div>
+          {p.isDealer && <i className="mj-zhuang">庄</i>}
+          {p.isTurn && ringFrac !== undefined && ringFrac > 0 && <TurnRing frac={ringFrac} w={56} h={34} />}
         </span>
         <div className="mj-who-txt">
-          {/* 昵称给足四个字，跟跑胡子那边一个规矩（再长就截断） */}
-          <b className="mj-nick">{p.name.slice(0, 4)}{p.isDealer && <i className="mj-zhuang">庄</i>}</b>
           <span className={`mj-total ${p.total > 0 ? 'pos' : p.total < 0 ? 'neg' : ''}`}>{p.total > 0 ? `+${p.total}` : p.total}</span>
           <MjTags p={p} />
         </div>

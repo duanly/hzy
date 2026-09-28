@@ -433,7 +433,9 @@ export class MahjongGame {
   }
 }
 
-function sortHand(h: Tile[]) { h.sort((a, b) => a - b); }
+/** 手牌排序：红中（赖子）钉到最左边，其余按点数从小到大。
+    红中放最左一是好看清手里几张赖子，二是托管/自动出牌从右往左挑牌时天然避开它。 */
+function sortHand(h: Tile[]) { h.sort((a, b) => (a === HONG ? 0 : 1) - (b === HONG ? 0 : 1) || a - b); }
 function shuffle(a: Tile[], rnd: () => number): Tile[] {
   const d = a.slice();
   for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }

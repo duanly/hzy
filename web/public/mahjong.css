@@ -128,16 +128,14 @@
 /* 自己的手牌往下压一点，跟中央那块拉开距离 —— 贴太近的时候，
    刚打出去那张落到中央，看着像是从手牌里"漏"下去的 */
 .mj-bottom .mj-row { margin-top: 14px; }
-.mj-bottom { position: relative; align-items: flex-end; padding-bottom: 2px; }
-/* 头像从流里摘出来钉在左下角，别占地方 —— 手牌才能在整个底边居中 */
-.mj-bottom .mj-who { position: absolute; left: 0; bottom: 0; z-index: 2; }
+.mj-bottom { align-items: flex-end; padding-bottom: 2px; }
 .mj-top    { grid-area: 1 / 1 / 2 / 4; }
 .mj-left   { grid-area: 2 / 1; }
 .mj-right  { grid-area: 2 / 3; }
 
 /* 一方：头像钉在角上。对家和我横着排；左右两家竖着贴边、牌旋转 90° */
 .mj-side { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 0; }
-.mj-bottom { flex-direction: row; }                                    /* 我：头像在左下 */
+.mj-bottom { flex-direction: row; gap: 5px; }                                    /* 我：头像在左下 */
 .mj-top    { flex-direction: row-reverse; }                            /* 对家：头像在右上 */
 .mj-left   { flex-direction: column; align-items: flex-start; }        /* 上家：头像在左上 */
 .mj-right  { flex-direction: column-reverse; align-items: flex-end; }  /* 下家：头像在右下 */
@@ -175,10 +173,11 @@
 .mj-who { display: flex; align-items: center; gap: 6px; flex: none; }
 .mj-avatar-wrap { position: relative; display: inline-flex; flex: none; }
 .mj-avatar {
-  width: 34px; height: 34px; border-radius: 8px; flex: none;
+  width: 56px; height: 34px; border-radius: 8px; flex: none;
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(#2c5f45, #1d4531); color: #f2e6c4;
-  font-size: 13px; font-weight: 700; border: 1px solid rgba(214,183,106,.45);
+  font-size: 12px; font-weight: 700; border: 1px solid rgba(214,183,106,.45);
+  white-space: nowrap; overflow: hidden;
 }
 .mj-who-txt { display: flex; flex-direction: column; font-size: 11px; line-height: 1.25; color: #e8ddc0; }
 .mj-who-txt b { font-weight: 700; white-space: nowrap; }
@@ -189,6 +188,8 @@
   background: #c8322b; color: #fff; font-size: 9px; font-style: normal; font-weight: 900;
   vertical-align: middle;
 }
+/* 头像角上的「庄」小圆戳：钉在头像框右上角 */
+.mj-avatar-wrap > .mj-zhuang { position: absolute; top: -4px; right: -4px; margin-left: 0; box-shadow: 0 1px 2px rgba(0,0,0,.5); }
 
 /* ---- 中央：牌墙一圈 ---- */
 /* ---- 牌墙：两张一叠，四边各码一溜 ---- */
@@ -237,7 +238,7 @@
    而且 JS 不知道屏幕多高。尺寸归 CSS 管，这一段就是唯一的真相。 */
 @media (max-height: 430px) {
   .mj-bottom .mj-row { margin-top: 8px; }
-  .mj-avatar { width: 28px; height: 28px; font-size: 11px; }
+  .mj-avatar { width: 44px; height: 26px; font-size: 10px; }
   /* 四家的手牌在小屏上都收一档，横着排（不叠） */
   .mj-md { width: 38px; height: 51px; }
   .mj-sm { width: 24px; height: 32px; }
@@ -278,14 +279,19 @@
 /* 自己的手牌点得动 */
 .mj-bottom .mj-hand .mj-tile { cursor: pointer; }
 .mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }
-/* 自己的手牌「立起来」：短边立在桌上，加透视让上边微微收窄、像真牌立着。
+/* 自己的手牌「前倾」：短边立在桌上，上边往身前倾（rotateX 负值），像真牌立着往前探。
    选中 / 悬停是在立起来的基础上再抬一下，得把透视一起带上，不然各自的 transform 会盖掉透视 */
 .mj-stand {
+  transform: perspective(170px) rotateX(-16deg);
+  transform-origin: 50% 100%;
+}
+.mj-stand.mj-sel { transform: perspective(170px) rotateX(-16deg) translateY(-18%); }
+.mj-bottom .mj-hand .mj-stand:hover { transform: perspective(170px) rotateX(-16deg) translateY(-10%); }
+/* 下地的牌跟手牌反着：往后仰一点（rotateX 正值），跟立起来的手牌形成对比 */
+.mj-bottom .mj-melds .mj-tile {
   transform: perspective(170px) rotateX(16deg);
   transform-origin: 50% 100%;
 }
-.mj-stand.mj-sel { transform: perspective(170px) rotateX(16deg) translateY(-18%); }
-.mj-bottom .mj-hand .mj-stand:hover { transform: perspective(170px) rotateX(16deg) translateY(-10%); }
 
 /* ================= 一整屏：顶栏 + 行动按钮 + 结算 ================= */
 /* **别在这儿写 position: relative**。.screen 本身是 position:absolute; inset:0 ——
