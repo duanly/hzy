@@ -4,7 +4,7 @@ import { nameOf, isBig, partition, type Kind, type ActionOption, type GameEvent,
 import { socket, api } from './net.ts';
 import { note, report } from './log.ts';
 import { Card, CardStack } from './Card.tsx';
-import { autoSort, orderCol, orderCols, sortCol, affinity, revealCols, minXiOf, markInMelds, dropCardAt, keepCols } from './sort.ts';
+import { autoSort, orderCol, orderCols, sortCol, affinity, revealCols, minXiOf, markInMelds, dropCardAt, keepCols, keepColsById, dropCardAtById, assignCidsToCols } from './sort.ts';
 import { cardFont, setCardFontNow, fontOptions, fontOptionsSorted, usedFont, uiFontOn, setUiFont } from './cardfont.ts';
 import { GLYPHS } from './glyphs.ts';
 import { RulesModal } from './Rules.tsx';
@@ -844,6 +844,9 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     try { return JSON.parse(localStorage.getItem(colsKey) ?? 'null')?.m === true; } catch { return false; }
   })();
   const manualRef = useRef(manualInit);
+  // colCids 跟 cols 一一对应：colCids[col][idx] 就是 cols[col][idx] 那张牌的编号（cid）。
+  // 有了号才能认出"两张同字牌里哪一张是哪一张"，出牌 / 进张时画面才不会乱跳。
+  const [colCids, setColCids] = useState<number[][]>([]);
   useEffect(() => {
     try {
       if (cols.length) localStorage.setItem(colsKey, JSON.stringify({ c: cols, m: manualRef.current }));
@@ -1012,6 +1015,30 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   /** 暂停页导出的那张账单图：null = 没在导 */
   const [shot, setShot] = useState<{ title: string; sub: string; segLabel: string; rows: ShotRow[] } | null>(null);
   const [roundIds, setRoundIds] = useState<Record<number, number>>({});   // 局号 → 数据库里的 round id
+  /* 更早的对局记录（默认广播只带最近 50 条，想看更早的点「加载更多」往上翻） */
+  const [earlierLedger, setEarlierLedger] = useState<any[]>([]);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [hasMoreEarlier, setHasMoreEarlier] = useState(false);
+  const loadEarlier = async () => {
+    if (loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      const oldestRound = earlierLedger.length
+        ? earlierLedger[0].round
+        : room.ledger[0]?.round ?? 0;
+      const r = await api<any>(`/api/room/${room.id}/ledger?before=${oldestRound}&limit=50`, undefined, 'GET');
+      setEarlierLedger(prev => [...(r.ledger ?? []), ...prev]);
+      setHasMoreEarlier(!!r.hasMore);
+    } catch { /* 失败就当没有更多了 */ setHasMoreEarlier(false); }
+    finally { setLoadingEarlier(false); }
+  };
+  useEffect(() => {
+    if (!showLedger) { setEarlierLedger([]); setHasMoreEarlier(false); return; }
+    // 打开记录时判断一下有没有更早的
+    const total = room.ledgerCount ?? room.ledger.length;
+    setHasMoreEarlier(total > room.ledger.length);
+  }, [showLedger, room.ledgerCount, room.ledger.length, room.id]);
+  const fullLedger = [...earlierLedger, ...room.ledger];
   useEffect(() => {
     if (!showLedger || room.status === 'playing') return;
     api<any>('/api/rounds?limit=50', undefined, 'GET')
@@ -1984,24 +2011,41 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   const selectedCard = selected ? cols[selected.col]?.[selected.idx] ?? null : null;
   function moveCard(from: { col: number; idx: number }, toCol: number | null, toIdx?: number) {
     let next = cols.map(c => c.slice());
+    let nextCids = colCids.map(c => c.slice());
     const [card] = next[from.col].splice(from.idx, 1);
+    const [cid] = nextCids[from.col]?.splice(from.idx, 1) ?? [-1];
     // 手牌末尾那个虚拟组：列号正好越界，跟"拖到空地"是一回事 —— 单独成一组
     if (toCol !== null && toCol >= next.length) toCol = null;
     if (toCol === null) {
       // 拖到空地 → 单独成一组。手动摆牌允许比自动理牌多两组，再多就不给了
-      next = next.filter(c => c.length);
+      // 过滤掉空列，同时同步 cids
+      const filtered: Kind[][] = [];
+      const filteredCids: number[][] = [];
+      for (let i = 0; i < next.length; i++) {
+        if (next[i].length) { filtered.push(next[i]); filteredCids.push(nextCids[i] ?? []); }
+      }
+      next = filtered;
+      nextCids = filteredCids;
       if (next.length >= MAX_COLS + 2) { toast(`手牌最多 ${MAX_COLS + 2} 组，理一下牌吧`); return; }
       next.push([card]);
+      nextCids.push([cid]);
     } else {
       if (toCol !== from.col && next[toCol].length >= MAX_COL) { toast(`一组最多 ${MAX_COL} 张，先拖出一张再放进去`); return; }
       next[toCol].splice(toIdx ?? 0, 0, card);   // 放到牌组顶端
+      if (nextCids[toCol]) nextCids[toCol].splice(toIdx ?? 0, 0, cid);
     }
     manualRef.current = true;
     socket.send({ type: 'seat.wake' } as any);   // 动手理牌 = 人回来了，机器人退下
     // 拖走的那一组变了样，原来的钉子作废；落脚的那一组就是玩家亲手码的，钉住
     pinDrop(cols[from.col]);
     pinAdd(toCol === null ? next[next.length - 1] : next[toCol]);
-    setCols(next.filter(c => c.length)); setSelected(null);
+    // 过滤空列并同步 cids
+    const finalCols: Kind[][] = [];
+    const finalCids: number[][] = [];
+    for (let i = 0; i < next.length; i++) {
+      if (next[i].length) { finalCols.push(next[i]); finalCids.push(nextCids[i] ?? []); }
+    }
+    setCols(finalCols); setColCids(finalCids); setSelected(null);
   }
   /** 出牌。拆坎不再事先弹窗：打出去之后由服务端罚分并把牌收回来（只罚分，不禁胡）
    *
@@ -2012,11 +2056,28 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
    *  （服务端那边同字的几张本来就通用，打哪一张对它来说都一样。） */
   function tryDiscard(card: Kind, at?: { col: number; idx: number }) {
     if (!optTypes.has('discard')) { toast('现在不是你出牌'); return; }
-    act('discard', { card }); setSelected(null);
+    // 有位置就带上 cid：服务端按 id 删，同字的两张就不会删错
+    const cid = at && colCids[at.col]?.[at.idx];
+    const payload: any = { card };
+    if (cid !== undefined && cid >= 0) payload.cid = cid;
+    act('discard', payload); setSelected(null);
     // 先斩后奏：牌当场离手、上明牌位置。服务端那一帧到了会用同一张牌把这个明牌再刷一次（带上牌号），
     // 接着照常飞进弃牌堆 —— 玩家看到的是一段连贯动作，不是"点完没反应，过一会儿牌才飞"
-    if (at) { const next = dropCardAt(cols, at.col, at.idx, card); if (next) setCols(next); }
-    setPendDiscard({ card, n0: countOf(myHand0, card), at: Date.now() });
+    if (at) {
+      const next = dropCardAtById(cols, colCids, at.col, at.idx, card);
+      if (next) { setCols(next.cols); setColCids(next.colCids); }
+      else {
+        // cid 对不上就退回老办法（只动 cols，不动 colCids——反正也不准）
+        const old = dropCardAt(cols, at.col, at.idx, card);
+        if (old) setCols(old);
+      }
+    }
+    setPendDiscard({
+      card,
+      n0: countOf(myHand0, card),
+      at: Date.now(),
+      cid: cid !== undefined && cid >= 0 ? cid : undefined,
+    });
     showFloat({ card, seat: mySeat, verb: '打' }, 0);
   }
   const handRef = useRef<HTMLDivElement | null>(null);
@@ -2447,7 +2508,13 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   /** 选中一张牌：把它换到本组最上面（那儿看得最清楚），并记下新的位置 */
   function selectAtTop(col: number, idx: number) {
     setCols(cs => cs.map((c, i) => (i !== col || idx === 0 ? c : [c[idx], ...c.filter((_, j) => j !== idx)])));
+    setColCids(cs => cs.map((c, i) => (i !== col || idx === 0 ? c : [c[idx], ...c.filter((_, j) => j !== idx)])));
     setSelected({ col, idx: 0 });
+    // 出牌回合选了牌：告诉服务端，超时/掉线了就打这张
+    if (optTypes.has('discard')) {
+      const cid = colCids[col]?.[idx];
+      if (cid !== undefined && cid >= 0) socket.send({ type: 'seat.select', cid } as any);
+    }
   }
   function discardSelected() { if (selectedCard !== null && selected) tryDiscard(selectedCard, selected); }
   /**
@@ -2455,8 +2522,14 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
    * 跳过坎里的牌，拆坎要罚分）。自己先打，服务端就不用替我挑了，报个牌名就完事。
    */
   const autoOutRef = useRef(0);
+  // 延时卡数量：g 是服务端最新状态，gs 是播放中的状态，两边取最新的（应该一致）
+  const myDelayCards = g?.delayCards?.[mySeat] ?? 0;
   useEffect(() => {
     if (!myTurnToDiscard || !deadline || pending) return;
+    // 手里还有延时卡：不要提前自动出牌。让服务端到点了自己用延时卡续时间，
+    // 续满了还没动再让服务端超时自动打。不然客户端一到点就抢先把牌打了，
+    // 延时卡等于没用 —— 尤其是第一张牌，玩家还在看牌呢就自动打出去了。
+    if (myDelayCards > 0) return;
     const left = deadline - now;
     if (left > 800 || left < -4000) return;
     if (autoOutRef.current === deadline) return;
@@ -2471,7 +2544,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     // 摆法里一张都挑不出来（全是坎）才退回按牌面找：这时候没有位置，只能交给重排去配
     if (pick === null) { at = undefined; pick = [...myHand].reverse().find(k => cnt(k) < 3) ?? myHand[myHand.length - 1] ?? null; }
     if (pick !== null && pick !== undefined) tryDiscard(pick, at);
-  }, [now, myTurnToDiscard, deadline, selectedCard, pending]);
+  }, [now, myTurnToDiscard, deadline, selectedCard, pending, myDelayCards]);
 
   function onAction(o: ActionOption) {
     if (o.type === 'chi') {
@@ -2535,6 +2608,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
   }, [iNoTake]);
   // 手牌也跟着画面走：不然摸到的牌还在飞，手里那一对已经先下地了（偎 / 提 / 碰 都一样）
   const myHand0: Kind[] = (gs?.players?.[mySeat]?.hand ?? g?.players?.[mySeat]?.hand ?? []) as Kind[];
+  const myIds0: number[] = (gs?.players?.[mySeat]?.ids ?? g?.players?.[mySeat]?.ids ?? []) as number[];
   /* 打出去的牌**当场**就从手里拿走，不等服务端那一帧回来。
      以前是等回包才动：点完之后牌还在手上杵着大半秒，看着就像"没打出去"，
      很容易再点一下（或者以为卡了）。现在手一松牌就上明牌位置，
@@ -2545,7 +2619,7 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
      服务端认了之后剩的那张照样是小六，"还在"就成了永远兑现不了：
      这一笔一直挂着，等于把剩下那张也从手里抹掉了。（这就是"另一张小六也不见了、
      过几秒才回来"的病根 —— 回来是因为下面那 5 秒的兜底到点了。） */
-  const [pendDiscard, setPendDiscard] = useState<{ card: Kind; n0: number; at: number } | null>(null);
+  const [pendDiscard, setPendDiscard] = useState<{ card: Kind; n0: number; at: number; cid?: number } | null>(null);
   const countOf = (hand: Kind[], k: Kind) => hand.reduce((a, x) => a + (x === k ? 1 : 0), 0);
   const myHand: Kind[] = useMemo(() => {
     if (!pendDiscard) return myHand0;
@@ -2553,6 +2627,19 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     const i = myHand0.indexOf(pendDiscard.card);
     return i < 0 ? myHand0 : [...myHand0.slice(0, i), ...myHand0.slice(i + 1)];
   }, [myHand0.join(','), pendDiscard?.card, pendDiscard?.n0, pendDiscard?.at]);
+  // 跟 myHand 同步的 cid 数组（先斩后奏时也一起拿掉一张，保持平行）
+  const myIds: number[] = useMemo(() => {
+    if (!pendDiscard || myIds0.length !== myHand0.length) return myIds0;
+    if (countOf(myHand0, pendDiscard.card) < pendDiscard.n0) return myIds0;
+    // 有 cid 就按 cid 删（准确，不会因为 hand/ids 排序不一致删错）
+    if (pendDiscard.cid !== undefined && pendDiscard.cid >= 0) {
+      if (!myIds0.includes(pendDiscard.cid)) return myIds0;
+      return myIds0.filter(id => id !== pendDiscard.cid);
+    }
+    // 没有 cid 就退回旧办法（按位置删，可能不准，但有 5 秒兜底）
+    const i = myHand0.indexOf(pendDiscard.card);
+    return i < 0 ? myIds0 : [...myIds0.slice(0, i), ...myIds0.slice(i + 1)];
+  }, [myHand0.join(','), myIds0.join(','), pendDiscard?.card, pendDiscard?.n0, pendDiscard?.at, pendDiscard?.cid]);
   useEffect(() => {
     if (!pendDiscard) return;
     // 这个字少了一张 = 服务端认了这一手，先斩后奏的那一笔兑现，撤掉
@@ -2598,18 +2685,39 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
     // 先把"上一手是什么样"记下来（早返回的分支也得记，不然下一次判断就错了）
     const pv = prevHandRef.current;
     prevHandRef.current = { len: myHand.length, melds: myMeldCount };
+    // 有 cid 数据就用 cid 匹配，保证同字的两张牌不串位置；
+    // 没有（老数据、刚进来）就退回按牌面配，配上了再把 cid 补上
+    const haveIds = myIds.length === myHand.length && myHand.length > 0;
     // 亮牌阶段：保持打牌时的排法，胡进来的那张单独摆一列，不重新理牌
     if (revealingRef.current) {
-      const kc = keepCols(cols, myHand);
-      setCols([...kc.cols, ...kc.rest.map(k => [k])]);
+      const kc = haveIds ? keepColsById(cols, colCids, myHand, myIds)
+        : { cols: keepCols(cols, myHand).cols, colCids: colCids,
+            rest: keepCols(cols, myHand).rest, restIds: [] as number[] };
+      const finalCols = [...kc.cols, ...kc.rest.map(k => [k])];
+      setCols(finalCols);
+      if (haveIds) {
+        const restAsColCids = kc.restIds.map(id => [id]);
+        setColCids([...kc.colCids, ...restAsColCids]);
+      }
       return;
     }
     // 起手牌（这一局还没排过）不管开关开没开，都先智能理一遍 —— 总不能让人对着一堆散牌开局
     // 起手牌（这一局还没排过）整手重理；打牌当中重理时，玩家自己码好的三张一组原样保留 ——
     // 那是他的思路，别给人拆了
-    if (!cols.length) { setCols(autoCols(myHand)); return; }
+    if (!cols.length) {
+      const newCols = autoCols(myHand);
+      setCols(newCols);
+      if (haveIds) setColCids(assignCidsToCols(newCols, myHand, myIds));
+      return;
+    }
     // 先拿现在的摆法去对手牌：还在手上的原样留着，新进来的另算
-    const { cols: next, rest: remaining } = keepCols(cols, myHand);
+    const kc = haveIds ? keepColsById(cols, colCids, myHand, myIds)
+      : { cols: keepCols(cols, myHand).cols, colCids: colCids,
+          rest: keepCols(cols, myHand).rest, restIds: [] as number[] };
+    const next = kc.cols;
+    const remaining = kc.rest;
+    const remainingIds = kc.restIds;
+    let nextCids = kc.colCids;
     /* **进张的那一下不理牌**：摸上来、吃 / 碰 / 偎 / 提 / 跑 完了正要出牌的时候，
        牌一动位置就全变了，本来想打哪张都找不着，手忙脚乱。
        所以这时候原来的摆法一张不动，新进来的牌单独摆到最右边（一眼看得见），
@@ -2617,21 +2725,73 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
        "刚打出一张"＝手牌少了正好一张、而且下地牌没变（吃/碰那种是下地牌变了）。 */
     const justDiscarded = myHand.length === pv.len - 1 && myMeldCount === pv.melds;
     if (!justDiscarded) {
-      for (const k of remaining) next.push([k]);       // 新来的牌摆最右边，单独一列
+      const newCols = [...next];
+      const newCids = [...nextCids];
+      for (let i = 0; i < remaining.length; i++) {     // 新来的牌摆最右边，单独一列
+        newCols.push([remaining[i]]);
+        if (haveIds && remainingIds[i] !== undefined) newCids.push([remainingIds[i]]);
+        else newCids.push([-1]);
+      }
       /* 进张这一下**不重新理牌**（牌一动就全找不着了），但**换一下列的先后**：
          成了的、快成了的往左靠，双张和单张往右靠。组里的牌一张不动，只是整列平移 ——
          这样正要打的那几张（散牌）全聚在右手边，顺手就打，不用满屏找。
          真正的理牌等打出一张之后再做。 */
-      setCols(orderCols(next));
+      const ordered = orderCols(newCols);
+      // orderCols 会重排列的顺序，cid 也要跟着重排
+      const orderedCids: number[][] = [];
+      if (haveIds) {
+        // 按牌面去把 ordered 对应回 newCols 的索引，从而得到 cid 的新顺序
+        const used = new Set<number>();
+        for (const oc of ordered) {
+          let found = -1;
+          for (let i = 0; i < newCols.length; i++) {
+            if (used.has(i)) continue;
+            if (newCols[i].length === oc.length && newCols[i].every((k, j) => k === oc[j])) {
+              found = i; break;
+            }
+          }
+          orderedCids.push(found >= 0 ? newCids[found] : oc.map(() => -1));
+          if (found >= 0) used.add(found);
+        }
+      }
+      setCols(ordered);
+      if (haveIds) setColCids(orderedCids);
       return;
     }
-    if (autoSortRef.current && !manualRef.current) { setCols(autoColsKeep(myHand, next)); return; }
+    if (autoSortRef.current && !manualRef.current) {
+      const newCols = autoColsKeep(myHand, next);
+      setCols(newCols);
+      if (haveIds) setColCids(assignCidsToCols(newCols, myHand, myIds));
+      return;
+    }
     // 不自动理牌也照同一套规矩：三张的组不动，两张组 + 散牌合成一句 / 归集到一组，最多 7 组
-    if (!autoSortRef.current) { setCols(autoColsKeep(myHand, next)); return; }
-    for (const k of remaining) next.push([k]);
+    if (!autoSortRef.current) {
+      const newCols = autoColsKeep(myHand, next);
+      setCols(newCols);
+      if (haveIds) setColCids(assignCidsToCols(newCols, myHand, myIds));
+      return;
+    }
+    const packedCols = [...next];
+    const packedCids = [...nextCids];
+    for (let i = 0; i < remaining.length; i++) {
+      packedCols.push([remaining[i]]);
+      if (haveIds && remainingIds[i] !== undefined) packedCids.push([remainingIds[i]]);
+      else packedCids.push([-1]);
+    }
     // 牌组零碎了就重新智能理一次
-    if (!tidyOk(next)) { manualRef.current = false; setCols(autoColsKeep(myHand, next)); return; }
-    setCols(packCols(next));
+    if (!tidyOk(packedCols)) {
+      manualRef.current = false;
+      const newCols = autoColsKeep(myHand, next);
+      setCols(newCols);
+      if (haveIds) setColCids(assignCidsToCols(newCols, myHand, myIds));
+      return;
+    }
+    setCols(packCols(packedCols));
+    if (haveIds) {
+      // packCols 只在列内合并，列的数量不变，但需要同步 cid
+      // 简单做法：重新 assign 一次（反正 pack 完了列不多）
+      setColCids(assignCidsToCols(packCols(packedCols), myHand, myIds));
+    }
   }, [myHand.join(',')]);
   // 胡牌那家的真实牌型组合（句子 + 那一对），亮牌时照这个分组
   const huGroupsOf = (seat: number): Kind[][] | null => {
@@ -2949,7 +3109,12 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
                   try { localStorage.setItem('phz_fan', v ? '1' : '0'); } catch { /* ignore */ }
                   const a = v ? '1' : '0'; setAutoPref(a);
                   try { localStorage.setItem('phz_autosort', a); } catch { /* ignore */ }
-                  if (a === '1') { manualRef.current = false; setCols(autoColsKeep(myHand, cols)); }
+                  if (a === '1') {
+                    manualRef.current = false;
+                    const newCols = autoColsKeep(myHand, cols);
+                    setCols(newCols);
+                    if (myIds.length === myHand.length && myHand.length > 0) setColCids(assignCidsToCols(newCols, myHand, myIds));
+                  }
                   toast(v ? '手牌：扇形 · 理牌开' : '手牌：平排 · 理牌关'); setToolsOpen(false);
                 }}>
                 {fanMode ? <IconFan /> : <IconFlat />}<b>{fanMode ? '扇' : '排'}</b></button>
@@ -2958,7 +3123,12 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
                 onClick={() => {
                   const v = autoSort2 ? '0' : '1'; setAutoPref(v);
                   try { localStorage.setItem('phz_autosort', v); } catch { /* ignore */ }
-                  if (v === '1') { manualRef.current = false; setCols(autoColsKeep(myHand, cols)); }
+                  if (v === '1') {
+                    manualRef.current = false;
+                    const newCols = autoColsKeep(myHand, cols);
+                    setCols(newCols);
+                    if (myIds.length === myHand.length && myHand.length > 0) setColCids(assignCidsToCols(newCols, myHand, myIds));
+                  }
                   toast(v === '1' ? '自动理牌：开' : '自动理牌：关'); setToolsOpen(false);
                 }}>
                 <span className="sw"><i className="sw-knob"><IconBot /></i></span><b>{autoSort2 ? '开' : '关'}</b></button>
@@ -3112,10 +3282,12 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
       <div className="table-bottom" ref={tbRef} onDoubleClick={e => {
         if ((e.target as HTMLElement).closest('.hand-col, button, .meld, .discard-pile, .seat')) return;
         // 三张的组先不动，只把两张组和散牌重新归集
-        const keepCols = autoColsKeep(myHand, cols);
+        const keepColsArr = autoColsKeep(myHand, cols);
         socket.send({ type: 'seat.wake' } as any);
-        manualRef.current = keepCols.some(c => c.length === 3);
-        setCols(keepCols); setSelected(null); toast('已自动理牌');
+        manualRef.current = keepColsArr.some(c => c.length === 3);
+        setCols(keepColsArr);
+        if (myIds.length === myHand.length && myHand.length > 0) setColCids(assignCidsToCols(keepColsArr, myHand, myIds));
+        setSelected(null); toast('已自动理牌');
       }}>
         {/* 我的下地牌：扇形左上角；亮牌时胡的那一句也摆到这儿 */}
         {!waiting && (holdMelds(mySeat, (gs?.players?.[mySeat]?.melds ?? []) as Meld[]).length > 0 || myHuCol) &&
@@ -3528,7 +3700,13 @@ export function Table({ room, me, onLeft }: { room: RoomView; me: PublicUser; on
         {/* 换过人的房间：纪录表**竖着往下长** —— 最上面是当下这三位（表头 + 合计 + 这一段的每一局），
             往下一段一段是之前那几批，各带各的表头和小计；离桌的人单独一行，
             回来了就把他那笔提出来接着算。合计按服务端那本总账走，位子上没换人的从头连着。 */}
-        <LedgerTable ledger={room.ledger} users={users}
+        {hasMoreEarlier && (
+          <button className="ghost" onClick={loadEarlier} disabled={loadingEarlier}
+            style={{ alignSelf: 'center', marginTop: 8, marginBottom: 4 }}>
+            {loadingEarlier ? '加载中…' : '加载更早的记录'}
+          </button>
+        )}
+        <LedgerTable ledger={fullLedger} users={users}
           cols={room.seats.map(st => st.user?.id).filter((x): x is number => x !== undefined && x !== null)}
           totals={Object.fromEntries(room.seats.filter(st => st.user).map(st => [st.user!.id, st.total]))}
           batches={room.batches} gone={room.gone} batchFrom={room.batchFrom ?? 0}

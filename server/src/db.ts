@@ -31,7 +31,7 @@ export interface StatsRow {
 export class DB {
   /** 回放最多留这么多局（按房间算）：一局的记录 ~3.5KB，200 局 ≈ 0.7MB，
    *  一张大厅固定桌打满也就这么大；再早的局删掉，免得数据库一天天胀下去。 */
-  static KEEP_ROUNDS = 200;
+  static KEEP_ROUNDS = 500;
   db: DatabaseSync;
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });

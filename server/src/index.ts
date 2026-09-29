@@ -111,6 +111,35 @@ const server = createServer(async (req, res) => {
       const roomId = url.pathname.slice('/api/room/'.length, -'/rounds'.length);
       return json(res, 200, { rounds: db.roomRounds(roomId, u.id, 50) });
     }
+    // 加载房间更早的对局记录（ledger 格式，前端纪录表直接用）
+    // before=局号  加载该局号之前的 N 条；默认 50 条
+    if (url.pathname.startsWith('/api/room/') && url.pathname.endsWith('/ledger')) {
+      const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+      const u = token ? db.userByToken(token) : undefined;
+      if (!u) return json(res, 401, { error: 'unauthorized' });
+      const roomId = url.pathname.slice('/api/room/'.length, -'/ledger'.length);
+      const r = lobby.rooms.get(roomId);
+      if (!r || r.status === 'closed') return json(res, 404, { error: 'room not found' });
+      // 必须是房主或者在桌上 / 观战过的人才能看
+      const inRoom = r.seats.some(s => s.userId === u.id) || r.cfg.hostId === u.id
+        || r.spectators.has(u.id) || r.ledger.some(l => l.names && Object.keys(l.names).some(k => Number(k) === u.id));
+      if (!inRoom && !r.cfg.isPrivate) {
+        // 公开房：任何人都能看记录
+      } else if (!inRoom) {
+        return json(res, 403, { error: 'forbidden' });
+      }
+      const before = Number(url.searchParams.get('before') ?? '0') || 0;
+      const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') ?? '50') || 50));
+      const list = before > 0
+        ? r.ledger.filter(l => l.round < before)
+        : r.ledger;
+      const earlier = list.slice(-limit);
+      return json(res, 200, {
+        ledger: earlier,
+        hasMore: earlier.length > 0 && list[0].round < earlier[0].round,
+        total: r.ledger.length,
+      });
+    }
     if (url.pathname === '/api/rounds' || url.pathname.startsWith('/api/round/')) {
       const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
       const u = token ? db.userByToken(token) : undefined;
@@ -612,6 +641,13 @@ server.on('upgrade', (req, socket) => {
       }
       case 'seat.wake': {
         if (sess.room && sess.userId !== null) sess.room.wake(sess.userId);
+        return;
+      }
+      case 'seat.select': {
+        if (sess.room && sess.userId !== null && !isMj(sess.room)) {
+          const cid = typeof msg.cid === 'number' ? msg.cid : undefined;
+          sess.room.selectCard(sess.userId, cid);
+        }
         return;
       }
       case 'chat': {

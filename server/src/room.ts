@@ -645,6 +645,18 @@ export class Room {
     this.broadcast();
   }
 
+  /** 玩家选中/取消选中一张牌。选了的话，超时自动出牌 / 机器人托管时优先打这张。 */
+  selectCard(userId: number, cid: number | undefined) {
+    const seat = this.seatOf(userId);
+    if (seat < 0 || !this.game) return;
+    const s = this.seats[seat];
+    // 选牌 = 人还在操作，顺便把机器人退了（跟 wake 一样）
+    s.misses = 0;
+    if (s.autoBot) { s.autoBot = false; s.botAt = undefined; }
+    this.game.selectCard(seat, cid);
+    // 选牌不会改变游戏状态（不发事件），不用 flush / scheduleBots
+  }
+
   private afterAct() {
     this.flush();
     if (this.game?.ended) this.settle();
@@ -739,27 +751,44 @@ export class Room {
       const s = this.seats[i];
       if ((s.isBot || s.autoBot) && s.botAt !== undefined && t >= s.botAt) {
         s.botAt = undefined;
-        const d = botDecide(this.game, i);
-        if (d) {
-          /* 机器人这一手也要按"玩家看到"起算：它走的是 game.act，不经过 Room.act，
-             以前没人给它填 lag —— 机器人一打牌，别家的碰窗口就从服务端这一刻开始走，
-             等动画放到那儿，圈已经去了一大截（吃的圈是客户端自己按"第一次看见"归一化的，
-             所以看着没事 —— 两边不一样就是这么来的）。 */
-          this.syncLag();
-          let err = this.game.act(i, d.type, d);
-          if (err) {
-            // 机器人选了个引擎不认的动作（比如有胡必胡时去提）：别让桌子卡死，退而求其次
-            console.error('bot act error', err, d);
-            const fb = this.game.optionsFor(i)?.options ?? [];
-            const hu = fb.find(o => o.type === 'hu');
-            const any = hu ?? fb.find(o => o.type !== 'chi') ?? fb[0];
-            /* 出牌那一路选项里的 card 是 -1（占位，不是真牌）—— 照它打必然被拒，
-               然后每 200ms 重试一次、次次被拒，桌子就假死在出牌这一步。
-               这儿得自己挑一张真牌（引擎那套"不拆坎"的挑法）。 */
-            if (any?.type === 'discard') err = this.game.act(i, 'discard', { card: this.game.autoDiscardCard(i) });
-            else if (any) err = this.game.act(i, any.type, { card: any.card, combo: any.combos?.[0] });
-            if (err) console.error('bot fallback failed', err);
+        this.syncLag();
+        let err: string | null | undefined = undefined;
+        let acted = false;
+        // 真人托管（autoBot）+ 出牌阶段 + 玩家之前选过牌：先打玩家选的那张
+        if (s.autoBot && this.game.phase === 'discard') {
+          const selCid = this.game.players[i]?.selectedCid;
+          if (selCid !== undefined && selCid >= 0 && this.game.players[i].ids.includes(selCid)) {
+            const selKind = this.game.players[i].hand[this.game.players[i].ids.indexOf(selCid)];
+            err = this.game.act(i, 'discard', { card: selKind, cid: selCid });
+            if (!err) acted = true;
+            // 失败了（拆坎被罚之类）= 正常，接着走 botDecide 那套
           }
+        }
+        if (!acted) {
+          const d = botDecide(this.game, i);
+          if (d) {
+            /* 机器人这一手也要按"玩家看到"起算：它走的是 game.act，不经过 Room.act，
+               以前没人给它填 lag —— 机器人一打牌，别家的碰窗口就从服务端这一刻开始走，
+               等动画放到那儿，圈已经去了一大截（吃的圈是客户端自己按"第一次看见"归一化的，
+               所以看着没事 —— 两边不一样就是这么来的）。 */
+            err = this.game.act(i, d.type, d);
+            if (err) {
+              // 机器人选了个引擎不认的动作（比如有胡必胡时去提）：别让桌子卡死，退而求其次
+              console.error('bot act error', err, d);
+              const fb = this.game.optionsFor(i)?.options ?? [];
+              const hu = fb.find(o => o.type === 'hu');
+              const any = hu ?? fb.find(o => o.type !== 'chi') ?? fb[0];
+              /* 出牌那一路选项里的 card 是 -1（占位，不是真牌）—— 照它打必然被拒，
+                 然后每 200ms 重试一次、次次被拒，桌子就假死在出牌这一步。
+                 这儿得自己挑一张真牌（引擎那套"不拆坎"的挑法）。 */
+              if (any?.type === 'discard') err = this.game.act(i, 'discard', { card: this.game.autoDiscardCard(i) });
+              else if (any) err = this.game.act(i, any.type, { card: any.card, combo: any.combos?.[0] });
+              if (err) console.error('bot fallback failed', err);
+            }
+            acted = true;
+          }
+        }
+        if (acted) {
           this.afterAct();
         }
         if (this.status !== 'playing') return;
@@ -1117,10 +1146,9 @@ export class Room {
       baseScore: this.cfg.baseScore, hostId: this.cfg.hostId ?? null, status: this.status, seats,
       roundNo: this.roundNo, mySeat: mySeat >= 0 ? mySeat : null,
       game: g ? { ...g, serverNow: this.now(), nextRoundAt: this.nextRoundAt } : null,
-      /* 纪录表只发最近 20 条：客户端只用得着最后一条（结算面板）和"打了多少局"，
-         而 ledger 是一局一条往上加的 —— 全量带上的话，一桌打到三位数局数，
-         每一次广播都要多背几十 KB，几千桌同时打就是白白几十兆的流量。 */
-      ledger: this.ledger.slice(-20), ledgerCount: this.ledger.length,
+      /* 纪录表默认发最近 50 条：客户端每次广播不用背全量，
+         想看更早的点「加载更多」走单独接口拿。 */
+      ledger: this.ledger.slice(-50), ledgerCount: this.ledger.length,
       /* 换过人的房间：之前那几批各自成一段（自己的表头 + 自己的那几局），排在纪录表下面；
          离桌的人各自把账带着，单独列一行 —— 回来了就从那儿提出来接着算。 */
       batches: this.batches.length ? this.batches : undefined,

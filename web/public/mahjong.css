@@ -1,29 +1,39 @@
-/* 麻将牌面。跟字牌那套（styles.css）分开放：两种玩法的样式互不打扰，改哪个只动哪个文件。 */
+/* =========================================================
+   麻将牌桌 · 通用样式
+   参考：腾讯欢乐麻将 · 上海敲麻
+   结构：绿色桌布 → 玩家四边 → 中央牌墙+弃牌+中心装饰
+   ========================================================= */
 
+/* ---------- 牌面基础（SVG 矢量版，牌体自己画） ---------- */
 .mj-tile {
   position: relative; flex: none;
   display: flex; align-items: center; justify-content: center;
-  /* 牌面是象牙白，底下压一层"牌背"的绿，看着像真牌那样有厚度 */
-  background: linear-gradient(#fffdf5, #f2ead4);
-  border-radius: 12%;
-  box-shadow:
-    inset 0 -8% 0 rgba(0,0,0,.10),      /* 下沿的阴影：厚度 */
-    inset 0 2px 0 rgba(255,255,255,.9), /* 上沿的高光 */
-    0 1px 2px rgba(0,0,0,.35);
-  border: 1px solid rgba(120,100,60,.35);
-  overflow: hidden;
+  background: transparent;
+  border-radius: 8px;
   user-select: none;
+  overflow: visible;
 }
 .mj-face { width: 100%; height: 100%; display: block; }
+.mj-tile-svg { width: 100%; height: 100%; display: block; }
 
-/* 尺寸：跟字牌那套的 xxs/xs/sm/md 对齐，比例是真牌的 3:4。放大了两成，牌清楚一点 */
-.mj-xxs { width: 15px; height: 20px; border-radius: 3px; }
-.mj-xs  { width: 21px; height: 28px; border-radius: 3px; }
-.mj-sm  { width: 30px; height: 40px; border-radius: 4px; }
-.mj-md  { width: 46px; height: 61px; border-radius: 6px; }
-.mj-lg  { width: 54px; height: 72px; border-radius: 7px; }
+/* 图片模式：保留（如果有图也可以用） */
+.mj-tile-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
 
-/* 墨色 / 红 / 绿：牌面上就这三种颜色 */
+/* 尺寸：真牌比例约 3:4（宽:高） */
+.mj-xxs { width: 15px; height: 20px; }
+.mj-xs  { width: 24px; height: 32px; }
+.mj-sm  { width: 32px; height: 43px; }
+.mj-md  { width: 46px; height: 62px; }
+.mj-lg  { width: 58px; height: 78px; }
+
+/* 旧版牌面颜色（兜底 SVG 用） */
 .mj-ink-fill   { fill: #2b2b2b; }
 .mj-paper-fill { fill: #fffdf5; }
 .mj-red-fill   { fill: #c8322b; }
@@ -31,282 +41,543 @@
 .mj-green-fill { fill: #1f7a46; }
 .mj-ink-text   { fill: #2b2b2b; }
 .mj-red-text   { fill: #c8322b; }
-/* 字号按 viewBox 的 100 来算，缩放自动跟着 */
 .mj-big { font-size: 62px; font-weight: 900; font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif); }
 .mj-mid { font-size: 42px; font-weight: 800; font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif); }
 
-/* 背面：别人的手牌。照欢乐麻将那种青绿，中间透一道光 */
-.mj-back {
-  background: linear-gradient(160deg, #17905a 0%, #0f6b3d 55%, #0a4d2a 100%);
-  border-color: rgba(0,0,0,.4);
-  box-shadow: inset 0 -8% 0 rgba(0,0,0,.28), inset 0 2px 0 rgba(255,255,255,.15), 0 1px 2px rgba(0,0,0,.45);
+/* 背面：牌墙和别人的手牌 */
+.mj-tile-back-face {
+  width: 100%; height: 100%;
+  border-radius: 6px;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(255,255,255,.12), transparent 55%),
+    linear-gradient(160deg, #1e8c58 0%, #146941 50%, #0b4d2c 100%);
+  box-shadow:
+    inset 0 -3px 0 rgba(0,0,0,.25),
+    inset 0 1px 0 rgba(255,255,255,.15),
+    0 1px 2px rgba(0,0,0,.4);
+  position: relative;
 }
-.mj-back::after {
-  content: ''; position: absolute; inset: 14%;
-  border: 1px solid rgba(255,255,255,.14); border-radius: 8%;
+.mj-tile-back-face::before {
+  content: ''; position: absolute; inset: 15%;
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 4px;
+}
+.mj-tile-back-face::after {
+  content: ''; position: absolute; inset: 28%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.08), transparent 70%);
 }
 
-/* 选中：抬起来一点（真人打牌就是先把牌推出来） */
-.mj-sel { transform: translateY(-18%); box-shadow: inset 0 -8% 0 rgba(0,0,0,.10), 0 6px 10px rgba(0,0,0,.45); }
-.mj-tile { transition: transform .12s ease; }
-/* 胡的那一张：角上一个红「胡」字 */
+/* 选中：抬起来 */
+.mj-sel { transform: translateY(-18%);
+  filter: drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
+.mj-tile { transition: transform .12s ease, filter .12s ease; }
+
+/* 胡的那张：红「胡」字角标 */
 .mj-hu { position: relative; }
 .mj-hu::after {
   content: '胡'; position: absolute; right: -4px; top: -4px;
-  width: 15px; height: 15px; border-radius: 50%;
-  font-size: 9px; font-weight: 900; line-height: 15px; text-align: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  font-size: 10px; font-weight: 900; line-height: 16px; text-align: center;
   color: #fff; background: #c8322b; box-shadow: 0 1px 3px rgba(0,0,0,.55);
-}
-/* 弃牌不压暗 —— 跟字牌那边同一个道理：牌面小，压暗就看不清打过什么了 */
-.mj-dim { opacity: 1; }
-
-/* 一手牌：紧挨着排，最后一张（刚摸的）单独空开一点 */
-.mj-hand { display: flex; gap: 0; align-items: flex-end; }
-.mj-hand .mj-drawn { margin-left: 10px; }
-/* 左右两家的手牌竖着放不下 13 张，只露一张背面，张数写在牌背正中间 */
-.mj-hand-count { position: relative; display: inline-flex; flex: none; }
-.mj-hand-count > i {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  font-style: normal; font-weight: 900; font-size: 15px; line-height: 1;
-  color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8);
-  white-space: nowrap;
-}
-/* 下地的牌组（碰 / 杠）：一组之间留空 */
-.mj-melds { display: flex; gap: 6px; flex-wrap: wrap; }
-.mj-meld { display: flex; gap: 1px; }
-/* 暗杠：别人的整组扣着（服务端只发 tile=-1，四张都走 .mj-back），
-   扣不扣由 JSX 的 back 属性决定，这儿不留空规则 */
-
-/* 弃牌区：红虚线框 + 角上一个「弃」的圆戳，跟字牌那边一个规矩 */
-.mj-discards {
-  position: relative; display: flex; flex-wrap: wrap; gap: 1px;
-  padding: 2px; border: 1px dashed rgba(220,60,60,.75); border-radius: 5px;
-  background: rgba(120,20,20,.15); max-width: 160px; align-content: flex-start;
-}
-.mj-discards .mj-pile-tag {
-  position: absolute; right: 0; bottom: 0; z-index: 2; pointer-events: none;
-  display: flex; align-items: center; justify-content: center;
-  width: 13px; height: 13px; border-radius: 50%;
-  font-style: normal; font-size: 8px; line-height: 1; font-weight: 900;
-  color: rgba(255,240,226,.95);
-  background: radial-gradient(circle at 40% 34%, rgba(216,70,79,.72), rgba(140,22,32,.78) 72%);
-  border: 1px solid rgba(255,190,170,.75);
-  box-shadow: 0 1px 3px rgba(0,0,0,.55);
-  text-shadow: 0 1px 2px rgba(0,0,0,.75);
+  z-index: 2;
 }
 
-/* 刚打出来那张：桌子中间亮一下 */
-.mj-table-tile { position: relative; }
-.mj-table-tile::after {
-  content: ''; position: absolute; inset: -6px; border-radius: 10px;
-  border: 2px solid var(--gold, #d6b76a); animation: mjPop .5s ease-out;
-}
-@keyframes mjPop { from { opacity: 0; transform: scale(.7) } to { opacity: 1; transform: scale(1) } }
-
-/* 翻出来的马：单独亮出来，压一个「马」字 */
-.mj-ma { position: relative; }
-.mj-ma::before {
-  content: '马'; position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
-  font-size: 11px; font-weight: 900; color: var(--gold, #d6b76a); text-shadow: 0 1px 3px #000;
-}
-
-/* ========== 牌桌 ========== */
-/* 四家围着中间那块，各占一方。用 grid 摆：中间是 center，四周是四方。 */
+/* =========================================================
+   桌面整体
+   ========================================================= */
 .mj-table {
-  position: relative; width: 100%; height: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
-  /* minmax(0, 1fr) 而不是 1fr：1fr 的隐含下限是 min-content，
-     中间这一行装不下的时候它不肯缩，整张桌子就顶出屏幕。
-     配合下面几个 min-height: 0，中间那行才真的会让步。 */
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 4px; padding: 6px; box-sizing: border-box;
-  background: radial-gradient(ellipse at 50% 45%, #1e5a3e 0%, #15412d 70%, #0f3122 100%);
+  position: relative;
+  width: 100%; height: 100%;
+  /* 绿色桌布：中心亮、边缘暗，像顶灯照下来 */
+  background:
+    radial-gradient(ellipse at 50% 48%, #277a50 0%, #1b5c3c 55%, #123f2a 100%);
+  overflow: hidden;
 }
-.mj-center { grid-area: 2 / 2; position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; min-width: 0; }
-.mj-bottom { grid-area: 3 / 1 / 4 / 4; }
-/* 自己的手牌往下压一点，跟中央那块拉开距离 —— 贴太近的时候，
-   刚打出去那张落到中央，看着像是从手牌里"漏"下去的 */
-.mj-bottom .mj-row { margin-top: 14px; }
-.mj-bottom { align-items: flex-end; padding-bottom: 2px; }
-.mj-top    { grid-area: 1 / 1 / 2 / 4; }
-.mj-left   { grid-area: 2 / 1; }
-.mj-right  { grid-area: 2 / 3; }
+/* 菱形暗纹：桌布上那层暗格，像真桌布的织纹 */
+.mj-table::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,.025) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,.025) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(0,0,0,.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(0,0,0,.06) 75%);
+  background-size: 28px 28px;
+  background-position: 0 0, 0 14px, 14px -14px, -14px 0px;
+  pointer-events: none;
+  opacity: .8;
+}
+/* 桌面边框：内描一圈暗金边，像实木桌沿 */
+.mj-table::after {
+  content: '';
+  position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 3px rgba(120,80,30,.35),
+              inset 0 0 30px rgba(0,0,0,.35);
+  pointer-events: none;
+  border-radius: 16px;
+}
 
-/* 一方：头像钉在角上。对家和我横着排；左右两家竖着贴边、牌旋转 90° */
-.mj-side { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 0; }
-.mj-bottom { flex-direction: row; gap: 5px; }                                    /* 我：头像在左下 */
-.mj-top    { flex-direction: row-reverse; }                            /* 对家：头像在右上 */
-.mj-left   { flex-direction: column; align-items: flex-start; }        /* 上家：头像在左上 */
-.mj-right  { flex-direction: column-reverse; align-items: flex-end; }  /* 下家：头像在右下 */
-/* 手牌 / 下地都居中摆（头像还是钉在角上） */
-.mj-side .mj-row { justify-content: center; flex: 1; }
-/* 左右两家竖着排：牌旋转 90°，竖着一溜贴边 */
-.mj-left .mj-row, .mj-right .mj-row { flex-direction: column; align-items: flex-start; gap: 8px; }
-.mj-left .mj-hand, .mj-left .mj-melds,
-.mj-right .mj-hand, .mj-right .mj-melds { flex-direction: column; align-items: flex-start; }
-.mj-left .mj-hand .mj-tile, .mj-right .mj-hand .mj-tile,
-.mj-left .mj-meld .mj-tile, .mj-right .mj-meld .mj-tile { transform: rotate(90deg); }
-/* 左右两家的手牌别贴死桌边，跟桌边留 2px 的缝 */
-.mj-left .mj-hand { padding-left: 2px; }
-.mj-right .mj-hand { padding-right: 2px; }
-/* 盖着的牌紧凑，不留间距 */
-.mj-left .mj-hand .mj-tile + .mj-tile,
-.mj-right .mj-hand .mj-tile + .mj-tile,
-.mj-left .mj-meld .mj-tile + .mj-tile,
-.mj-right .mj-meld .mj-tile + .mj-tile { margin-top: -16px; }
-.mj-left .mj-melds, .mj-right .mj-melds { gap: 4px; }
-.mj-right .mj-row, .mj-right .mj-hand, .mj-right .mj-melds { align-items: flex-end; }
-/* 对家（上）反过来，跟我的视角镜像 */
-.mj-top .mj-row { flex-direction: row-reverse; }
-.mj-top .mj-hand, .mj-top .mj-melds { flex-direction: row-reverse; }
+/* =========================================================
+   四方玩家区域
+   布局：我（下）、对家（上）、上家（左）、下家（右）
+   ========================================================= */
+.mj-seat {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+}
+.mj-seat-bottom { bottom: 6px;  left: 50%; transform: translateX(-50%); flex-direction: row; }
+.mj-seat-top    { top: 6px;     left: 50%; transform: translateX(-50%); flex-direction: row-reverse; }
+.mj-seat-left   { left: 6px;    top: 50%;  transform: translateY(-50%); flex-direction: column; }
+.mj-seat-right  { right: 6px;   top: 50%;  transform: translateY(-50%); flex-direction: column-reverse; }
 
-.mj-row { display: flex; align-items: flex-end; gap: 12px; min-width: 0; }
-.mj-hand { display: flex; gap: 0; align-items: flex-end; }
-.mj-melds { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; }
-.mj-meld { display: flex; gap: 1px; }
-
-/* 轮到谁：那一方描一圈 */
-.mj-side.mj-turn .mj-avatar { box-shadow: 0 0 0 2px var(--gold, #d6b76a), 0 0 12px rgba(214,183,106,.6); }
-
-/* 头像 —— 钉在四个角上 */
-.mj-who { display: flex; align-items: center; gap: 6px; flex: none; }
-.mj-avatar-wrap { position: relative; display: inline-flex; flex: none; }
+/* ---- 玩家信息卡（头像+名字+分数+状态） ---- */
+.mj-player {
+  display: flex; align-items: center; gap: 6px;
+  flex: none;
+  padding: 4px 8px 4px 4px;
+  border-radius: 20px;
+  background: rgba(0,0,0,.28);
+  border: 1px solid rgba(214,183,106,.25);
+  backdrop-filter: blur(4px);
+  min-width: 0;
+}
 .mj-avatar {
-  width: 56px; height: 34px; border-radius: 8px; flex: none;
+  width: 36px; height: 36px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(#2c5f45, #1d4531); color: #f2e6c4;
-  font-size: 12px; font-weight: 700; border: 1px solid rgba(214,183,106,.45);
-  white-space: nowrap; overflow: hidden;
+  background: linear-gradient(135deg, #3d7a58, #1f4f37);
+  color: #f2e6c4;
+  font-size: 14px; font-weight: 700;
+  border: 2px solid rgba(214,183,106,.5);
+  flex: none;
+  overflow: hidden;
+  position: relative;
 }
-.mj-who-txt { display: flex; flex-direction: column; font-size: 11px; line-height: 1.25; color: #e8ddc0; }
-.mj-who-txt b { font-weight: 700; white-space: nowrap; }
-.mj-who-txt .pos { color: #7ee6a4; } .mj-who-txt .neg { color: #ff9b7a; }
-.mj-zhuang {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; height: 14px; margin-left: 4px; border-radius: 50%;
-  background: #c8322b; color: #fff; font-size: 9px; font-style: normal; font-weight: 900;
-  vertical-align: middle;
+/* 轮到谁：头像外发光 + 金色环 */
+.mj-seat.mj-turn .mj-avatar {
+  border-color: #ffd98a;
+  box-shadow: 0 0 0 2px rgba(255,217,138,.35), 0 0 14px rgba(255,217,138,.55);
 }
-/* 头像角上的「庄」小圆戳：钉在头像框右上角 */
-.mj-avatar-wrap > .mj-zhuang { position: absolute; top: -4px; right: -4px; margin-left: 0; box-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.mj-player-info {
+  display: flex; flex-direction: column;
+  font-size: 11px; line-height: 1.3;
+  color: #f2e6c4;
+  min-width: 0;
+}
+.mj-player-name {
+  font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 72px;
+}
+.mj-player-score {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.mj-player-score.pos { color: #7ee6a4; }
+.mj-player-score.neg { color: #ff9b7a; }
 
-/* ---- 中央：牌墙一圈 ---- */
-/* ---- 牌墙：两张一叠，四边各码一溜 ---- */
-.mj-wall { position: absolute; display: flex; pointer-events: none; z-index: 1; }
-.mj-wall-top    { left: 50%; top: 0;    transform: translateX(-50%); flex-direction: row; }
-.mj-wall-bottom { left: 50%; bottom: 0; transform: translateX(-50%); flex-direction: row; }
-.mj-wall-left   { left: 0;  top: 50%;   transform: translateY(-50%); flex-direction: column; }
-.mj-wall-right  { right: 0; top: 50%;   transform: translateY(-50%); flex-direction: column; }
-/* 一墩＝两张背面错开叠着。错开那两三个像素就是"厚度"。
-   墩跟墩之间**是挨着的** —— 真桌上牌墙就是一长溜顶着一长溜，中间不留缝。
-   所以相邻两墩压掉 1px（边框各 1px，不压的话就出现 2px 的黑缝，看着一颗一颗断开）。 */
-.mj-stack { position: relative; width: 17px; height: 22px; flex: none; }
-.mj-stack + .mj-stack { margin-left: -1px; }
-.mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 22px; height: 17px; }
-.mj-wall-left .mj-stack + .mj-stack,
-.mj-wall-right .mj-stack + .mj-stack { margin-left: 0; margin-top: -1px; }
-.mj-stack i { position: absolute; inset: 0; border-radius: 2px; display: block;
-  background: linear-gradient(135deg, #2f7d52, #1d5a39 60%, #174a2f);
-  border: 1px solid rgba(0,0,0,.4); box-sizing: border-box; }
-/* 下面那张往下挪，露出一条边 —— 一眼看出是两层 */
-.mj-stack-b { transform: translateY(4px); filter: brightness(.68); }
-.mj-wall-left .mj-stack-b, .mj-wall-right .mj-stack-b { transform: translateX(4px); }
-.mj-stack-t { box-shadow: 0 1px 1px rgba(0,0,0,.4); }
-
-/* 虚线框裹着弃牌堆：四家各占一边，写死一块方地，牌多牌少都不晃 */
-.mj-pool-box {
-  position: relative; width: 214px; height: 214px; flex: none;
-  border: 2px dashed rgba(214,183,106,.22); border-radius: 10px;
-}
-/* 「剩 N 张」这个角标原先也叫 .mj-wall-left，跟西边那道牌墙撞了名 ——
-   后面那条把前面的覆盖掉，西墙被拽到正中间去了。改叫 count，别再撞。 */
-.mj-wall-count {
-  position: absolute; left: 50%; top: -9px; transform: translateX(-50%);
-  font-size: 10px; color: rgba(242,230,196,.75); background: #17452f; padding: 0 6px; white-space: nowrap;
-}
-
-/* ---- 中央：弃牌堆。四家各占一边、各排一行（6 张一行），照欢乐麻将 ---- */
-.mj-pool { position: absolute; inset: 12px; }
-.mj-lane { position: absolute; display: flex; flex-wrap: wrap; gap: 1px; }
-.mj-lane-top    { top: 0;    left: 50%; transform: translateX(-50%); width: 122px; justify-content: center; align-content: flex-start; }
-.mj-lane-bottom { bottom: 0; left: 50%; transform: translateX(-50%); width: 122px; justify-content: center; align-content: flex-end; }
-.mj-lane-left   { left: 0;   top: 50%;  transform: translateY(-50%); width: 82px;  align-content: center; }
-.mj-lane-right  { right: 0;  top: 50%;  transform: translateY(-50%); width: 82px;  align-content: center; justify-content: flex-end; }
-/* 矮屏（手机横屏，375 高）装不下大牌。
-   这儿**直接改尺寸**，不靠 JS 去挑小一号的类 —— 那样两处都要记着改，
-   而且 JS 不知道屏幕多高。尺寸归 CSS 管，这一段就是唯一的真相。 */
-@media (max-height: 430px) {
-  .mj-bottom .mj-row { margin-top: 8px; }
-  .mj-avatar { width: 44px; height: 26px; font-size: 10px; }
-  /* 四家的手牌在小屏上都收一档，横着排（不叠） */
-  .mj-md { width: 38px; height: 51px; }
-  .mj-sm { width: 24px; height: 32px; }
-  .mj-xs { width: 17px; height: 23px; }
-  /* 中央那堆和牌墙也收一档 */
-  .mj-pool-box { width: 180px; height: 180px; }
-  .mj-pool { inset: 8px; }
-  .mj-lane-top, .mj-lane-bottom { width: 102px; }
-  .mj-lane-left, .mj-lane-right { width: 68px; }
-  .mj-lane .mj-tile { width: 16px; height: 21px; border-radius: 3px; }
-  .mj-stack { width: 14px; height: 18px; }
-  .mj-wall-left .mj-stack, .mj-wall-right .mj-stack { width: 18px; height: 14px; }
-}
-
-/* 刚打出来那张：从堆里拎出来单独亮着 */
-.mj-just { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; }
-/* 明牌角标：左上角一个红「明」字 */
-.mj-just-tag {
-  position: absolute; left: -4px; top: -14px; z-index: 2;
-  font-size: 11px; font-weight: 900; color: #fff;
-  background: #c8322b; padding: 1px 5px; border-radius: 4px;
+/* 庄家标识：头像角上一个小圆 */
+.mj-dealer-badge {
+  position: absolute;
+  top: -3px; right: -3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #c8322b; color: #fff;
+  font-size: 10px; font-weight: 900; line-height: 16px; text-align: center;
+  border: 1.5px solid #fff;
   box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  z-index: 2;
 }
-.mj-ma-box { position: absolute; right: 6px; bottom: 6px; z-index: 3; }
 
-/* 头像旁边那排标识：样式跟跑胡子那套对齐，两个玩法长一个样 */
-.mj-tags { margin-top: 2px; gap: 3px; }
-.mj-tags .st { font-size: 9px; font-weight: 800; padding: 1px 4px; border-radius: 4px;
-  white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.45); position: relative; }
-.mj-tags .st.has-n { padding-right: 11px; }
-.mj-tags .st-n { position: absolute; right: 2px; top: 0; font-size: 8px; font-style: normal; }
+/* 状态标签：杠/延/罚 —— 对齐跑胡子样式 */
+.mj-tags { display: flex; gap: 3px; margin-top: 2px; }
+.mj-tags .st {
+  font-size: 9px; font-weight: 800;
+  padding: 0 4px; height: 14px; line-height: 14px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,.4);
+}
 .mj-tags .st-gang  { background: #d6b76a; color: #3a2a06; }
 .mj-tags .st-delay { background: #34c77b; color: #10331f; }
 .mj-tags .st-foul  { background: #d9443b; color: #fff; }
-.mj-nick { font-size: 12px; }
-.mj-total { font-size: 11px; }
 
-/* 自己的手牌点得动 */
-.mj-bottom .mj-hand .mj-tile { cursor: pointer; }
-.mj-bottom .mj-hand .mj-tile:hover { transform: translateY(-10%); }
-/* 自己的手牌「前倾」：短边立在桌上，上边往身前倾（rotateX 负值），像真牌立着往前探。
-   选中 / 悬停是在立起来的基础上再抬一下，得把透视一起带上，不然各自的 transform 会盖掉透视 */
-.mj-stand {
-  transform: perspective(170px) rotateX(-16deg);
-  transform-origin: 50% 100%;
+/* ---- 手牌区 ---- */
+.mj-hand { display: flex; align-items: flex-end; gap: 0; }
+/* 自己的手牌：最后一张（刚摸的）单独空开 */
+.mj-hand .mj-drawn { margin-left: 10px; }
+
+/* 左右两家手牌：只露一张背面 + 张数（竖着放不下13张） */
+.mj-hand-count {
+  position: relative; display: inline-flex; flex: none;
 }
-.mj-stand.mj-sel { transform: perspective(170px) rotateX(-16deg) translateY(-18%); }
-.mj-bottom .mj-hand .mj-stand:hover { transform: perspective(170px) rotateX(-16deg) translateY(-10%); }
-/* 下地的牌跟手牌反着：往后仰一点（rotateX 正值），跟立起来的手牌形成对比 */
-.mj-bottom .mj-melds .mj-tile {
-  transform: perspective(170px) rotateX(16deg);
-  transform-origin: 50% 100%;
+.mj-hand-count > i {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-style: normal; font-weight: 900;
+  font-size: 14px; line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  white-space: nowrap;
 }
 
-/* ================= 一整屏：顶栏 + 行动按钮 + 结算 ================= */
-/* **别在这儿写 position: relative**。.screen 本身是 position:absolute; inset:0 ——
-   钉在视口上、高度就是一屏。写个 relative 会把它覆盖掉，整屏改成随内容长的普通块：
-   量出来 401px、视口才 375px，手牌和右下角的按钮就一起掉到屏幕外面去。
-   .mj-acts 要的那个定位祖先，.screen 已经是了，不用再加。 */
+/* 对家：13张背面横排 */
+.mj-seat-top .mj-hand { flex-direction: row-reverse; }
+
+/* ---- 下地牌（碰/杠） ---- */
+.mj-melds {
+  display: flex; gap: 4px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.mj-meld { display: flex; gap: 1px; }
+/* 暗杠：四张全扣着（服务端发 tile=-1，由 back 属性控制） */
+
+/* 自己的手牌：悬停抬起 */
+.mj-seat-bottom .mj-hand .mj-tile {
+  cursor: pointer;
+}
+.mj-seat-bottom .mj-hand .mj-sel {
+  transform: translateY(-22%);
+}
+.mj-seat-bottom .mj-hand .mj-tile:hover {
+  transform: translateY(-10%);
+}
+
+/* =========================================================
+   中央区域：牌墙 + 弃牌 + 中心装饰
+   ========================================================= */
+.mj-center {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 62%;
+  aspect-ratio: 1 / 1;
+  max-height: 58%;
+  max-width: none;
+  pointer-events: none;
+  z-index: 1;
+}
+@media (max-aspect-ratio: 4/3) {
+  .mj-center {
+    width: 55%;
+    max-height: 52%;
+  }
+}
+
+/* ---- 牌墙（四面围起来） ---- */
+.mj-wall {
+  position: absolute;
+  display: flex;
+}
+.mj-wall-top    { top: 0;    left: 50%; transform: translateX(-50%); flex-direction: row; }
+.mj-wall-bottom { bottom: 0; left: 50%; transform: translateX(-50%); flex-direction: row; }
+.mj-wall-left   { left: 0;   top: 50%;  transform: translateY(-50%); flex-direction: column; }
+.mj-wall-right  { right: 0;  top: 50%;  transform: translateY(-50%); flex-direction: column; }
+
+/* 一墩 = 两张背面叠着（错开几像素露出厚度） */
+.mj-stack {
+  position: relative;
+  width: 18px; height: 24px;
+  flex: none;
+}
+.mj-stack + .mj-stack { margin-left: -1px; }
+.mj-wall-left  .mj-stack,
+.mj-wall-right .mj-stack { width: 24px; height: 18px; }
+.mj-wall-left  .mj-stack + .mj-stack,
+.mj-wall-right .mj-stack + .mj-stack { margin-left: 0; margin-top: -1px; }
+
+.mj-stack i {
+  position: absolute; inset: 0;
+  border-radius: 3px;
+  display: block;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(255,255,255,.10), transparent 60%),
+    linear-gradient(135deg, #2a8557, #1a6340 60%, #124a30);
+  border: 1px solid rgba(0,0,0,.45);
+  box-sizing: border-box;
+}
+/* 下面那张往下/往右挪一点，露出厚度 */
+.mj-stack-b { transform: translateY(4px); filter: brightness(.70); }
+.mj-wall-left  .mj-stack-b,
+.mj-wall-right .mj-stack-b { transform: translateX(4px); }
+.mj-stack-t { box-shadow: 0 1px 1px rgba(0,0,0,.4); }
+/* 牌墙上的花纹边框（小牌简化成一条内描边） */
+.mj-stack i::after {
+  content: ''; position: absolute; inset: 18%;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 2px;
+}
+
+/* ---- 弃牌区（牌墙内侧，四家各占一边） ---- */
+.mj-discard-area {
+  position: absolute;
+  inset: 32px;
+  border-radius: 8px;
+}
+.mj-discard-lane {
+  position: absolute;
+  display: flex; flex-wrap: wrap;
+  gap: 1px;
+  justify-content: center;
+  align-content: center;
+}
+.mj-discard-top    { top: 0;    left: 12%; right: 12%; align-content: flex-start; }
+.mj-discard-bottom { bottom: 0; left: 12%; right: 12%; align-content: flex-end; }
+.mj-discard-left   { left: 0;   top: 15%; bottom: 15%; width: 70px; align-content: center; justify-content: flex-start; }
+.mj-discard-right  { right: 0;  top: 15%; bottom: 15%; width: 70px; align-content: center; justify-content: flex-end; }
+
+/* ---- 中心装饰：东南西北 + 骰子 + 剩余张数 ---- */
+.mj-center-deco {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255,255,255,.05), transparent 65%),
+    rgba(10,40,25,.65);
+  border: 2px solid rgba(214,183,106,.3);
+  box-shadow:
+    inset 0 2px 8px rgba(0,0,0,.4),
+    0 2px 8px rgba(0,0,0,.3);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+  pointer-events: none;
+}
+.mj-center-wind {
+  font-size: 22px; font-weight: 900;
+  color: #ffd98a;
+  font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
+  text-shadow: 0 1px 3px rgba(0,0,0,.6);
+  line-height: 1;
+}
+.mj-center-count {
+  margin-top: 4px;
+  font-size: 11px; font-weight: 700;
+  color: rgba(242,230,196,.8);
+  font-variant-numeric: tabular-nums;
+}
+.mj-center-count b {
+  color: #ffd98a;
+  font-size: 13px;
+}
+
+/* 东南西北环绕：四个风字围着中心 */
+.mj-wind-ring {
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+}
+.mj-wind-ring span {
+  position: absolute;
+  font-size: 13px; font-weight: 900;
+  color: rgba(214,183,106,.55);
+  font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
+}
+.mj-wind-ring .w-n { top: -2px;    left: 50%; transform: translateX(-50%); }
+.mj-wind-ring .w-s { bottom: -2px; left: 50%; transform: translateX(-50%); }
+.mj-wind-ring .w-e { right: -2px;  top: 50%;  transform: translateY(-50%); }
+.mj-wind-ring .w-w { left: -2px;   top: 50%;  transform: translateY(-50%); }
+
+/* ---- 刚打出来的牌：从弃牌堆拎出来亮一下 ---- */
+.mj-just-discard {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  pointer-events: none;
+}
+.mj-just-discard::after {
+  content: ''; position: absolute; inset: -6px;
+  border-radius: 8px;
+  border: 2px solid #ffd98a;
+  box-shadow: 0 0 12px rgba(255,217,138,.6);
+  animation: mjPulse 1.2s ease-out infinite;
+}
+@keyframes mjPulse {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+/* 翻出来的马：放在中心右侧 */
+.mj-ma-display {
+  position: absolute;
+  right: 4px; top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  pointer-events: none;
+}
+.mj-ma-label {
+  text-align: center;
+  font-size: 10px; font-weight: 800;
+  color: #ffd98a;
+  margin-bottom: 2px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+
+/* =========================================================
+   行动按钮（胡/杠/碰/过）—— 跟 MjRoom 里的类名对齐
+   ========================================================= */
+.mj-acts {
+  position: absolute;
+  right: 14px; bottom: 78px;
+  z-index: 10;
+  display: flex; flex-direction: row;
+  align-items: center; gap: 8px;
+  pointer-events: auto;
+}
+.mj-act {
+  width: 62px; height: 44px;
+  border-radius: 8px; border: none;
+  font-size: 21px; font-weight: 900;
+  color: #fff7e2;
+  cursor: pointer;
+  font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
+  background: linear-gradient(#3f8c5e, #276243);
+  box-shadow: 0 3px 8px rgba(0,0,0,.45);
+  touch-action: manipulation;
+  user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.mj-act-hu, .mj-act-peng {
+  background: linear-gradient(#c2465a, #8c1f2e);
+}
+.mj-act-gang {
+  background: linear-gradient(#d6b76a, #b58a1a);
+  color: #3a2a06;
+}
+.mj-act-pass {
+  background: linear-gradient(#6a6a6a, #444);
+  width: 52px; height: 44px;
+  font-size: 19px;
+}
+.mj-act.chosen {
+  box-shadow: 0 0 0 3px #ffd98a, 0 3px 8px rgba(0,0,0,.45);
+}
+.mj-act.idle {
+  opacity: .35; filter: saturate(.2);
+  pointer-events: none;
+}
+
+/* 听牌按钮（侧边） */
+.mj-act-ting {
+  position: absolute;
+  right: 10px; top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 38px; height: 60px;
+  border-radius: 8px;
+  border: none;
+  font-size: 16px; font-weight: 900;
+  color: #fff;
+  background: linear-gradient(#4a9b6d, #2b6b47);
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+
+/* =========================================================
+   小屏适配
+   ========================================================= */
+@media (max-height: 450px) {
+  .mj-md { width: 38px; height: 52px; }
+  .mj-sm { width: 26px; height: 35px; }
+  .mj-xs { width: 18px; height: 24px; }
+  .mj-stack { width: 15px; height: 20px; }
+  .mj-wall-left  .mj-stack,
+  .mj-wall-right .mj-stack { width: 20px; height: 15px; }
+  .mj-center-deco { width: 80px; height: 80px; }
+  .mj-center-wind { font-size: 18px; }
+  .mj-discard-area { inset: 26px; }
+  .mj-act-btn { min-width: 48px; height: 34px; font-size: 17px; }
+  .mj-act-pass { min-width: 40px; font-size: 15px; }
+  .mj-avatar { width: 30px; height: 30px; font-size: 12px; }
+  .mj-player-name { max-width: 60px; font-size: 10px; }
+  .mj-player-score { font-size: 10px; }
+}
+
+@media (max-width: 360px) {
+  .mj-md { width: 36px; height: 49px; }
+}
+
+/* ---- 倒计时圈（方头像用圆角框） ---- */
+.mj-turn-ring {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* =========================================================
+   结算面板
+   ========================================================= */
+.mj-end .modal {
+  min-width: 300px; max-width: 420px;
+  color: #f2e6c4;
+  padding: 14px 16px;
+}
+.mj-end-head { font-size: 20px; text-align: center; margin-bottom: 10px; }
+.mj-end-head b { color: #ffd98a; }
+.mj-end-ma {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px; margin-bottom: 10px; border-radius: 10px;
+  background: rgba(200,50,43,.12);
+  border: 1px dashed rgba(214,183,106,.45);
+}
+.mj-end-ma-label { font-size: 13px; color: #ffd98a; font-weight: 800; }
+.mj-end-ma-name  { font-size: 16px; font-weight: 800; }
+.mj-end-ma-none  { font-size: 13px; color: rgba(242,230,196,.7); }
+.mj-end-why {
+  margin: 0 0 10px; padding-left: 18px;
+  font-size: 12px; line-height: 1.7;
+  color: rgba(242,230,196,.9);
+}
+.mj-end-tally {
+  width: 100%; border-collapse: collapse;
+  font-size: 14px;
+}
+.mj-end-tally td { padding: 5px 4px; border-top: 1px solid rgba(214,183,106,.16); }
+.mj-end-tally .gg {
+  font-size: 11px; color: rgba(242,230,196,.6);
+  text-align: right; white-space: nowrap;
+}
+.mj-end-tally .v {
+  text-align: right; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.mj-end-tally .v.pos { color: #7ee6a4; }
+.mj-end-tally .v.neg { color: #ff9b7a; }
+.mj-end-tally tr.win .n { color: #ffd98a; font-weight: 800; }
+.mj-end-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; font-size: 12px;
+}
+
+/* 结算面板里的「庄」小标 */
+.mj-zhuang {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-left: 4px; border-radius: 50%;
+  background: #c8322b; color: #fff;
+  font-size: 10px; font-style: normal; font-weight: 900;
+  vertical-align: middle;
+}
+
+@media (max-height: 430px) {
+  .mj-end .modal { padding: 10px 14px; }
+  .mj-end-head { font-size: 17px; margin-bottom: 6px; }
+  .mj-end-ma { padding: 6px; margin-bottom: 6px; }
+  .mj-end-why { line-height: 1.4; margin-bottom: 6px; }
+  .mj-end-tally td { padding: 2px 4px; }
+  .mj-end-foot { margin-top: 8px; }
+}
+
+/* ---- 整屏布局：顶栏 + 牌桌 ---- */
 .mj-screen { display: flex; flex-direction: column; min-height: 0; }
-/* height:auto 是**必须**的：.mj-table 自己写着 height:100%（单独用的时候要占满），
-   在这儿 100% 指的是整个 .mj-screen 的高度 —— 于是顶栏那 30px 就被挤出屏幕，
-   自己的手牌和右下角的按钮一起掉到屏幕外面去。交给 flex 去分高度。 */
 .mj-screen .mj-table { flex: 1; min-height: 0; height: auto; }
-/* 侧面两家下地的牌**竖着摞**，摞多了这一行就撑高，把下面我的手牌顶出屏幕。
-   让它自己折成第二列：宁可往里长，也不许往下顶。 */
-.mj-left, .mj-right { overflow: hidden; }
-.mj-left .mj-melds, .mj-right .mj-melds { flex-wrap: wrap; max-height: 100%; }
 
 .mj-bar {
   display: flex; align-items: center; gap: 10px; flex: none;
@@ -317,33 +588,14 @@
 .mj-bar .btn.sm { font-size: 11px; padding: 2px 8px; }
 .mj-clock { font-weight: 800; color: #ffd98a; font-variant-numeric: tabular-nums; }
 
-/* 行动按钮**横着排在最下面那条**，我自己手牌的右边。
-   一开始是照跑胡子那样竖排贴右下角的，渲染出来才发现：下家的头像和分数
-   也钉在右下角（"每一方的左端"转一圈就转到那儿），按钮正好糊在人家脸上。
-   挪到底下这条：那一行本来就是我自己的地盘，谁也不挡。
-   顺序是「胡 杠 碰 过」从左到右 —— 最常点的「过」落在最右边，拇指不用挪。 */
-.mj-acts {
-  position: absolute; right: 10px; bottom: 8px; z-index: 6;
-  display: flex; flex-direction: row; align-items: center; gap: 8px;
+/* ---- 拖牌虚影 ---- */
+.mj-drag-ghost {
+  position: fixed; z-index: 20; pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-6deg);
+  opacity: .85; filter: drop-shadow(0 4px 8px rgba(0,0,0,.5));
 }
-/* 给按钮留出位子：不留的话，窄屏上 14 张手牌会一直铺到按钮底下去 */
-.mj-bottom { padding-right: 178px; }
-.mj-act {
-  width: 62px; height: 44px; border-radius: 8px; border: none;
-  font-size: 21px; font-weight: 900; color: #fff7e2; cursor: pointer;
-  font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
-  background: linear-gradient(#3f8c5e, #276243); box-shadow: 0 3px 8px rgba(0,0,0,.45);
-  touch-action: manipulation; user-select: none;
-}
-/* 胡 / 碰跟字牌那边同一套酒红：这两个是"要掏钱或者要收钱"的动作，颜色得跳出来 */
-.mj-act-hu, .mj-act-peng { background: linear-gradient(#c2465a, #8c1f2e); }
-.mj-act-gang { background: linear-gradient(#d6b76a, #b58a1a); color: #3a2a06; }
-.mj-act-pass { background: linear-gradient(#6a6a6a, #444); width: 52px; height: 44px; font-size: 19px; }
-/* 锁住期间：点过的那个亮着（让人知道自己点的是哪个），没点的暗下去 */
-.mj-act.chosen { box-shadow: 0 0 0 3px #ffd98a, 0 3px 8px rgba(0,0,0,.45); }
-.mj-act.idle { opacity: .35; filter: saturate(.2); }
 
-/* 出牌弧线：手上方一条线，拖过去松手出牌 */
+/* ---- 出牌弧线提示 ---- */
 .mj-arc {
   position: absolute; left: 18%; right: 18%; bottom: 92px; z-index: 5;
   display: flex; flex-direction: column; align-items: center; pointer-events: none;
@@ -363,7 +615,7 @@
 }
 .mj-arc.on .mj-arc-tip { color: #ffd98a; }
 
-/* 选中的牌：右下角一个「打」按钮（照字牌的矩形按钮） */
+/* ---- 打按钮（选中牌后出现） ---- */
 .mj-discard {
   position: absolute; right: 10px; bottom: 8px; z-index: 6;
   width: 62px; height: 44px; border-radius: 8px; border: none;
@@ -371,66 +623,23 @@
   background: linear-gradient(#d6b76a, #b58a1a);
   box-shadow: 0 3px 8px rgba(0,0,0,.45);
   cursor: pointer; touch-action: manipulation; user-select: none;
+  font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
 }
 
-/* 拖牌虚影：跟着手指走 */
-.mj-drag-ghost {
-  position: fixed; z-index: 20; pointer-events: none;
-  transform: translate(-50%, -50%) rotate(-6deg);
-  opacity: .85; filter: drop-shadow(0 4px 8px rgba(0,0,0,.5));
-}
-
+/* ---- 杠牌选择弹层 ---- */
 .mj-gangpick {
-  position: absolute; right: 10px; bottom: 72px; z-index: 7;
+  position: absolute;
+  right: 10px; bottom: 78px;
+  z-index: 11;
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 10px; font-size: 12px; color: #f2e6c4;
-  background: rgba(16,48,33,.96); border: 1px solid rgba(214,183,106,.45);
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px; color: #f2e6c4;
+  background: rgba(16,48,33,.96);
+  border: 1px solid rgba(214,183,106,.45);
   box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
-.mj-gangpick-t { background: none; border: none; padding: 0; cursor: pointer; }
-
-/* ---- 结算 ---- */
-/* Modal 把 className 挂在**遮罩**（.modal-bg）上，不是里面那块面板。
-   一开始直接写 .mj-end{max-width:420px}，结果遮罩只有 420 宽、缩在左边，
-   面板也没继承到 .modal 自带的 max-height/overflow —— 内容直接被切掉半截。
-   照 .chi-modal 的写法，往里点一层。 */
-.mj-end .modal { min-width: 300px; max-width: 420px; color: #f2e6c4; padding: 14px 16px; }
-.mj-end-head { font-size: 20px; text-align: center; margin-bottom: 10px; }
-.mj-end-head b { color: #ffd98a; }
-.mj-end-ma {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 10px; margin-bottom: 10px; border-radius: 10px;
-  background: rgba(200,50,43,.12); border: 1px dashed rgba(214,183,106,.45);
+.mj-gangpick-t {
+  background: none; border: none; padding: 0;
+  cursor: pointer;
 }
-.mj-end-ma-label { font-size: 13px; color: #ffd98a; font-weight: 800; }
-.mj-end-ma-name { font-size: 16px; font-weight: 800; }
-.mj-end-ma-none { font-size: 13px; color: rgba(242,230,196,.7); }
-.mj-end-why { margin: 0 0 10px; padding-left: 18px; font-size: 12px; line-height: 1.7; color: rgba(242,230,196,.9); }
-.mj-end-tally { width: 100%; border-collapse: collapse; font-size: 14px; }
-.mj-end-tally td { padding: 5px 4px; border-top: 1px solid rgba(214,183,106,.16); }
-.mj-end-tally .gg { font-size: 11px; color: rgba(242,230,196,.6); text-align: right; white-space: nowrap; }
-.mj-end-tally .v { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
-.mj-end-tally .v.pos { color: #7ee6a4; } .mj-end-tally .v.neg { color: #ff9b7a; }
-.mj-end-tally tr.win .n { color: #ffd98a; font-weight: 800; }
-.mj-end-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12px; }
-
-@media (max-height: 430px) {
-  /* 手机横屏只有 375 高，结算面板得把行距收一收，不然一屏塞不下要滚 */
-  .mj-end .modal { padding: 10px 14px; }
-  .mj-end-head { font-size: 17px; margin-bottom: 6px; }
-  .mj-end-ma { padding: 6px; margin-bottom: 6px; }
-  /* 行距、行高都抠到最紧：375 高的时候 .modal 只给到 88vh＝330，
-     松一点内容就是 338，差这么十来个像素就要滚一下，翻马那块会被推出视野。 */
-  .mj-end-why { line-height: 1.4; margin-bottom: 6px; }
-  .mj-end-tally td { padding: 2px 4px; }
-  .mj-end-foot { margin-top: 8px; }
-  .mj-act { width: 50px; height: 38px; font-size: 18px; }
-  .mj-act-pass { width: 42px; height: 38px; font-size: 16px; }
-  .mj-acts { gap: 6px; right: 6px; bottom: 6px; }
-  .mj-bottom { padding-right: 150px; }
-  .mj-gangpick { bottom: 60px; }
-}
-
-/* 窄屏（小手机横屏 667）：不再单独缩自己的手牌。
-   手牌要跟下地牌一样大，只缩手牌会让它比下地牌小 —— 要缩就一起缩 md/sm。 */
-
