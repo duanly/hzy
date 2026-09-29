@@ -614,6 +614,13 @@ server.on('upgrade', (req, socket) => {
         if (sess.room && sess.userId !== null) sess.room.wake(sess.userId);
         return;
       }
+      case 'seat.select': {
+        if (sess.room && sess.userId !== null && !isMj(sess.room)) {
+          const cid = typeof msg.cid === 'number' ? msg.cid : undefined;
+          sess.room.selectCard(sess.userId, cid);
+        }
+        return;
+      }
       case 'chat': {
         const u = requireUser(); if (!sess.room) return;
         const text = String(msg.text ?? '').slice(0, 200);

@@ -88,6 +88,7 @@ export interface PlayerState {
   ids: number[];                     // 手里这些牌的号（不排序、只是个袋子；同一个字的几张可以互换，随便取一个都对）
   passedChi: Kind[];        // 上家打出时本可吃而没吃的牌（之后再吃 = 吃回头牌，违规）
   violations: number;
+  selectedCid: number;      // 玩家选中的那张牌（cid），-1 表示没选。超时自动出牌时优先打这一张。
 }
 
 export type GameEvent =
@@ -226,7 +227,7 @@ export class Game {
     this.penaltyScores = new Array(n).fill(0);
     this.tilongScores = new Array(n).fill(0);
     this.delayCards = new Array(n).fill(0);
-    for (let s = 0; s < n; s++) this.players.push({ seat: s, hand: [], melds: [], chou: [], tookCard: false, tookCount: 0, discards: [], tiCount: 0, paoCount: 0, longCount: 0, acted: false, declinedUnit: 0, declinedHu: [], freeDiscards: 0, noTake: false, passedChi: [], violations: 0, discardSrc: [], discardCids: [], ids: [] });
+    for (let s = 0; s < n; s++) this.players.push({ seat: s, hand: [], melds: [], chou: [], tookCard: false, tookCount: 0, discards: [], tiCount: 0, paoCount: 0, longCount: 0, acted: false, declinedUnit: 0, declinedHu: [], freeDiscards: 0, noTake: false, passedChi: [], violations: 0, discardSrc: [], discardCids: [], ids: [], selectedCid: -1 });
     this.scores = new Array(n).fill(0);
   }
 
@@ -414,6 +415,17 @@ export class Game {
       const j = p.ids.findIndex(id => this.deck[id] === k);
       this.takenIds.push(j >= 0 ? p.ids.splice(j, 1)[0] : this.newCid());
     }
+  }
+  /** 按 cid 从手里拿掉一张牌（返回牌面值）。同字牌多时用它指定具体哪一张，
+   *  避免 indexOf 总拿最前面那一张导致画面上"牌乱跳"。 */
+  private removeFromHandById(p: PlayerState, cid: number): Kind {
+    const idx = p.ids.indexOf(cid);
+    if (idx < 0) throw new Error(`hand missing cid ${cid}`);
+    const kind = p.hand[idx];
+    p.ids.splice(idx, 1);
+    p.hand.splice(idx, 1);
+    this.takenIds.push(cid);
+    return kind;
   }
   /** 起手之后进过张（吃 / 碰 / 偎 / 提 / 跑）—— 耒阳的"举手胡"要求一张都没进过 */
   /** 记一笔"进张了"：发牌之后每下一次地（吃 / 碰 / 偎 / 提 / 跑）就是进了一张。
@@ -676,6 +688,7 @@ export class Game {
     this.tableCard = null;
     this.claims = [];   // 牌一离桌，这一轮的表态记录就作废
     this.drawn = null;
+    p.selectedCid = -1;  // 新的出牌轮：清空上一轮的选择
     this.setDeadline(this.rules.timers.discard);
     this.emit({ t: 'need_discard', seat, deadline: this.deadline });
   }
@@ -687,6 +700,7 @@ export class Game {
     this.turn = seat;
     this.drawn = c;
     this.drawnCid = this.pileIds.shift() ?? this.newCid();
+    this.players[seat].selectedCid = -1;  // 进张了：手牌变了，旧的选择作废
     this.emit({ t: 'draw', seat, card: c, pileLeft: this.pile.length, cid: this.drawnCid });
     this.grantMidDelay();
     this.drawerOptions = this.drawerOpts(seat, c);
@@ -791,8 +805,20 @@ export class Game {
   }
 
   // ---------- 玩家动作 ----------
+  /** 玩家选中一张牌（准备打这张）。服务端记住，超时自动出牌时优先打它。
+   * 传 -1 或 undefined = 取消选择。只有出牌回合才认，其它阶段忽略。 */
+  selectCard(seat: number, cid: number | undefined | null): string | null {
+    if (this.ended) return 'ended';
+    if (seat !== this.turn) return 'not your turn';
+    if (this.phase !== 'discard' && this.phase !== 'drawer_decide') return 'wrong phase';
+    const p = this.players[seat];
+    if (cid === undefined || cid === null || cid < 0) { p.selectedCid = -1; return null; }
+    if (!p.ids.includes(cid)) return 'card not in hand';
+    p.selectedCid = cid;
+    return null;
+  }
   /** 返回 null 表示成功，否则错误信息 */
-  act(seat: number, type: ActionType, payload?: { card?: Kind; combo?: Kind[]; lay?: number }): string | null {
+  act(seat: number, type: ActionType, payload?: { card?: Kind; combo?: Kind[]; lay?: number; cid?: number }): string | null {
     if (this.ended) return 'ended';
     // 抢牌超时之后又点：给一句明白话，而不是干巴巴的 invalid action。
     // 只管抢牌阶段！提龙胡 / 开跑胡 / 偎起胡 / 天胡是自己下地之后引擎主动问的，
@@ -820,31 +846,46 @@ export class Game {
     return err;
   }
 
-  private actDiscard(seat: number, type: ActionType, payload?: { card?: Kind }) {
+  private actDiscard(seat: number, type: ActionType, payload?: { card?: Kind; cid?: number }) {
     if (seat !== this.turn) return 'not your turn';
     if (type !== 'discard' || payload?.card === undefined) return 'must discard';
     const p = this.players[seat];
-    if (!p.hand.includes(payload.card)) return 'card not in hand';
+    // cid 优先：传了 cid 就按 id 拿，拿不到算错（防客户端乱报）
+    let card: Kind = payload.card;
+    let cidFromPayload = false;
+    if (payload?.cid !== undefined && payload.cid >= 0) {
+      const idx = p.ids.indexOf(payload.cid);
+      if (idx < 0) return 'card not in hand';
+      if (p.hand[idx] !== payload.card) return 'card mismatch';
+      card = p.hand[idx];
+      cidFromPayload = true;
+    }
+    if (!p.hand.includes(card)) return 'card not in hand';
     // 拆坎出牌：罚分，并且这张牌收回来（还得另打一张）；只罚分，不禁胡。
     // 除非手里全是坎，实在挑不出别的牌，那就只能打出去（照样罚分）
-    if (this.isBreakingKan(p, payload.card)) {
+    if (this.isBreakingKan(p, card)) {
       const hasOther = p.hand.some(k => p.hand.filter(x => x === k).length < 3);
       /* 罚分只罚**一次**：同一手牌里同一张坎，反复点（或者机器人反复重试）不该越罚越多。
          以前每试一次就罚一次 —— 机器人两百毫秒重试一回，几十秒下来能罚出上百次违规。
          手里全是坎、实在挑不出别的牌时照样让他打出去（罚一次，牌真的出去）。 */
-      const key = `${seat}:${payload.card}:${p.discards.length}:${p.melds.length}`;
+      const key = `${seat}:${card}:${p.discards.length}:${p.melds.length}`;
       if (this.kanWarned !== key) { this.kanWarned = key; this.penalize(seat, '拆坎出牌'); }
-      if (hasOther) return `${nameOfKind(payload.card)} 是坎，拆坎出牌：罚分，这张牌收回来了，请另打一张`;
+      if (hasOther) return `${nameOfKind(card)} 是坎，拆坎出牌：罚分，这张牌收回来了，请另打一张`;
     }
     this.takenIds = [];
     this.claimCid = undefined;
-    this.removeFromHand(p, payload.card, 1);
+    if (cidFromPayload && payload!.cid !== undefined) {
+      this.removeFromHandById(p, payload!.cid);
+    } else {
+      this.removeFromHand(p, card, 1);
+    }
     p.acted = true;
+    p.selectedCid = -1;  // 打出去了：选择清空
     // 自己从手里打出去的字，之后再吃回来也算吃回头牌（不管这张牌当时被谁要走了）
-    if (!p.passedChi.includes(payload.card)) p.passedChi.push(payload.card);
+    if (!p.passedChi.includes(card)) p.passedChi.push(card);
     const cid = this.takenIds.pop() ?? this.newCid();   // 刚从手里抽出来的就是它
-    this.emit({ t: 'discard', seat, card: payload.card, cid });
-    this.offerCard({ card: payload.card, from: seat, source: 'discard', cid });
+    this.emit({ t: 'discard', seat, card, cid });
+    this.offerCard({ card, from: seat, source: 'discard', cid });
     return null;
   }
 
@@ -1487,17 +1528,36 @@ export class Game {
         const forced = this.drawerOptions.find(o => o.type === 'ti' || o.type === 'wei');
         this.act(this.turn, forced ? forced.type : 'play_drawn');
       }
-      else this.act(this.turn, 'discard', { card: this.autoDiscardCard(this.turn) });
+      else {
+        const seat = this.turn;
+        const p = this.players[seat];
+        let err: string | null = 'not tried';
+        if (p.selectedCid >= 0 && p.ids.includes(p.selectedCid)) {
+          const kind = this.deck[p.selectedCid] ?? p.hand[p.ids.indexOf(p.selectedCid)];
+          err = this.act(seat, 'discard', { card: kind as Kind, cid: p.selectedCid });
+        }
+        if (err) this.act(seat, 'discard', { card: this.autoDiscardCard(seat) });
+      }
       return true;
     }
     if (this.phase === 'discard') {
       const seat = this.turn;
-      let err = this.act(seat, 'discard', { card: this.autoDiscardCard(seat) });
+      const p = this.players[seat];
+      let err: string | null = 'not tried';
+      // 玩家选了牌：先试着打他选的那张（选了坎也照试，引擎会罚分并驳回）
+      if (p.selectedCid >= 0 && p.ids.includes(p.selectedCid)) {
+        const kind = this.deck[p.selectedCid] ?? p.hand[p.ids.indexOf(p.selectedCid)];
+        err = this.act(seat, 'discard', { card: kind as Kind, cid: p.selectedCid });
+      }
+      // 没选、或者选的那张被驳回（拆坎之类），退回到自动选牌
       if (err) {
-        /* 挑的那张被引擎拒了（拆坎、该下伙没下伙之类）：手里逐张试，能出哪张出哪张。
-           以前这儿是"发一次就当走完了"（直接 return true）——act 失败的话一步没动、
-           却报告"动过了"，外面每 200ms 叫一次、每次都白跑，桌子就冻在出牌这一步。 */
-        for (const k of [...this.players[seat].hand]) { err = this.act(seat, 'discard', { card: k }); if (!err) break; }
+        err = this.act(seat, 'discard', { card: this.autoDiscardCard(seat) });
+        if (err) {
+          /* 挑的那张被引擎拒了（拆坎、该下伙没下伙之类）：手里逐张试，能出哪张出哪张。
+             以前这儿是"发一次就当走完了"（直接 return true）——act 失败的话一步没动、
+             却报告"动过了"，外面每 200ms 叫一次、每次都白跑，桌子就冻在出牌这一步。 */
+          for (const k of [...p.hand]) { err = this.act(seat, 'discard', { card: k }); if (!err) break; }
+        }
       }
       // 一张都出不掉：按黄庄收场。宁可这一局算平，也绝不把整桌冻在这儿
       if (err) { this.forceLiuJu(`出牌卡住：${err}`); }
@@ -1760,6 +1820,9 @@ export class Game {
         hand: seat === p.seat || this.ended
           ? (this.ended && this.winner === p.seat && this.huCard >= 0 ? sortKinds([...p.hand, this.huCard]) : p.hand.slice())
           : undefined,
+        // 每张手牌的编号（cid）—— 只给自己看，跟 hand 一一对应。
+        // 有了号客户端就能认出"两张同字牌里哪一张是哪一张"，出牌/进张时画面不会乱跳。
+        ids: seat === p.seat ? p.ids.slice() : undefined,
         // 偎：亮一张盖两张；提：亮一张盖三张；龙 / 碰 / 跑 / 吃：全亮
         // 偎：亮一张盖两张；提：亮一张盖三张；龙 / 碰 / 跑 / 吃：全亮。
         // 盖住的那几张连**牌号**也要一起盖掉 —— 号是公开发出去过的（比如摸牌时报过），
