@@ -172,9 +172,8 @@ export type ClientMsg =
   | { type: 'room.state' }
   /* tile 是麻将那边用的（打哪张、杠哪张）；跑胡子走 card/combo/lay。
      两种玩法共用这一条消息，服务端按房间类型挑字段。 */
-  | { type: 'game.act'; action: ActionType; card?: Kind; combo?: Kind[]; lay?: number; cid?: number; tile?: number }
+  | { type: 'game.act'; action: ActionType; card?: Kind; combo?: Kind[]; lay?: number; tile?: number }
   | { type: 'seat.wake' }                          // 我回来了：解除"机器人替我打"（点按钮、手动理牌都算）
-  | { type: 'seat.select'; cid?: number }          // 选中一张牌（准备打它）：服务端超时自动出牌时优先打这张；不传/负数 = 取消选择
   | { type: 'chat'; text: string }
   | { type: 'voice'; data: string; mime: string; durationMs: number }
   | { type: 'profile.get'; userId: number }
