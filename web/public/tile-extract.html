@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>麻将牌体提取工具</title>
+<style>
+  body { font-family: sans-serif; background: #222; color: #eee; padding: 20px; }
+  .section { margin-bottom: 30px; }
+  .section h2 { color: #8df; }
+  .row { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .tile-preview {
+    background: repeating-conic-gradient(#333 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px;
+    padding: 10px;
+    border: 1px solid #555;
+    border-radius: 4px;
+  }
+  .tile-preview canvas { display: block; }
+  .label { text-align: center; margin-top: 5px; font-size: 12px; color: #aaa; }
+  canvas { image-rendering: pixelated; }
+  .controls { margin-bottom: 10px; }
+  .controls label { margin-right: 15px; }
+  .controls input[type=range] { vertical-align: middle; }
+  button { padding: 8px 16px; background: #4a8; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #5b9; }
+</style>
+</head>
+<body>
+<h1>麻将牌体提取工具</h1>
+
+<div class="controls">
+  <label>背景色阈值: <input type="range" id="bgThreshold" min="10" max="100" value="40"> <span id="bgThresholdVal">40</span></label>
+  <label>边缘扩展: <input type="range" id="edgeExpand" min="0" max="10" value="2"> <span id="edgeExpandVal">2</span></label>
+  <button onclick="extractAll()">重新提取</button>
+  <button onclick="downloadAll()">下载所有牌体</button>
+</div>
+
+<div class="section">
+  <h2>1. 手牌（立着的牌）- 从 baiban.png 底部提取</h2>
+  <div class="row">
+    <div class="tile-preview"><div class="label">原图</div><canvas id="standing-src"></canvas></div>
+    <div class="tile-preview"><div class="label">提取后（透明背景）</div><canvas id="standing-out"></canvas></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. 下地/弃牌区的牌（平的）- 从 tong2.png 顶部白板提取</h2>
+  <div class="row">
+    <div class="tile-preview"><div class="label">原图</div><canvas id="flat-src"></canvas></div>
+    <div class="tile-preview"><div class="label">提取后（透明背景）</div><canvas id="flat-out"></canvas></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. 盖着的牌（背面朝上）- 合成</h2>
+  <div class="row">
+    <div class="tile-preview"><div class="label">牌背（合成）</div><canvas id="back-out"></canvas></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>参考：其他角度的牌</h2>
+  <div class="row">
+    <div class="tile-preview"><div class="label">dong.png 顶部</div><canvas id="ref-dong-top"></canvas></div>
+    <div class="tile-preview"><div class="label">wan3.png 左侧牌墙</div><canvas id="ref-wan3-left"></canvas></div>
+    <div class="tile-preview"><div class="label">tong1b.png 顶部 发财</div><canvas id="ref-tong1b-top"></canvas></div>
+  </div>
+</div>
+
+<script>
+const TILES_DIR = 'mj-tiles/';
+
+// 加载图片
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// 判断像素是否为背景色（青绿色桌布）
+function isBackgroundColor(r, g, b, threshold) {
+  // 桌布是青绿色：蓝绿分量高，红分量低
+  // 典型值: r~20, g~120, b~130
+  if (r < 30 && g > 80 && b > 90) return true;
+  // 更亮的桌布区域
+  if (r < 80 && g > 100 && b > 110 && g > r * 1.3 && b > r * 1.4) return true;
+  // 深色桌布阴影
+  if (r < 20 && g < 80 && b < 90 && g > r && b > r) return true;
+  return false;
+}
+
+// 提取牌体：去掉背景，保留牌
+function extractTile(srcCanvas, srcX, srcY, srcW, srcH, outCanvas, threshold, edgeExpand) {
+  const srcCtx = srcCanvas.getContext('2d');
+  const outCtx = outCanvas.getContext('2d');
+
+  const imgData = srcCtx.getImageData(srcX, srcY, srcW, srcH);
+  const data = imgData.data;
+
+  // 第一步：找到牌的边界（最小外接矩形）
+  let minX = srcW, minY = srcH, maxX = 0, maxY = 0;
+  for (let y = 0; y < srcH; y++) {
+    for (let x = 0; x < srcW; x++) {
+      const i = (y * srcW + x) * 4;
+      const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+      if (a > 10 && !isBackgroundColor(r, g, b, threshold)) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  // 扩展边界
+  minX = Math.max(0, minX - edgeExpand);
+  minY = Math.max(0, minY - edgeExpand);
+  maxX = Math.min(srcW - 1, maxX + edgeExpand);
+  maxY = Math.min(srcH - 1, maxY + edgeExpand);
+
+  const tileW = maxX - minX + 1;
+  const tileH = maxY - minY + 1;
+
+  // 第二步：创建输出 canvas，背景透明
+  outCanvas.width = tileW;
+  outCanvas.height = tileH;
+  const outImgData = outCtx.createImageData(tileW, tileH);
+  const outData = outImgData.data;
+
+  // 第三步：复制牌的像素，背景变透明
+  // 对于边缘像素，做半透明处理（抗锯齿）
+  for (let y = 0; y < tileH; y++) {
+    for (let x = 0; x < tileW; x++) {
+      const srcI = ((minY + y) * srcW + (minX + x)) * 4;
+      const dstI = (y * tileW + x) * 4;
+
+      const r = data[srcI], g = data[srcI+1], b = data[srcI+2];
+
+      if (isBackgroundColor(r, g, b, threshold)) {
+        // 检查周围是否有牌的像素，如果有则做边缘混合
+        let hasTileNeighbor = false;
+        let tileNeighbors = 0;
+        let totalNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && nx < tileW && ny >= 0 && ny < tileH) {
+              totalNeighbors++;
+              const ni = ((minY + ny) * srcW + (minX + nx)) * 4;
+              const nr = data[ni], ng = data[ni+1], nb = data[ni+2];
+              if (!isBackgroundColor(nr, ng, nb, threshold)) {
+                hasTileNeighbor = true;
+                tileNeighbors++;
+              }
+            }
+          }
+        }
+        if (hasTileNeighbor) {
+          // 边缘像素：部分透明
+          const alpha = Math.min(255, Math.floor(255 * tileNeighbors / totalNeighbors * 1.5));
+          outData[dstI] = r;
+          outData[dstI+1] = g;
+          outData[dstI+2] = b;
+          outData[dstI+3] = alpha;
+        } else {
+          // 完全背景：透明
+          outData[dstI] = 0;
+          outData[dstI+1] = 0;
+          outData[dstI+2] = 0;
+          outData[dstI+3] = 0;
+        }
+      } else {
+        outData[dstI] = r;
+        outData[dstI+1] = g;
+        outData[dstI+2] = b;
+        outData[dstI+3] = 255;
+      }
+    }
+  }
+
+  outCtx.putImageData(outImgData, 0, 0);
+  return { x: minX, y: minY, w: tileW, h: tileH };
+}
+
+// 生成牌背（合成）
+function generateTileBack(refCanvas, outCanvas, tileW, tileH) {
+  const ctx = outCanvas.getContext('2d');
+  outCanvas.width = tileW;
+  outCanvas.height = tileH;
+
+  // 从参考图中获取绿色样本
+  const refCtx = refCanvas.getContext('2d');
+  const refData = refCtx.getImageData(0, 0, refCanvas.width, refCanvas.height).data;
+
+  // 找一个绿色像素作为样本（牌的侧边/底部）
+  let sampleR = 30, sampleG = 130, sampleB = 70; // 默认绿
+
+  // 从左边缘找绿色
+  for (let y = Math.floor(refCanvas.height * 0.7); y < refCanvas.height; y++) {
+    for (let x = 0; x < 20; x++) {
+      const i = (y * refCanvas.width + x) * 4;
+      const r = refData[i], g = refData[i+1], b = refData[i+2];
+      if (g > 80 && g > r * 1.5 && g > b * 1.2) {
+        sampleR = r; sampleG = g; sampleB = b;
+        break;
+      }
+    }
+  }
+
+  // 绘制牌背：渐变绿色
+  const gradient = ctx.createLinearGradient(0, 0, 0, tileH);
+  gradient.addColorStop(0, `rgb(${Math.min(255,sampleR+40)}, ${Math.min(255,sampleG+30)}, ${Math.min(255,sampleB+20)})`);
+  gradient.addColorStop(0.5, `rgb(${sampleR}, ${sampleG}, ${sampleB})`);
+  gradient.addColorStop(1, `rgb(${Math.max(0,sampleR-30)}, ${Math.max(0,sampleG-40)}, ${Math.max(0,sampleB-30)})`);
+
+  // 圆角矩形
+  const radius = Math.min(tileW, tileH) * 0.1;
+  ctx.beginPath();
+  ctx.roundRect(0, 0, tileW, tileH, radius);
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // 顶部高光
+  const topGrad = ctx.createLinearGradient(0, 0, 0, tileH * 0.3);
+  topGrad.addColorStop(0, 'rgba(255,255,255,0.3)');
+  topGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.beginPath();
+  ctx.roundRect(0, 0, tileW, tileH * 0.3, [radius, radius, 0, 0]);
+  ctx.fillStyle = topGrad;
+  ctx.fill();
+
+  // 底部阴影
+  const botGrad = ctx.createLinearGradient(0, tileH * 0.7, 0, tileH);
+  botGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  botGrad.addColorStop(1, 'rgba(0,0,0,0.2)');
+  ctx.beginPath();
+  ctx.roundRect(0, tileH * 0.7, tileW, tileH * 0.3, [0, 0, radius, radius]);
+  ctx.fillStyle = botGrad;
+  ctx.fill();
+
+  // 中间装饰线（模拟麻将牌背的图案）
+  ctx.strokeStyle = `rgba(255,255,255,0.15)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(tileW * 0.15, tileH * 0.2, tileW * 0.7, tileH * 0.6, radius * 0.5);
+  ctx.stroke();
+}
+
+// 显示原图的一部分
+function showRegion(img, canvas, x, y, w, h) {
+  const ctx = canvas.getContext('2d');
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+}
+
+async function extractAll() {
+  const threshold = parseInt(document.getElementById('bgThreshold').value);
+  const edgeExpand = parseInt(document.getElementById('edgeExpand').value);
+  document.getElementById('bgThresholdVal').textContent = threshold;
+  document.getElementById('edgeExpandVal').textContent = edgeExpand;
+
+  // 加载图片
+  const [baibanImg, tong2Img, dongImg, wan3Img, tong1bImg] = await Promise.all([
+    loadImage(TILES_DIR + 'baiban.png'),
+    loadImage(TILES_DIR + 'tong2.png'),
+    loadImage(TILES_DIR + 'dong.png'),
+    loadImage(TILES_DIR + 'wan3.png'),
+    loadImage(TILES_DIR + 'tong1b.png'),
+  ]);
+
+  const fullW = baibanImg.width;
+  const fullH = baibanImg.height;
+  console.log('Image dimensions:', fullW, 'x', fullH);
+
+  // === 1. 立牌（手牌）===
+  // 从 baiban.png 底部提取，取底部 220px 的区域
+  const standingSrcCanvas = document.getElementById('standing-src');
+  const standingSrcY = fullH - 240;
+  const standingSrcH = 240;
+  showRegion(baibanImg, standingSrcCanvas, 0, standingSrcY, fullW, standingSrcH);
+
+  const standingOutCanvas = document.getElementById('standing-out');
+  const standingRect = extractTile(standingSrcCanvas, 0, 0, fullW, standingSrcH, standingOutCanvas, threshold, edgeExpand);
+  console.log('Standing tile:', standingRect);
+
+  // === 2. 平牌（弃牌区）===
+  // 从 tong2.png 顶部提取白板牌（大约在上半部分）
+  const flatSrcCanvas = document.getElementById('flat-src');
+  const flatSrcY = 0;
+  const flatSrcH = Math.floor(fullH * 0.55);
+  showRegion(tong2Img, flatSrcCanvas, 0, flatSrcY, fullW, flatSrcH);
+
+  const flatOutCanvas = document.getElementById('flat-out');
+  const flatRect = extractTile(flatSrcCanvas, 0, 0, fullW, flatSrcH, flatOutCanvas, threshold, edgeExpand);
+  console.log('Flat tile:', flatRect);
+
+  // === 3. 牌背 ===
+  const backOutCanvas = document.getElementById('back-out');
+  // 牌背尺寸跟平牌差不多
+  generateTileBack(standingSrcCanvas, backOutCanvas, standingRect.w * 0.9, standingRect.h * 0.5);
+
+  // === 参考图 ===
+  const refDongTop = document.getElementById('ref-dong-top');
+  showRegion(dongImg, refDongTop, 0, 0, fullW, Math.floor(fullH * 0.45));
+
+  const refWan3Left = document.getElementById('ref-wan3-left');
+  showRegion(wan3Img, refWan3Left, 0, 0, Math.floor(fullW * 0.4), Math.floor(fullH * 0.6));
+
+  const refTong1bTop = document.getElementById('ref-tong1b-top');
+  showRegion(tong1bImg, refTong1bTop, 0, 0, fullW, Math.floor(fullH * 0.55));
+}
+
+function downloadAll() {
+  const tiles = [
+    { id: 'standing-out', name: 'tile-standing.png' },
+    { id: 'flat-out', name: 'tile-flat.png' },
+    { id: 'back-out', name: 'tile-back.png' },
+  ];
+
+  tiles.forEach(t => {
+    const canvas = document.getElementById(t.id);
+    const link = document.createElement('a');
+    link.download = t.name;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+}
+
+// 滑块实时更新
+document.getElementById('bgThreshold').addEventListener('input', extractAll);
+document.getElementById('edgeExpand').addEventListener('input', extractAll);
+
+// 初始提取
+extractAll();
+</script>
+</body>
+</html>

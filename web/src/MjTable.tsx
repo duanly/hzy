@@ -11,7 +11,7 @@
  *
  * 牌面暂时用 SVG，后面替换成图片只动 MjTile。
  */
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MjTile, mjName, HONG, type Tile } from './MjTile.tsx';
 
 /** 倒计时环颜色：绿 → 黄 → 红 */
@@ -43,6 +43,8 @@ export interface MjSeatView {
   seat: number;
   hand: Tile[] | null;
   handCount: number;
+  /** 刚摸上来那张：自己看得到牌面（Tile），别人只知道有没有（true/null），UI 上单独放在最右边 */
+  drawn: Tile | true | null;
   melds: { type: 'peng' | 'gang'; gang?: 'ming' | 'an' | 'bu'; tile: Tile }[];
   discards: Tile[];
   name: string;
@@ -89,7 +91,7 @@ function Wall({ left }: { left: number }) {
   );
 }
 
-/** 弃牌区：四家各占一边，各排自己的（照欢乐麻将摆法） */
+/** 弃牌区：四家各占一边，8张一排 */
 function DiscardPool({ lanes }: { lanes: Tile[][] }) {
   // lanes: 0=我(下) 1=下家(右) 2=对家(上) 3=上家(左)
   return (
@@ -125,14 +127,13 @@ function MjTags({ p }: { p: MjSeatView }) {
   return <div className="mj-tags">{items}</div>;
 }
 
-/** 玩家信息卡 */
-function PlayerCard({ p, ringFrac }: { p: MjSeatView; ringFrac?: number }) {
+/** 玩家信息卡（倒计时环移到中心圆圈，头像只保留发光） */
+function PlayerCard({ p }: { p: MjSeatView }) {
   return (
     <div className="mj-player">
       <div style={{ position: 'relative' }}>
         <div className="mj-avatar">{p.name.slice(0, 2)}</div>
         {p.isDealer && <span className="mj-dealer-badge">庄</span>}
-        {p.isTurn && ringFrac !== undefined && ringFrac > 0 && <TurnRing frac={ringFrac} size={40} />}
       </div>
       <div className="mj-player-info">
         <span className="mj-player-name">{p.name}</span>
@@ -146,88 +147,177 @@ function PlayerCard({ p, ringFrac }: { p: MjSeatView; ringFrac?: number }) {
 }
 
 /**
- * 一方玩家（手牌 + 下地牌）
+ * 一方玩家（头像 + 手牌 + 下地牌）
  * rel: 0=我(下) 1=下家(右) 2=对家(上) 3=上家(左)
+ *
+ * 布局（以底部我家为基准，逆时针旋转 90° 到下一家）：
+ *   [头像]  [手牌← →下地牌]
+ *   - 头像靠边线（距1.5张牌距离）
+ *   - 手牌从靠近头像那边码起
+ *   - 下地牌从对侧码起（从右往左）
  */
-function SeatHand({ p, rel, mine, picked, ringFrac, onTilePointerDown }: {
+function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
-  picked?: number; ringFrac?: number;
+  picked?: number;
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
   const size: 'sm' | 'md' = mine ? 'md' : 'sm';
-  const isSide = rel === 1 || rel === 3; // 左右两家
+
+  const hasDrawn = p.drawn !== null && p.drawn !== undefined;
+  // 基础手牌数（去掉刚摸的那张）
+  const baseCount = hasDrawn ? p.handCount - 1 : p.handCount;
+
+  const handEl = mine ? (
+    <div className="mj-hand">
+      {p.hand!.map((t, i) => {
+        // 最后一张是刚摸的：加上 mj-drawn 类（前面空一张牌距离）
+        const isDrawn = hasDrawn && i === p.hand!.length - 1;
+        return (
+          <MjTile key={i} tile={t} size={size}
+            selected={picked === i}
+            onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
+            className={[
+              isDrawn ? 'mj-drawn' : undefined,
+              p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
+            ].filter(Boolean).join(' ') || undefined} />
+        );
+      })}
+    </div>
+  ) : (
+    <div className="mj-hand">
+      {/* baseCount 张牌背（正常手牌） */}
+      {Array.from({ length: baseCount }, (_, i) => (
+        <MjTile key={`b${i}`} back size={size} />
+      ))}
+      {/* 刚摸的那张：单独隔开，牌背 */}
+      {hasDrawn && (
+        <MjTile key="d" back size={size} className="mj-drawn" />
+      )}
+    </div>
+  );
+
+  const meldsEl = p.melds.length > 0 && (
+    <div className="mj-melds">
+      {p.melds.map((m, i) => (
+        <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
+          {m.type === 'peng'
+            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} />)
+            : [0, 1, 2, 3].map(k => (
+              <MjTile key={k} tile={m.tile} size={size}
+                back={m.gang === 'an' && !mine} />
+            ))}
+        </span>
+      ))}
+    </div>
+  );
 
   return (
     <div className={`mj-seat mj-seat-${pos} ${p.isTurn ? 'mj-turn' : ''}`}>
-      <PlayerCard p={p} ringFrac={ringFrac} />
-
-      <div className="mj-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-        {/* 手牌 */}
-        <div className="mj-hand">
-          {mine ? (
-            p.hand!.map((t, i) => (
-              <MjTile key={i} tile={t} size={size}
-                selected={picked === i}
-                onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
-                className={[
-                  i === p.hand!.length - 1 && p.hand!.length % 3 === 2 ? 'mj-drawn' : undefined,
-                  p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
-                ].filter(Boolean).join(' ') || undefined} />
-            ))
-          ) : isSide ? (
-            /* 左右两家：只露一张背面 + 张数 */
-            <span className="mj-hand-count">
-              <MjTile back size={size} />
-              <i>{p.handCount}</i>
-            </span>
-          ) : (
-            /* 对家：背面横排 */
-            Array.from({ length: p.handCount }, (_, i) => <MjTile key={i} back size={size} />)
-          )}
+      <div className="mj-seat-inner">
+        {/* 头像：靠边线 */}
+        <div className="mj-player-wrap">
+          <PlayerCard p={p} />
         </div>
 
-        {/* 下地牌（碰/杠） */}
-        {p.melds.length > 0 && (
-          <div className="mj-melds">
-            {p.melds.map((m, i) => (
-              <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
-                {m.type === 'peng'
-                  ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} />)
-                  : [0, 1, 2, 3].map(k => (
-                    <MjTile key={k} tile={m.tile} size={size}
-                      back={m.gang === 'an' && !mine} />
-                  ))}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* 手牌：居中 */}
+        <div className="mj-hand-wrap">
+          {handEl}
+        </div>
+
+        {/* 下地牌：靠另一侧 */}
+        <div className="mj-melds-wrap">
+          {meldsEl}
+        </div>
       </div>
     </div>
   );
 }
 
-/** 中心装饰：东南西北 + 风位 + 剩余张数 */
-function CenterDeco({ wallLeft, dealerWind }: { wallLeft: number; dealerWind: string }) {
+/** 轮到谁的指针：跑胡子同款 —— 花瓣底座+尖针 */
+function TurnPointer({ angle, color }: { angle: number; color: string }) {
+  const petals = [0, 72, 144, 216, 288];
+  return (
+    <svg className="mj-turn-pointer" width="26" height="40" viewBox="0 0 22 34"
+      style={{
+        filter: `drop-shadow(0 0 5px ${color})`,
+        transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-42px)`,
+      }}>
+      {/* 针 */}
+      <path d="M 11 11 L 13.2 26 L 8.8 26 Z" fill={color} />
+      <circle cx="11" cy="11" r="2.4" fill={color} />
+      {/* 花座 */}
+      {petals.map(a => (
+        <circle key={a} r="2.6" fill={color} opacity="0.92"
+          cx={11 + Math.sin(a * Math.PI / 180) * 4.2}
+          cy={28 - Math.cos(a * Math.PI / 180) * 4.2} />
+      ))}
+      {/* 底座：正好落在圆环上的那个点 */}
+      <circle cx="11" cy="28" r="3.4" fill="#fff" stroke={color} strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+/**
+ * 中心装饰：倒计时环 + 指针（跑胡子款）+ 剩余张数 + 风位字
+ *
+ * rel: 0=bottom(我) 1=right 2=top 3=left
+ * 指针角度（从 12 点顺时针）：bottom→180° right→90° top→0° left→270°
+ * 环从指针处逆时针走，所以先镜像再转，起点落在指针上。
+ */
+function CenterDeco({ wallLeft, currentRel, ringFrac }: {
+  wallLeft: number; currentRel: 0 | 1 | 2 | 3; ringFrac?: number;
+}) {
+  const pointerDeg = [180, 90, 0, 270][currentRel];
+  // 环的旋转：让起点（3点钟方向）转到指针位置，再镜像（-1 scaleX）让它逆时针走
+  const ringSpin = pointerDeg - 90;  // -90 是因为 stroke 默认从 3 点方向开始
+
+  const size = 100;
+  const cx = size / 2, cy = size / 2;
+  const r = 33;  // 跟跑胡子一样的半径比例
+  const len = 2 * Math.PI * r;
+  const frac = ringFrac ?? 1;
+  const color = ringColor(frac);
+
   return (
     <div className="mj-center-deco">
+      {/* 风位字：东南西北环绕 */}
       <div className="mj-wind-ring">
         <span className="w-n">北</span>
         <span className="w-s">南</span>
         <span className="w-e">东</span>
         <span className="w-w">西</span>
       </div>
-      <div className="mj-center-wind">{dealerWind}</div>
-      <div className="mj-center-count">剩 <b>{wallLeft}</b> 张</div>
+
+      {/* 倒计时环：跑胡子同款，细线贴着环走 */}
+      <svg className="mj-center-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+        style={{ transform: `rotate(${ringSpin}deg) scaleX(-1)` }}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.13)" strokeWidth="3" />
+        <circle cx={cx} cy={cy} r={r} fill="none"
+          stroke={color} strokeWidth="3" strokeLinecap="round"
+          strokeDasharray={len} strokeDashoffset={len * (1 - frac)} />
+      </svg>
+
+      {/* 指针：指向当前玩家 */}
+      <TurnPointer angle={pointerDeg} color={color} />
+
+      {/* 剩余张数（跑胡子 deck-head 同款） */}
+      <div className="mj-center-count">
+        <span>{wallLeft}</span>
+      </div>
     </div>
   );
 }
 
-const WIND_NAMES = ['东', '南', '西', '北'];
-
-export function MjTable({ v, picked, ringFrac, onTilePointerDown }: {
+export function MjTable({ v, picked, ringFrac, onTilePointerDown,
+  onBack, onSettings, onHistory, onRules,
+}: {
   v: MjTableView; picked?: number; ringFrac?: number;
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
+  onBack?: () => void;
+  onSettings?: () => void;
+  onHistory?: () => void;
+  onRules?: () => void;
 }) {
   // 相对座位：0=我(下) 1=下家(右) 2=对家(上) 3=上家(左)
   const rel = (seat: number) => ((seat - v.mySeat + 4) % 4) as 0 | 1 | 2 | 3;
@@ -239,23 +329,87 @@ export function MjTable({ v, picked, ringFrac, onTilePointerDown }: {
     return lanes;
   }, [v.players]);
 
-  // 庄家座位号（从 players 里找 isDealer 的）
-  const dealerSeat = v.players.find(p => p.isDealer)?.seat ?? 0;
-  // 庄家的风位字（东=0 对应庄家）—— 显示在中心
-  const dealerWind = WIND_NAMES[(dealerSeat - v.mySeat + 4) % 4] || '东';
+  // 当前轮到的玩家（相对位置）
+  const currentSeat = v.players.find(p => p.isTurn)?.seat ?? v.mySeat;
+  const currentRel = rel(currentSeat);
+
+  // 明牌来自哪一家（相对位置 → 方位词）
+  const discardFromRel = v.table ? rel(v.table.from) : -1;
+  const discardFromPos = ['bottom', 'right', 'top', 'left'][discardFromRel] || '';
+
+  // 亮牌飞行动画：table 从有到无时，保留一会儿播放缩小+淡出动画，再飞入弃牌区
+  const [ghostTile, setGhostTile] = useState<{ tile: Tile; from: number } | null>(null);
+  const [ghostFalling, setGhostFalling] = useState(false);
+  const prevTableRef = useRef<{ tile: Tile; from: number } | null>(null);
+  useEffect(() => {
+    const cur = v.table ? { tile: v.table.tile, from: v.table.from } : null;
+    const prev = prevTableRef.current;
+    if (cur) {
+      // 新的一张亮牌出现了
+      setGhostTile(cur);
+      setGhostFalling(false);
+    } else if (prev && !cur) {
+      // 亮牌消失了 → 播放飞行动画
+      setGhostTile(prev);
+      setGhostFalling(true);
+      const t = setTimeout(() => {
+        setGhostTile(null);
+        setGhostFalling(false);
+      }, 350);
+      return () => clearTimeout(t);
+    }
+    prevTableRef.current = cur;
+  }, [v.table?.tile, v.table?.from]);
+  const ghostRel = ghostTile ? rel(ghostTile.from) : -1;
+  const ghostPos = ['bottom', 'right', 'top', 'left'][ghostRel] || '';
 
   return (
     <div className="mj-table">
-      {/* 中央区域：牌墙 + 弃牌 + 中心装饰 */}
-      <div className="mj-center">
-        <Wall left={v.wallLeft} />
-        <DiscardPool lanes={lanes} />
-        <CenterDeco wallLeft={v.wallLeft} dealerWind={dealerWind} />
+      {/* 顶栏：左返回 / 中房间信息 / 右设置+记录+玩法 */}
+      <div className="mj-topbar">
+        <div className="mj-tb-left">
+          {onBack && <button className="mj-tb-btn" title="返回" onClick={onBack}>
+            <span style={{ fontSize: 22, lineHeight: 1 }}>‹‹</span>
+          </button>}
+        </div>
+        <div className="mj-tb-center">
+          <span className="mj-tb-room">第 {v.roundNo} 局 · 底分 {v.baseScore}</span>
+        </div>
+        <div className="mj-tb-right">
+          {onSettings && <button className="mj-tb-btn" title="设置" onClick={onSettings}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 9v-.09a1.65 1.65 0 0 0 1.51-1H9a2 2 0 0 1 0-4h-.09A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0-1.51 1H15a2 2 0 0 1 0 4h.09a1.65 1.65 0 0 0 1.51 1Z" />
+            </svg>
+          </button>}
+          {onHistory && <button className="mj-tb-btn" title="牌局记录" onClick={onHistory}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+              <path d="M3.5 9h17M3.5 14.5h17M9.5 9v11M15 9v11" />
+            </svg>
+          </button>}
+          {onRules && <button className="mj-tb-btn" title="玩法说明" onClick={onRules}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9.3 9.2a2.8 2.8 0 0 1 5.4.9c0 1.9-2.7 2.1-2.7 4" />
+              <circle cx="12" cy="17.4" r="1.05" fill="currentColor" stroke="none" />
+            </svg>
+          </button>}
+        </div>
+      </div>
 
-        {/* 刚打出来、还在等人要的那张：从弃牌堆拎出来亮一下 */}
-        {v.table && (
-          <div className="mj-just-discard">
-            <MjTile tile={v.table.tile} size="sm" />
+      {/* 中央区域：弃牌 + 中心装饰（倒计时环+箭头+剩余张数） */}
+      <div className="mj-center">
+        <DiscardPool lanes={lanes} />
+        <CenterDeco wallLeft={v.wallLeft} currentRel={currentRel} ringFrac={ringFrac} />
+
+        {/* 亮牌区：刚打出来的牌先亮在风位字外侧（大牌），没人要再飞入弃牌区 */}
+        {ghostTile && (
+          <div className={`mj-just-discard mj-from-${ghostPos} ${ghostFalling ? 'mj-falling' : ''}`}>
+            <MjTile tile={ghostTile.tile} size="sm" />
           </div>
         )}
 
@@ -274,7 +428,6 @@ export function MjTable({ v, picked, ringFrac, onTilePointerDown }: {
           rel={rel(p.seat)}
           mine={p.seat === v.mySeat}
           picked={p.seat === v.mySeat ? picked : undefined}
-          ringFrac={p.isTurn ? ringFrac : undefined}
           onTilePointerDown={p.seat === v.mySeat ? onTilePointerDown : undefined} />
       ))}
     </div>

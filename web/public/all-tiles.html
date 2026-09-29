@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>所有麻将牌一览</title>
+<link rel="stylesheet" href="mahjong.css">
+<style>
+body { background: #1a1a1a; color: #eee; padding: 20px; font-family: sans-serif; }
+h1 { color: #8df; }
+.section { margin-bottom: 30px; }
+.section h2 { color: #fc6; border-bottom: 1px solid #444; padding-bottom: 8px; }
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: flex-end;
+}
+.tile-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #2a2a2a;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+.tile-wrap .name {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #aaa;
+  font-family: monospace;
+}
+.checker-bg {
+  background: repeating-conic-gradient(#333 0% 25%, #2a2a2a 0% 50%) 50% / 16px 16px;
+  border-radius: 4px;
+  padding: 4px;
+}
+.tile-wrap .size {
+  font-size: 11px;
+  color: #777;
+  margin-top: 2px;
+}
+.back-tiles {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+}
+</style>
+</head>
+<body>
+<h1>麻将牌提取结果检查</h1>
+<p style="color:#aaa">绿色棋盘格背景表示透明区域。请检查每张牌的边缘是否有多余的杂色、黑边、UI 元素等。</p>
+
+<div class="section">
+  <h2>牌背</h2>
+  <div class="back-tiles">
+    <div class="tile-wrap">
+      <div class="checker-bg">
+        <div class="mj-tile mj-md"><img src="mj-tile-bodies/tile-back.png" style="width:100%;height:100%;object-fit:contain"></div>
+      </div>
+      <div class="name">tile-back.png</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>万子 (0-8)</h2>
+  <div class="grid" id="wan-grid"></div>
+</div>
+
+<div class="section">
+  <h2>条子 (9-17)</h2>
+  <div class="grid" id="tiao-grid"></div>
+</div>
+
+<div class="section">
+  <h2>筒子 (18-26)</h2>
+  <div class="grid" id="tong-grid"></div>
+</div>
+
+<div class="section">
+  <h2>字牌 (27+)</h2>
+  <div class="grid" id="zi-grid"></div>
+</div>
+
+<script>
+const wanNames = ['wan1','wan2','wan3','wan4','wan5','wan6','wan7','wan8','wan9'];
+const tiaoNames = ['tiao1','tiao2','tiao3','tiao4','tiao5','tiao6','tiao7','tiao8','tiao9'];
+const tongNames = ['tong1','tong2','tong3','tong4','tong5','tong6','tong7','tong8','tong9'];
+const ziNames = ['hongzhong', 'dong', 'nan', 'bei', 'baiban'];
+
+const chineseNames = {
+  wan1: '一万', wan2: '二万', wan3: '三万', wan4: '四万', wan5: '五万',
+  wan6: '六万', wan7: '七万', wan8: '八万', wan9: '九万',
+  tiao1: '一条(幺鸡)', tiao2: '二条', tiao3: '三条', tiao4: '四条', tiao5: '五条',
+  tiao6: '六条', tiao7: '七条', tiao8: '八条', tiao9: '九条',
+  tong1: '一筒', tong2: '二筒', tong3: '三筒', tong4: '四筒', tong5: '五筒',
+  tong6: '六筒', tong7: '七筒', tong8: '八筒', tong9: '九筒',
+  hongzhong: '红中', dong: '东风', nan: '南风', bei: '北风', baiban: '白板',
+};
+
+function renderGrid(gridId, names) {
+  const grid = document.getElementById(gridId);
+  names.forEach(name => {
+    const img = new Image();
+    img.src = `mj-tile-bodies/faces-standing/${name}-face.png`;
+    img.onload = () => {
+      const wrap = document.createElement('div');
+      wrap.className = 'tile-wrap';
+      wrap.innerHTML = `
+        <div class="checker-bg">
+          <div class="mj-tile mj-lg" style="width:80px;height:110px">
+            <img src="${img.src}" style="width:100%;height:100%;object-fit:contain">
+          </div>
+        </div>
+        <div class="name">${name}</div>
+        <div class="name" style="color:#fc8">${chineseNames[name] || ''}</div>
+        <div class="size">${img.naturalWidth} × ${img.naturalHeight}px</div>
+      `;
+      grid.appendChild(wrap);
+    };
+    img.onerror = () => {
+      const wrap = document.createElement('div');
+      wrap.className = 'tile-wrap';
+      wrap.style.color = '#f55';
+      wrap.innerHTML = `<div class="name">${name} (缺失)</div>`;
+      grid.appendChild(wrap);
+    };
+  });
+}
+
+renderGrid('wan-grid', wanNames);
+renderGrid('tiao-grid', tiaoNames);
+renderGrid('tong-grid', tongNames);
+renderGrid('zi-grid', ziNames);
+</script>
+</body>
+</html>

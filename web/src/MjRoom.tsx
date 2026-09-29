@@ -255,7 +255,7 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     const huSeat = hu?.seat, huTile = hu?.card;
     const players: MjSeatView[] = g.players.map((p: any, i: number) => ({
       seat: i,
-      hand: p.hand, handCount: p.handCount, melds: p.melds, discards: p.discards,
+      hand: p.hand, handCount: p.handCount, drawn: p.drawn ?? null, melds: p.melds, discards: p.discards,
       name: room.seats[i]?.user?.nickname ?? (room.seats[i]?.isBot ? '机器人' : `座位${i + 1}`),
       total: room.seats[i]?.total ?? 0,
       isDealer: i === g.dealer,

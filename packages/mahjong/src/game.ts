@@ -408,13 +408,20 @@ export class MahjongGame {
       phase: this.phase, turn: this.turn, dealer: this.dealer,
       wallLeft: this.wall.length, table: this.table, ma: this.ma, scores: this.scores.slice(),
       winner: this.winner, deadline: this.deadline,
-      players: this.players.map(p => ({
-        seat: p.seat,
-        hand: seat === p.seat || this.ended ? p.hand.slice() : null,
-        handCount: p.hand.length,
-        melds: p.melds.map(m => ({ ...m, tile: m.gang === 'an' && seat !== p.seat && !this.ended ? -1 : m.tile })),
-        discards: p.discards.slice(),
-      })),
+      players: this.players.map(p => {
+        const isSelf = seat === p.seat || this.ended;
+        return {
+          seat: p.seat,
+          hand: isSelf ? p.hand.slice() : null,
+          handCount: p.hand.length,
+          /** 刚摸上来那张：自己能看到牌面，别人只知道有没有（true=有/刚摸的），null=没有 */
+          drawn: !this.ended
+            ? (this.drawn === null ? null : isSelf ? this.drawn : true as const)
+            : null,
+          melds: p.melds.map(m => ({ ...m, tile: m.gang === 'an' && !isSelf ? -1 : m.tile })),
+          discards: p.discards.slice(),
+        };
+      }),
     };
   }
 

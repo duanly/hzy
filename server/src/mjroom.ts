@@ -227,8 +227,11 @@ export class MahjongRoom {
       if (!isBot || !g.optionsFor(i)) { s.botAt = undefined; continue; }
       if (s.botAt === undefined) {
         const t = this.cfg.turnSec ?? 15;
-        // 机器人装着想一下再打（1~2 秒），跟字牌一个节奏 —— 别一张接一张，真人反应不过来
-        const think = this.cfg.botThink ? Math.round(t * 80 + Math.random() * t * 40) : 900 + Math.random() * 900;
+        // 机器人装着想一下再打 —— 别一张接一张，真人反应不过来
+        // 默认 1.5~3 秒（给玩家看清牌面）；botThink 模式下：读秒的 60%~90% 才出
+        const think = this.cfg.botThink
+          ? Math.round(t * 1000 * (0.6 + Math.random() * 0.3))
+          : 1500 + Math.random() * 1500;
         s.botAt = now + think;
       }
     }
