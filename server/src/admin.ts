@@ -34,6 +34,23 @@ const VOICE_LABEL: Record<string, string> = {
 };
 for (let i = 1; i <= 10; i++) { VOICE_LABEL[`s${i}`] = `小${'一二三四五六七八九十'[i - 1]}`; VOICE_LABEL[`b${i}`] = `大${'壹贰叁肆伍陆柒捌玖拾'[i - 1]}`; }
 
+/* ---- 麻将报牌音 ---- */
+const MJ_VOICE_KEYS = [
+  'mj_peng', 'mj_gang', 'mj_angang', 'mj_hu', 'mj_liuju', 'mj_pass', 'mj_your_turn', 'mj_ma', 'mj_hong',
+  ...Array.from({ length: 9 }, (_, i) => `mj_w${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `mj_t${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `mj_b${i + 1}`),
+];
+const MJ_VOICE_LABEL: Record<string, string> = {
+  mj_peng: '碰', mj_gang: '杠', mj_angang: '暗杠', mj_hu: '自摸，胡了', mj_liuju: '荒庄',
+  mj_pass: '过', mj_your_turn: '该你出牌', mj_ma: '翻马', mj_hong: '红中',
+};
+for (let i = 1; i <= 9; i++) {
+  MJ_VOICE_LABEL[`mj_w${i}`] = `${'一二三四五六七八九'[i - 1]}万`;
+  MJ_VOICE_LABEL[`mj_t${i}`] = `${'一二三四五六七八九'[i - 1]}条`;
+  MJ_VOICE_LABEL[`mj_b${i}`] = `${'一二三四五六七八九'[i - 1]}筒`;
+}
+
 /** 语音包认的格式：mp3 最通用；m4a 是 iOS 录出来的；webm / ogg 是安卓 Chrome 录的（iOS 放不了） */
 export const VOICE_EXTS = ['mp3', 'm4a', 'mp4', 'webm', 'ogg', 'wav'];
 /** 可以单独指定默认声音的玩法 */
@@ -281,11 +298,15 @@ export async function handleAdmin(
       return json(res, 200, { ok: true });
     }
     /* 语音包：后台传 mp3，传了就优先放录音（没传的那条自动退回 TTS / 音效）。
-       文件落在 data/voice/，跟数据库一起活着 —— 重新部署、覆盖 web/dist 都不会丢。 */
+       文件落在 data/voice/，跟数据库一起活着 —— 重新部署、覆盖 web/dist 都不会丢。
+       game=mj 时显示麻将的报牌音条目；默认是跑胡子。 */
     case 'voice': {
       if (!voiceDir) return json(res, 500, { error: '没配语音目录' });
       const packId = String(body.pack ?? url.searchParams.get('pack') ?? '');
       if (packId && !PACK_ID.test(packId)) return json(res, 400, { error: '套名不对' });
+      const game = String(body.game ?? url.searchParams.get('game') ?? 'phz');
+      const KEYS = game === 'mj' ? MJ_VOICE_KEYS : VOICE_KEYS;
+      const LABEL = game === 'mj' ? MJ_VOICE_LABEL : VOICE_LABEL;
       const dir = packDir(voiceDir, packId);
       /* 念什么可以自己改：比如「跑」听着太秃，改成「开跑」合出来就是"开跑"。
          改的只是**合成时念的那句话**，文件名 / key 一概不动（还是 pao.mp3），
@@ -293,7 +314,7 @@ export async function handleAdmin(
          按套分开存（不同套可以有不同叫法），内置那一套的 key 是空串。 */
       const texts = db.getSetting<Record<string, Record<string, string>>>('voiceText', {});
       const mine = texts[packId] ?? {};
-      const sayOf = (k: string) => mine[k] || VOICE_LABEL[k] || k;
+      const sayOf = (k: string) => mine[k] || LABEL[k] || k;
       /* 一条可以写**几种说法**，用 / 隔开：「碰 / 碰啦 / 我碰了」。
          生成时一句一条（peng.mp3 / peng-2.mp3 / peng-3.mp3），播的时候随机挑一条。 */
       const saysOf = (k: string) => sayOf(k).split(/[\/／|]/).map(t => t.trim()).filter(Boolean).slice(0, TAKES);
@@ -324,8 +345,8 @@ export async function handleAdmin(
           langs: ALI_LANGS,
           lang: packLang,             // 这一套现在是哪门语言（界面上要回显）
           aliKey: hasAliKey(),        // 前端据此提示「还没填 Key」
-          items: VOICE_KEYS.map(k => ({
-            key: k, label: VOICE_LABEL[k] ?? k, say: sayOf(k), custom: !!mine[k], stale: stale(k),
+          items: KEYS.map(k => ({
+            key: k, label: LABEL[k] ?? k, say: sayOf(k), custom: !!mine[k], stale: stale(k),
             takes: have.get(k)?.takes ?? 0,
             size: have.get(k)?.size ?? 0, ext: have.get(k)?.ext ?? '',
             baseExt: packId ? (base.get(k)?.ext ?? '') : '',
@@ -401,9 +422,9 @@ export async function handleAdmin(
            以前只看"文件在不在"，结果改完词一点「生成缺的」什么也不动 ——
            非得整套重做，把录好的人声也一起冲掉。 */
         let keys = Array.isArray(g.keys) && g.keys.length
-          ? g.keys.map(String).filter(k => VOICE_KEYS.includes(k))
-          : VOICE_KEYS.filter(k => g.all || !have.has(k) || stale(k));
-        keys = keys.slice(0, VOICE_KEYS.length);
+          ? g.keys.map(String).filter(k => KEYS.includes(k))
+          : KEYS.filter(k => g.all || !have.has(k) || stale(k));
+        keys = keys.slice(0, KEYS.length);
         if (!keys.length) return json(res, 200, { ok: true, saved: [], failed: [], note: '这一套已经齐了' });
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
         const saved: string[] = []; const failed: { key: string; why: string }[] = [];
@@ -460,10 +481,10 @@ export async function handleAdmin(
         const one = { ...(map[packId] ?? {}) };
         const done: { key: string; text: string }[] = [];
         const failed: { key: string; why: string }[] = [];
-        for (const k of VOICE_KEYS) {
+        for (const k of KEYS) {
           /* 还是中文就翻当前这句（自己改过的念法，那点味道能带过去）；
              已经翻成别的语言了就退回内置的中文原句 —— 拿译文再翻一遍只会越翻越歪。 */
-          const src = packLang === 'Chinese' ? sayOf(k) : (VOICE_LABEL[k] ?? k);
+          const src = packLang === 'Chinese' ? sayOf(k) : (LABEL[k] ?? k);
           try {
             /* 一条里可能有好几种说法（用 / 隔开），一句一句翻再拼回去 ——
                整串丢过去翻，分隔符经常被翻译模型吃掉或者挪位置。 */
@@ -492,25 +513,25 @@ export async function handleAdmin(
       /* 改念法：{ setText: <key>, text: '<念什么>' }。text 留空＝恢复默认。 */
       if (body.setText !== undefined) {
         const k = String(body.setText);
-        if (!VOICE_KEYS.includes(k)) return json(res, 400, { error: '没有这一条' });
+        if (!KEYS.includes(k)) return json(res, 400, { error: '没有这一条' });
         /* 上限从 20 放到 60：外语翻出来比中文长一大截 ——
            「该你出牌」四个字，英文是 It's your turn to play，二十二个。
            卡在 20 会把翻译结果拦腰截断，念出来半句。 */
         const t = String(body.text ?? '').trim().slice(0, 60);
         const map = db.getSetting<Record<string, Record<string, string>>>('voiceText', {});
         const one = { ...(map[packId] ?? {}) };
-        if (t && t !== (VOICE_LABEL[k] ?? k)) one[k] = t; else delete one[k];
+        if (t && t !== (LABEL[k] ?? k)) one[k] = t; else delete one[k];
         if (Object.keys(one).length) map[packId] = one; else delete map[packId];
         db.setSetting('voiceText', map);
         /* 自定义的念法一条不剩了＝回到内置那套中文，语言标记也得跟着回去，
            不然下次翻译会以为"还是外语"，从中文原句翻 —— 结果是对的，但
            界面上会一直显示着 English，看着莫名其妙。 */
         if (!map[packId] && packLangs[packId]) { delete packLangs[packId]; db.setSetting('voiceLang', packLangs); }
-        return json(res, 200, { ok: true, say: t || (VOICE_LABEL[k] ?? k) });
+        return json(res, 200, { ok: true, say: t || (LABEL[k] ?? k) });
       }
       if (body.del) {
         const k = String(body.del);
-        if (!VOICE_KEYS.includes(k)) return json(res, 400, { error: '没有这一条' });
+        if (!KEYS.includes(k)) return json(res, 400, { error: '没有这一条' });
         dropVoice(dir, k);
         forget(k);
         return json(res, 200, { ok: true });
@@ -522,7 +543,7 @@ export async function handleAdmin(
       const saved: string[] = []; const skipped: string[] = [];
       for (const f of files.slice(0, 40)) {
         const k = String(f.key ?? '');
-        if (!VOICE_KEYS.includes(k)) { skipped.push(k || '(无名)'); continue; }
+        if (!KEYS.includes(k)) { skipped.push(k || '(无名)'); continue; }
         try {
           const buf = Buffer.from(String(f.data ?? ''), 'base64');
           // 一条报牌撑死几十 KB；给到 2MB 已经很宽了，再大多半是传错了东西

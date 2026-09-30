@@ -98,72 +98,6 @@ function Wall({ left }: { left: number }) {
   );
 }
 
-/** 弃牌区：四家各占一边，8张一排。最新一张用蓝点标记，闪烁 10s 后消失 */
-function DiscardPool({ lanes, ghostLane, ghostTile }: {
-  lanes: Tile[][];
-  /** 亮牌区正在展示哪一家的牌（相对座位），如果有则该家最后一张牌隐藏（避免一张牌同时出现在两个地方） */
-  ghostLane: number;
-  ghostTile: Tile | null;
-}) {
-  // 记录每家最后一张牌的"出现时间戳"，用于控制蓝点显示时长（10s）
-  const [lastDotKey, setLastDotKey] = useState<number[]>([0, 0, 0, 0]);
-  const [dotVisible, setDotVisible] = useState<boolean[]>([false, false, false, false]);
-  const timersRef = useRef<(ReturnType<typeof setTimeout> | null)[]>([null, null, null, null]);
-
-  // lanes 变化时，检查每家最新一张牌是否变了
-  const prevLanesRef = useRef<Tile[][]>([[], [], [], []]);
-  useEffect(() => {
-    for (let i = 0; i < 4; i++) {
-      const cur = lanes[i];
-      const prev = prevLanesRef.current[i];
-      if (cur.length > prev.length) {
-        // 新打了一张牌 → 重置蓝点
-        const key = Date.now() + i;
-        setLastDotKey(prev => { const n = [...prev]; n[i] = key; return n; });
-        setDotVisible(prev => { const n = [...prev]; n[i] = true; return n; });
-        if (timersRef.current[i]) clearTimeout(timersRef.current[i]!);
-        timersRef.current[i] = setTimeout(() => {
-          setDotVisible(prev => { const n = [...prev]; n[i] = false; return n; });
-        }, 10000);
-      }
-    }
-    prevLanesRef.current = lanes.map(l => [...l]);
-  }, [lanes]);
-
-  // lanes: 0=我(下) 1=下家(右) 2=对家(上) 3=上家(左)
-  const renderLane = (tiles: Tile[], laneIdx: number) => {
-    const hideLast = ghostLane === laneIdx && ghostTile !== null
-      && tiles.length > 0 && tiles[tiles.length - 1] === ghostTile;
-    const shown = hideLast ? tiles.slice(0, -1) : tiles;
-    const showDot = dotVisible[laneIdx] && shown.length > 0;
-    return shown.map((t, i) => {
-      const isLast = i === shown.length - 1 && shown.length > 0;
-      return (
-        <span key={i} className={`mj-discard-tile${isLast ? ' mj-last-discard' : ''}`}>
-          <MjTile tile={t} size="xs" variant="flat" />
-          {isLast && showDot && <i className="mj-discard-dot" key={lastDotKey[laneIdx]} />}
-        </span>
-      );
-    });
-  };
-  return (
-    <div className="mj-discard-area">
-      <div className="mj-discard-lane mj-discard-top">
-        {renderLane(lanes[2], 2)}
-      </div>
-      <div className="mj-discard-lane mj-discard-bottom">
-        {renderLane(lanes[0], 0)}
-      </div>
-      <div className="mj-discard-lane mj-discard-left">
-        {renderLane(lanes[3], 3)}
-      </div>
-      <div className="mj-discard-lane mj-discard-right">
-        {renderLane(lanes[1], 1)}
-      </div>
-    </div>
-  );
-}
-
 /** 状态标签：杠次数 / 延时卡 / 罚分 */
 function MjTags({ p }: { p: MjSeatView }) {
   const gangs = p.melds.filter(m => m.type === 'gang').length;
@@ -187,12 +121,7 @@ function PlayerCard({ p }: { p: MjSeatView }) {
         <div className="mj-avatar">{p.name.slice(0, 4)}</div>
         {p.isDealer && <span className="mj-dealer-badge">庄</span>}
       </div>
-      <div className="mj-player-score-wrap">
-        <span className={`mj-player-score ${p.total > 0 ? 'pos' : p.total < 0 ? 'neg' : ''}`}>
-          {p.total > 0 ? `+${p.total}` : p.total}
-        </span>
-        <MjTags p={p} />
-      </div>
+      <MjTags p={p} />
     </div>
   );
 }
@@ -207,10 +136,13 @@ function PlayerCard({ p }: { p: MjSeatView }) {
  *   - 手牌从靠近头像那边码起
  *   - 下地牌从对侧码起（从右往左）
  */
-function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
+function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [], discards, showDot }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
   picked?: number;
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
+  bubbles?: { id: number; seat: number; text: string; ms?: number }[];
+  discards?: Tile[];
+  showDot?: boolean;
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
   const size: 'sm' | 'md' = mine ? 'md' : 'sm';
@@ -250,9 +182,9 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
       {p.melds.map((m, i) => (
         <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
           {m.type === 'peng'
-            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} variant="flat" />)
+            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size="sm" variant="flat" />)
             : [0, 1, 2, 3].map(k => (
-              <MjTile key={k} tile={m.tile} size={size} variant="flat"
+              <MjTile key={k} tile={m.tile} size="sm" variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
         </span>
@@ -266,6 +198,12 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
         {/* 头像：靠边线 */}
         <div className="mj-player-wrap">
           <PlayerCard p={p} />
+          {bubbles.filter(b => b.seat === p.seat).map(b => (
+            <div key={b.id} className="bubble"
+              style={{ ['--bub-d' as any]: `${b.ms ?? 1150}ms` }}>
+              {b.text}
+            </div>
+          ))}
         </div>
 
         {/* 手牌：居中 */}
@@ -278,6 +216,21 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
           {meldsEl}
         </div>
       </div>
+
+      {/* 弃牌区：放在下地牌靠近中心的一侧，间距30px */}
+      {discards && discards.length > 0 && (
+        <div className={`mj-discard-lane mj-lane-${pos}`}>
+          {discards.map((t, i) => {
+            const isLast = i === discards.length - 1;
+            return (
+              <span key={i} className={`mj-discard-tile${isLast ? ' mj-last-discard' : ''}`}>
+                <MjTile tile={t} size="sm" variant="flat" />
+                {isLast && showDot && <i className="mj-discard-dot" />}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -317,7 +270,22 @@ function TurnPointer({ angle, color }: { angle: number; color: string }) {
 function CenterDeco({ wallLeft, currentRel, ringFrac, nextSec }: {
   wallLeft: number; currentRel: 0 | 1 | 2 | 3; ringFrac?: number; nextSec?: number;
 }) {
-  const pointerDeg = [180, 90, 0, 270][currentRel];
+  // 指针始终逆时针旋转：用累积角度，每次按逆时针方向转到目标位置
+  const targetDeg = [180, 90, 0, 270][currentRel];
+  const spinRef = useRef(180); // 初始对准底部（我的位置）
+  const [pointerDeg, setPointerDeg] = useState(180);
+  const prevRelRef = useRef(currentRel);
+  useEffect(() => {
+    if (prevRelRef.current === currentRel) return;
+    const cur = ((spinRef.current % 360) + 360) % 360;
+    const tgt = ((targetDeg % 360) + 360) % 360;
+    // 计算逆时针方向的差值（负值 = 逆时针）
+    let diff = tgt - cur;
+    if (diff > 0) diff -= 360; // 逆时针转
+    spinRef.current += diff;
+    setPointerDeg(spinRef.current);
+    prevRelRef.current = currentRel;
+  }, [currentRel, targetDeg]);
   // 旋转：让 stroke 起点（3点钟方向）转到指针位置
   const ringSpin = pointerDeg - 90;
 
@@ -497,6 +465,7 @@ function MaFlip({ tile, onDone }: { tile: Tile; onDone?: () => void }) {
 
 export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
   onBack, onSettings, onHistory, onRules,
+  bubbles = [], banner,
 }: {
   v: MjTableView; picked?: number; ringFrac?: number; now: number;
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
@@ -504,6 +473,8 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
   onSettings?: () => void;
   onHistory?: () => void;
   onRules?: () => void;
+  bubbles?: { id: number; seat: number; text: string; ms?: number }[];
+  banner?: { text: string; sub?: string } | null;
 }) {
   // 相对座位：0=我(下) 1=下家(右) 2=对家(上) 3=上家(左)
   const rel = (seat: number) => ((seat - v.mySeat + 4) % 4) as 0 | 1 | 2 | 3;
@@ -514,6 +485,25 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
     for (const p of v.players) lanes[rel(p.seat)] = p.discards.slice();
     return lanes;
   }, [v.players]);
+
+  // 每家弃牌的蓝点状态（10s闪烁后消失）
+  const [dotVisible, setDotVisible] = useState<boolean[]>([false, false, false, false]);
+  const dotTimersRef = useRef<(ReturnType<typeof setTimeout> | null)[]>([null, null, null, null]);
+  const prevLanesRef = useRef<Tile[][]>([[], [], [], []]);
+  useEffect(() => {
+    for (let i = 0; i < 4; i++) {
+      const cur = lanes[i];
+      const prev = prevLanesRef.current[i];
+      if (cur.length > prev.length) {
+        setDotVisible(prev => { const n = [...prev]; n[i] = true; return n; });
+        if (dotTimersRef.current[i]) clearTimeout(dotTimersRef.current[i]!);
+        dotTimersRef.current[i] = setTimeout(() => {
+          setDotVisible(prev => { const n = [...prev]; n[i] = false; return n; });
+        }, 10000);
+      }
+    }
+    prevLanesRef.current = lanes.map(l => [...l]);
+  }, [lanes]);
 
   // 指针指向的玩家：
   //   - 出牌阶段：指向当前出牌的玩家
@@ -549,6 +539,12 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
   const prevWallRef = useRef(v.wallLeft);
   const prevPhaseRef = useRef(v.phase);
   const prevTurnRef = useRef(v.dealer);
+  const drawTimersRef = useRef<number[]>([]);
+
+  const clearDrawTimers = () => {
+    drawTimersRef.current.forEach(t => clearTimeout(t));
+    drawTimersRef.current = [];
+  };
 
   useEffect(() => {
     // wallLeft 减少 = 有人摸了一张牌
@@ -559,20 +555,28 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         const isMine = turnPlayer.seat === v.mySeat;
         const tile: Tile | 'back' = isMine && turnPlayer.drawn !== null && turnPlayer.drawn !== true
           ? turnPlayer.drawn as Tile : 'back';
-        setDrawAnim({ seat: turnPlayer.seat, phase: 'fly', tile });
-        // 飞行 300ms → 悬停 300ms → 落下
-        const t1 = setTimeout(() => {
-          setDrawAnim(prev => prev ? { ...prev, phase: 'hover' } : null);
-        }, 300);
-        const t2 = setTimeout(() => {
-          setDrawAnim(prev => prev ? { ...prev, phase: 'land' } : null);
-        }, 600);
-        const t3 = setTimeout(() => {
-          setDrawAnim(null);
-        }, 850);
+        // 延迟 1s 再开始摸牌动画，让玩家看清指针转动和弃牌
+        const seat = turnPlayer.seat;
+        clearDrawTimers();
+        const t0 = window.setTimeout(() => {
+          setDrawAnim({ seat, phase: 'fly', tile });
+          // 慢速飞行 600ms → 悬停 200ms → 落下 200ms
+          const t1 = window.setTimeout(() => {
+            setDrawAnim(prev => prev ? { ...prev, phase: 'hover' } : null);
+          }, 600);
+          const t2 = window.setTimeout(() => {
+            setDrawAnim(prev => prev ? { ...prev, phase: 'land' } : null);
+          }, 800);
+          const t3 = window.setTimeout(() => {
+            setDrawAnim(null);
+          }, 1000);
+          drawTimersRef.current = drawTimersRef.current.filter(t => t !== t0);
+          drawTimersRef.current.push(t1, t2, t3);
+        }, 1000);
+        drawTimersRef.current.push(t0);
         prevWallRef.current = v.wallLeft;
         prevPhaseRef.current = v.phase;
-        return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+        return clearDrawTimers;
       }
     }
     prevWallRef.current = v.wallLeft;
@@ -638,47 +642,8 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
 
   return (
     <div className="mj-table">
-      {/* 顶栏：左返回 / 中房间信息 / 右设置+记录+玩法 */}
-      <div className="mj-topbar">
-        <div className="mj-tb-left">
-          {onBack && <button className="mj-tb-btn" title="返回" onClick={onBack}>
-            <span style={{ fontSize: 22, lineHeight: 1 }}>‹‹</span>
-          </button>}
-        </div>
-        <div className="mj-tb-center">
-          <span className="mj-tb-room">第 {v.roundNo} 局 · 底分 {v.baseScore}</span>
-        </div>
-        <div className="mj-tb-right">
-          {onSettings && <button className="mj-tb-btn" title="设置" onClick={onSettings}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3.2" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 9v-.09a1.65 1.65 0 0 0 1.51-1H9a2 2 0 0 1 0-4h-.09A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0-1.51 1H15a2 2 0 0 1 0 4h.09a1.65 1.65 0 0 0 1.51 1Z" />
-            </svg>
-          </button>}
-          {onHistory && <button className="mj-tb-btn" title="牌局记录" onClick={onHistory}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
-              <path d="M3.5 9h17M3.5 14.5h17M9.5 9v11M15 9v11" />
-            </svg>
-          </button>}
-          {onRules && <button className="mj-tb-btn" title="玩法说明" onClick={onRules}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M9.3 9.2a2.8 2.8 0 0 1 5.4.9c0 1.9-2.7 2.1-2.7 4" />
-              <circle cx="12" cy="17.4" r="1.05" fill="currentColor" stroke="none" />
-            </svg>
-          </button>}
-        </div>
-      </div>
-
-      {/* 中央区域：弃牌 + 中心装饰（倒计时环+箭头+剩余张数） */}
+      {/* 中央区域：中心装饰（倒计时环+箭头+剩余张数） */}
       <div className="mj-center">
-        <DiscardPool lanes={lanes}
-          ghostLane={ghostRel}
-          ghostTile={ghostTile && !ghostFalling ? ghostTile.tile : null} />
         <CenterDeco wallLeft={v.wallLeft} currentRel={pointerRel}
           ringFrac={ringFrac} nextSec={nextSec} />
 
@@ -707,16 +672,30 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         {maAnimating && v.ma !== null && (
           <MaFlip tile={v.ma} />
         )}
+
+        {/* 开局横幅 */}
+        {banner && (
+          <div className="mj-banner">
+            <div className="mj-banner-text">{banner.text}</div>
+            {banner.sub && <div className="mj-banner-sub">{banner.sub}</div>}
+          </div>
+        )}
       </div>
 
       {/* 四方玩家 */}
-      {v.players.map(p => (
-        <SeatHand key={p.seat} p={p}
-          rel={rel(p.seat)}
-          mine={p.seat === v.mySeat}
-          picked={p.seat === v.mySeat ? picked : undefined}
-          onTilePointerDown={p.seat === v.mySeat ? onTilePointerDown : undefined} />
-      ))}
+      {v.players.map(p => {
+        const r = rel(p.seat);
+        return (
+          <SeatHand key={p.seat} p={p}
+            rel={r}
+            mine={p.seat === v.mySeat}
+            picked={p.seat === v.mySeat ? picked : undefined}
+            onTilePointerDown={p.seat === v.mySeat ? onTilePointerDown : undefined}
+            bubbles={bubbles}
+            discards={lanes[r]}
+            showDot={dotVisible[r]} />
+        );
+      })}
     </div>
   );
 }

@@ -34,6 +34,7 @@ export function mjSuit(t: Tile) {
 export function mjRank(t: Tile) { return t === HONG ? 0 : (t % 9) + 1; }
 export function mjName(t: Tile) {
   if (t === HONG) return '红中';
+  if (t < 0 || t > 26) return '';
   const s = mjSuit(t);
   return RANK_CN[mjRank(t) - 1] + (s === 'wan' ? '万' : s === 'tiao' ? '条' : '筒');
 }

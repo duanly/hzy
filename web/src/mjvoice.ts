@@ -69,20 +69,17 @@ export const MJ_VOICE_KEYS: { key: string; label: string }[] = [
 /**
  * 报一个动作。
  *
- * 碰 / 杠要带牌名（「碰！五筒」），胡和荒庄不带 —— 这跟字牌那边「提龙不报牌字」
- * 是同一个道理：一局里碰杠可能连着来好几次，不报牌名听着就不知道碰的是哪张；
- * 而胡牌一局只有一次，后面紧跟着还要报马，再塞一个牌名就太密了。
+ * 碰 / 杠不带牌名 —— 打出去的时候已经报过牌名了，重复报太吵。
+ * 胡和荒庄也不带。胡了是这一局最响的一声，插队播，别排在前面那些碰杠后面。
  */
 export function sayAction(kind: keyof typeof MJ_WORDS | string, tile?: number) {
   const word = MJ_WORDS[kind];
   if (word === undefined) return;          // 不认识的动作：宁可不出声，也别让队列卡住
   const key = MJ_KEY[kind];
   if (!word) return;
-  const withTile = (kind === 'peng' || kind === 'gang' || kind === 'bugang' || kind === 'angang') && tile !== undefined;
   // 胡了是这一局最响的一声，插队播，别排在前面那些碰杠后面
   const fn = kind === 'hu' ? sayNow : say;
   fn(word, key);
-  if (withTile) say(tileSpeech(tile!), tileKey(tile!));
 }
 
 /** 翻马：「翻马，五筒」。马是这一局最后一下，单独报，让人听清楚翻到什么 */

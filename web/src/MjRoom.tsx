@@ -18,6 +18,7 @@ import { MjTable, type MjSeatView, type MjTableView } from './MjTable.tsx';
 import { MjTile, mjName, type Tile } from './MjTile.tsx';
 import { Modal, toast, fmt } from './ui.tsx';
 import { sayAction, sayMa, sayTile, sayYourTurn } from './mjvoice.ts';
+import { settings as voiceSettings, voicePack, setVoicePack, voicePacks } from './voice.ts';
 
 /** 服务器时间的秒针。切到后台就停 —— 看不见的时候还每秒跳四次纯属费电 */
 function useNow(active: boolean) {
@@ -157,6 +158,49 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   /** 拖动时跟着手指的虚影 */
   const [dragGhost, setDragGhost] = useState<{ tile: Tile; x: number; y: number } | null>(null);
 
+  /** 行动气泡 */
+  const [bubbles, setBubbles] = useState<{ id: number; seat: number; text: string; ms?: number }[]>([]);
+  const bubbleIdRef = useRef(0);
+  const bubble = (seat: number, text: string, ms = 1150) => {
+    const id = ++bubbleIdRef.current;
+    setBubbles(b => [...b, { id, seat, text, ms }]);
+    setTimeout(() => setBubbles(b => b.filter(x => x.id !== id)), ms);
+  };
+
+  /** 开局横幅 */
+  const [banner, setBanner] = useState<{ text: string; sub?: string } | null>(null);
+  const bannerTimerRef = useRef<number | null>(null);
+  const showBanner = (text: string, sub?: string, ms = 1400) => {
+    if (bannerTimerRef.current) { clearTimeout(bannerTimerRef.current); bannerTimerRef.current = null; }
+    setBanner({ text, sub });
+    bannerTimerRef.current = window.setTimeout(() => setBanner(null), ms);
+  };
+
+  /** 设置面板 */
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [voicePick, setVoicePick] = useState(false);
+  const [packs, setPacks] = useState<{ id: string; name: string; count: number }[]>([]);
+  const [brightness, setBrightness] = useState<'dim' | 'normal' | 'bright'>(() => {
+    try { return (localStorage.getItem('mj_brightness') as any) || 'normal'; } catch { return 'normal'; }
+  });
+  const cycleBrightness = () => {
+    const next: Record<string, 'dim' | 'normal' | 'bright'> = { dim: 'normal', normal: 'bright', bright: 'dim' };
+    const n = next[brightness];
+    setBrightness(n);
+    try { localStorage.setItem('mj_brightness', n); } catch { /* ignore */ }
+  };
+  const [soundOn, setSoundOn] = useState(voiceSettings.tts);
+  const toggleSound = () => {
+    voiceSettings.tts = !voiceSettings.tts;
+    voiceSettings.save();
+    setSoundOn(voiceSettings.tts);
+  };
+
+  /** 加载配音包列表 */
+  useEffect(() => {
+    if (voicePick) voicePacks().then(setPacks);
+  }, [voicePick]);
+
   const opts: string[] = g?.options ?? [];
   const canDiscard = opts.includes('discard');
   const btnActs = ACT_ORDER.filter(a => opts.includes(a));
@@ -184,6 +228,20 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     return () => clearTimeout(t);
   }, [endedKey]);
 
+  /* 新一局开始：显示"开始打牌"横幅。
+     用 roundNo 作触发 —— roundNo 变了且 phase 是 discard，说明新局已开。 */
+  const roundStartRef = useRef(0);
+  useEffect(() => {
+    if (!g || g.phase !== 'discard') return;
+    if (roundStartRef.current === 0) { roundStartRef.current = room.roundNo; return; }
+    if (room.roundNo !== roundStartRef.current) {
+      roundStartRef.current = room.roundNo;
+      // 等骰子动画结束后再显示横幅
+      const t = setTimeout(() => showBanner('开始打牌', "LET'S PLAY"), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [g?.phase, room.roundNo]);
+
   /* 报牌的声音走事件流。丢了也就少听一声，不影响能不能打 */
   useEffect(() => socket.on((m: ServerMsg) => {
     /* 服务端把这一步**驳回**了（"这张杠不了""还没轮到你"）：马上解锁，撤销乐观更新。
@@ -198,11 +256,15 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     if (m.type !== 'game.events') return;
     for (const e of ((m as any).events ?? []) as any[]) {
       if (e.t === 'discard') sayTile(e.tile);
-      else if (e.t === 'peng') sayAction('peng', e.tile);
-      else if (e.t === 'gang') sayAction(e.kind === 'an' ? 'angang' : e.kind === 'bu' ? 'bugang' : 'gang',
-        e.tile >= 0 ? e.tile : undefined);
-      else if (e.t === 'hu') { sayAction('hu'); sayMa(e.ma); }
+      else if (e.t === 'peng') { sayAction('peng', e.tile); bubble(e.seat, '碰'); }
+      else if (e.t === 'gang') {
+        sayAction(e.kind === 'an' ? 'angang' : e.kind === 'bu' ? 'bugang' : 'gang',
+          e.tile >= 0 ? e.tile : undefined);
+        bubble(e.seat, '杠');
+      }
+      else if (e.t === 'hu') { sayAction('hu'); sayMa(e.ma); bubble(e.seat, '胡', 1500); }
       else if (e.t === 'liuju') sayAction('liuju');
+      else if (e.t === 'pass') { bubble(e.seat, '过'); }
     }
   }), []);
 
@@ -337,20 +399,61 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     );
   }
 
+  const brightnessFilter = brightness === 'dim' ? 'brightness(.75)'
+    : brightness === 'bright' ? 'brightness(1.15)' : 'brightness(1)';
+
+  const standUp = () => {
+    setToolsOpen(false);
+    toast(room.status !== 'playing' ? '已起立离开'
+      : (room as any).isPrivate ? '已起立，位子让出去了，牌局暂停等人补位'
+      : '已起立，这一局机器人替你打完，位子不再留');
+    socket.send({ type: 'room.leave', stand: true } as any);
+    onLeft();
+  };
+
   return (
-    <div className="screen mj-screen">
+    <div className="screen mj-screen" style={{ filter: brightnessFilter }}>
       <div className="mj-bar">
-        <span>第 {room.roundNo} 局</span>
-        <span className="muted">底分 {room.baseScore}</span>
+        <button className="btn ghost sm" onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>离开</button>
+        <div className="mj-bar-center">
+          <span>第 {room.roundNo} 局</span>
+          <span className="muted">底分 {room.baseScore}</span>
+        </div>
         <span className="grow" />
         {ring && <span className="mj-clock">{ring.sec}s</span>}
-        <button className="btn ghost sm" onClick={() => setShowEnd(true)} disabled={!room.ledger.length}>上一局</button>
-        <button className="btn ghost sm" onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>离开</button>
+        <button className="btn ghost sm" onClick={() => setShowHistory(true)} disabled={!room.ledger.length}>记录</button>
+        <div className={`mj-tools ${toolsOpen ? 'open' : ''}`}>
+          <button className="btn ghost sm mj-tools-btn" onClick={() => setToolsOpen(o => !o)} title="设置">
+            ⚙
+          </button>
+          {toolsOpen && (
+            <div className="mj-tools-pop" onMouseDown={e => e.stopPropagation()}>
+              <button className="ghost mj-tt-item" title="亮度：暗 / 正常 / 亮" onClick={cycleBrightness}>
+                <b>{brightness === 'dim' ? '🌙' : brightness === 'bright' ? '☀' : '🔅'}</b>
+                <span>{brightness === 'dim' ? '偏暗' : brightness === 'bright' ? '偏亮' : '正常'}</span>
+              </button>
+              <button className={`ghost mj-tt-item ${soundOn ? 'on' : ''}`} title="声音开关" onClick={toggleSound}>
+                <b>{soundOn ? '🔊' : '🔇'}</b>
+                <span>{soundOn ? '有声' : '静音'}</span>
+              </button>
+              <button className="ghost mj-tt-item" title="配音选择" onClick={() => { setVoicePick(true); }}>
+                <b>🎤</b>
+                <span>配音</span>
+              </button>
+              <button className="ghost mj-tt-item mj-tt-stand" title="起立离开" onClick={standUp}>
+                <b>🚪</b>
+                <span>起立</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <MjTable v={v} picked={picked} ringFrac={turnRing?.frac} now={now}
         onTilePointerDown={onTilePointerDown}
-        onHistory={() => setShowHistory(true)} />
+        onHistory={() => setShowHistory(true)}
+        bubbles={bubbles}
+        banner={banner} />
 
       {/* 出牌弧线：手上方一条线，拖过去松手出牌 */}
       {canDiscard && picked !== undefined && (
@@ -359,11 +462,18 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
         </div>
       )}
       {/* 选中的牌：给一个「打」按钮，跟拖出弧线、再点一下三种方式随便用哪个 */}
-      {canDiscard && picked !== undefined && v && (
-        <button className="mj-discard" onClick={() => { const h = (v.players[mySeat ?? 0]?.hand ?? []) as Tile[]; if (h[picked] !== undefined) send('discard', h[picked]); }}>
-          打
-        </button>
-      )}
+      {canDiscard && picked !== undefined && v && (() => {
+        const h = (v.players[mySeat ?? 0]?.hand ?? []) as Tile[];
+        const tile = h[picked];
+        return (
+          <button className="mj-discard" onClick={() => { if (tile !== undefined) send('discard', tile); }}>
+            <span className="mj-discard-text">打</span>
+            <span className="mj-discard-card">
+              <MjTile tile={tile} size="xs" variant="flat" />
+            </span>
+          </button>
+        );
+      })()}
 
       {/* 拖牌虚影：跟着手指走 */}
       {dragGhost && (
@@ -397,6 +507,29 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
 
       {showEnd && <EndPanel room={room} g={g} now={now} onClose={() => setShowEnd(false)} />}
       {showHistory && <HistoryModal room={room} onClose={() => setShowHistory(false)} />}
+      {voicePick && (
+        <Modal onClose={() => setVoicePick(false)} className="mj-voice-modal">
+          <div className="col" style={{ gap: 10 }}>
+            <b>配音选择</b>
+            <div className="muted" style={{ fontSize: 12 }}>选一套你喜欢的报牌声</div>
+            <div className="mj-voice-list">
+              <button className={`mj-voice-item ${voicePack() === '' ? 'on' : ''}`}
+                onClick={() => { setVoicePack(''); setVoicePick(false); }}>
+                <b>默认</b>
+                <span>系统合成音</span>
+              </button>
+              {packs.map(p => (
+                <button key={p.id} className={`mj-voice-item ${voicePack() === p.id ? 'on' : ''}`}
+                  onClick={() => { setVoicePack(p.id); setVoicePick(false); }}>
+                  <b>{p.name}</b>
+                  <span>{p.count} 条录音</span>
+                </button>
+              ))}
+            </div>
+            <button className="ghost" onClick={() => setVoicePick(false)}>关闭</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -411,11 +544,36 @@ function HistoryModal({ room, onClose }: { room: any; onClose: () => void }) {
   }
   const ledger = room.ledger ?? [];
   const names = room.seats.map(s => s.user?.nickname ?? '机器人');
+  // 累计总分：按顺序累计每一局的 deltas
+  const totals = room.seats.map(() => 0);
+  for (const e of ledger) {
+    const deltas = e.deltas ?? {};
+    room.seats.forEach((s: any, i: number) => {
+      const uid = s.user?.id;
+      if (uid != null) totals[i] += (deltas[uid] ?? 0);
+    });
+  }
   return (
     <Modal onClose={onClose} className="mj-hist-modal">
       <div className="col" style={{ gap: 8 }}>
-        <b>牌局记录</b>
-        <div className="muted" style={{ fontSize: 12 }}>共 {room.ledgerCount ?? ledger.length} 局 · 点一局看详情</div>
+        <div className="row" style={{ alignItems: 'center' }}>
+          <b>牌局记录</b>
+          <span className="grow" />
+          <span className="muted" style={{ fontSize: 12 }}>共 {room.ledgerCount ?? ledger.length} 局 · 点一局看详情</span>
+        </div>
+        {/* 总分栏 */}
+        {ledger.length > 0 && (
+          <div className="mj-hist-total">
+            {room.seats.map((s: any, i: number) => (
+              <div key={i} className="mj-hist-total-item">
+                <div className="mj-hist-total-name">{s.user?.nickname ?? '机器人'}</div>
+                <div className={`mj-hist-total-val ${totals[i] > 0 ? 'pos' : totals[i] < 0 ? 'neg' : ''}`}>
+                  {totals[i] > 0 ? `+${totals[i]}` : totals[i]}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {!ledger.length ? (
           <div className="muted">还没有打完的局</div>
         ) : (
@@ -432,12 +590,12 @@ function HistoryModal({ room, onClose }: { room: any; onClose: () => void }) {
                 {ledger.slice().reverse().map((e: any) => {
                   const deltas = e.deltas ?? {};
                   const hu = e.hu;
-                  const huName = hu ? mjName(hu.card as Tile) : '黄庄';
+                  const huName = hu && hu.card != null && hu.card >= 0 ? mjName(hu.card as Tile) : '黄庄';
                   return (
                     <tr key={e.round} className="row-pick" onClick={() => setPick(e)}>
                       <td>第 {e.round} 局</td>
                       <td>{huName}</td>
-                      {room.seats.map((s, i) => {
+                      {room.seats.map((s: any, i: number) => {
                         const uid = s.user?.id;
                         const d = uid != null ? (deltas[uid] ?? 0) : 0;
                         return (
@@ -470,9 +628,11 @@ function RoundDetail({ entry, onClose }: { entry: any; onClose: () => void }) {
         <div className="row" style={{ alignItems: 'center', gap: 8 }}>
           <b>第 {entry.round} 局</b>
           <span className="muted" style={{ fontSize: 12 }}>
-            {hu ? `${names[hu.seat]} 自摸 ${mjName(hu.card as Tile)}` : '黄庄'}
+            {hu && hu.card != null && hu.card >= 0
+              ? `${names[hu.seat] ?? ''} 自摸 ${mjName(hu.card as Tile)}`
+              : '黄庄'}
           </span>
-          {hu?.detail?.ma !== undefined && hu.detail.ma !== null && (
+          {hu?.detail?.ma != null && hu.detail.ma >= 0 && (
             <span className="muted" style={{ fontSize: 12 }}>
               马：{mjName(hu.detail.ma as Tile)}
             </span>

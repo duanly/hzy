@@ -323,9 +323,10 @@ export class MahjongGame {
       p.hand.splice(i, 1);
       p.handIds.splice(i, 1);
     }
-    p.melds.push({ type: 'gang', gang: 'ming', tile, from: this.table!.from });
-    this.payGang(seat, 'ming');
-    this.emit({ t: 'gang', seat, tile, kind: 'ming', from: this.table!.from, scores: this.scores.slice() });
+    const from = this.table!.from;
+    p.melds.push({ type: 'gang', gang: 'ming', tile, from });
+    this.payGang(seat, 'ming', from);
+    this.emit({ t: 'gang', seat, tile, kind: 'ming', from, scores: this.scores.slice() });
     this.table = null; this.claim = null;
     this.draw(seat);                 // 杠了从公牌补一张
   }
@@ -354,11 +355,18 @@ export class MahjongGame {
     this.draw(seat);
   }
 
-  private payGang(seat: number, kind: 'ming' | 'an' | 'bu') {
-    const { perPlayer } = scoreGang(kind, this.n - 1, this.rules);
-    for (let s = 0; s < this.n; s++) if (s !== seat) {
-      this.scores[s] -= perPlayer; this.scores[seat] += perPlayer;
-      this.gangScores[s] -= perPlayer; this.gangScores[seat] += perPlayer;
+  private payGang(seat: number, kind: 'ming' | 'an' | 'bu', from?: number) {
+    const { perPlayer, total } = scoreGang(kind, this.n - 1, this.rules);
+    if (kind === 'ming' && from !== undefined) {
+      // 明杠：打出牌的那家包赔全部（其余三家的总和都由他出）
+      this.scores[from] -= total; this.scores[seat] += total;
+      this.gangScores[from] -= total; this.gangScores[seat] += total;
+    } else {
+      // 暗杠 / 补杠：其余每家各付一份
+      for (let s = 0; s < this.n; s++) if (s !== seat) {
+        this.scores[s] -= perPlayer; this.scores[seat] += perPlayer;
+        this.gangScores[s] -= perPlayer; this.gangScores[seat] += perPlayer;
+      }
     }
   }
 

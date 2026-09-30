@@ -93,7 +93,7 @@ function renderLogin(err) {
   box.querySelector('#p').onkeydown = (e) => { if (e.key === 'Enter') go(); };
 }
 
-const NAV = [['overview', '总览'], ['users', '玩家'], ['audit', '审计'], ['agents', 'VIP'], ['groups', '分组'], ['tables', '牌桌配置'], ['voice', '语音包'], ['rooms', '房间'], ['rounds', '对局']];
+const NAV = [['overview', '总览'], ['users', '玩家'], ['audit', '审计'], ['agents', 'VIP'], ['groups', '分组'], ['tables', '牌桌配置'], ['voice', '跑胡子语音'], ['mjvoice', '麻将语音'], ['rooms', '房间'], ['rounds', '对局']];
 
 /**
  * 整页重建（app.innerHTML = ''）会把**滚动位置和焦点一起冲掉**。
@@ -153,7 +153,8 @@ async function render() {
     if (page === 'audit') await pageAudit(main);
     if (page === 'groups') await pageGroups(main);
     if (page === 'tables') await pageTables(main);
-    if (page === 'voice') await pageVoice(main);
+    if (page === 'voice') await pageVoice(main, 'phz');
+    if (page === 'mjvoice') await pageVoice(main, 'mj');
     if (page === 'rooms') await pageRooms(main);
     if (page === 'rounds') await pageRounds(main);
   } catch (e) { main.innerHTML = '<div class="err">' + e.message + '</div>'; }
@@ -187,8 +188,16 @@ function restoreSel(sel, key, fallback) {
   return sel;
 }
 
-async function pageVoice(main) {
-  const d = await api('voice?pack=' + encodeURIComponent(voicePackId), null, 'GET');
+async function pageVoice(main, game = 'phz') {
+  const gq = game === 'mj' ? '&game=mj' : '';
+  // 语音 API 统一加 game 参数
+  const vapi = (path, body, method) => {
+    const sep = path.includes('?') ? '&' : '?';
+    const p = path + (game === 'mj' ? `${sep}game=mj` : '');
+    const b = body && typeof body === 'object' ? { ...body, game } : body;
+    return api(p, b, method);
+  };
+  const d = await vapi('voice?pack=' + encodeURIComponent(voicePackId), null, 'GET');
   main.innerHTML = '';
   const box = $('<div class="box"></div>');
 
@@ -204,7 +213,7 @@ async function pageVoice(main) {
   add.onclick = async () => {
     const name = prompt('这一套叫什么？（比如「衡阳老王」「普通话女声」）');
     if (!name) return;
-    const r = await api('voice', { newPack: name });
+    const r = await vapi('voice', { newPack: name });
     voicePackId = r.id; render();
   };
   prow.appendChild(add);
@@ -213,12 +222,12 @@ async function pageVoice(main) {
     ren.onclick = async () => {
       const name = prompt('改成什么名字？', (d.packs.find(x => x.id === voicePackId) || {}).name || '');
       if (!name) return;
-      await api('voice', { pack: voicePackId, rename: name }); render();
+      await vapi('voice', { pack: voicePackId, rename: name }); render();
     };
     const del = $('<button class="ghost" style="color:#ff9b9b">删掉这一套</button>');
     del.onclick = async () => {
       if (!confirm('整套删掉？里头录的都没了。')) return;
-      await api('voice', { dropPack: voicePackId }); voicePackId = ''; render();
+      await vapi('voice', { dropPack: voicePackId }); voicePackId = ''; render();
     };
     prow.appendChild(ren); prow.appendChild(del);
   }
@@ -231,7 +240,7 @@ async function pageVoice(main) {
     const sel = $('<select style="width:auto"></select>');
     for (const pk of d.packs) sel.appendChild($(`<option value="${pk.id}">${pk.name}</option>`));
     sel.value = d.byVariant[v.id] || '';
-    sel.onchange = async e => { await api('voice', { setVariant: v.id, usePack: e.target.value }); };
+    sel.onchange = async e => { await vapi('voice', { setVariant: v.id, usePack: e.target.value }); };
     const lab = $(`<label class="row">${v.name} </label>`);
     lab.appendChild(sel); vrow.appendChild(lab);
   }
@@ -312,7 +321,7 @@ async function pageVoice(main) {
     gbtn.disabled = true;
     gtip.textContent = '正在合成…（三十多条，头一回要等十几秒）';
     try {
-      const r = await api('voice', { pack: voicePackId, gen: { voice: gv.value, lang: gl.value, all } });
+      const r = await vapi('voice', { pack: voicePackId, gen: { voice: gv.value, lang: gl.value, all } });
       gtip.textContent = `生成 ${r.saved.length} 条` + (r.used ? `（用的是${r.used}）` : '')
         + (r.failed && r.failed.length ? `，${r.failed.length} 条没成：${r.failed[0].why}` : '')
         + (r.note ? ` —— ${r.note}` : '');
@@ -327,7 +336,7 @@ async function pageVoice(main) {
     gtr.disabled = true; gbtn.disabled = true;
     gtip.textContent = '正在翻…（三十多条，要等十几秒）';
     try {
-      const r = await api('voice', { pack: voicePackId, translate: { to: gl.value } });
+      const r = await vapi('voice', { pack: voicePackId, translate: { to: gl.value } });
       gtip.textContent = `翻好 ${r.done.length} 条`
         + (r.failed && r.failed.length ? `，${r.failed.length} 条没成：${r.failed[0].why}` : '')
         + ' —— 下面过一眼，改顺了再点「生成这一套」';
@@ -351,7 +360,7 @@ async function pageVoice(main) {
   ali.appendChild(akb); ali.appendChild(aktip);
   akb.onclick = async () => {
     akb.disabled = true;
-    try { await api('voice', { setAliKey: ak.value.trim() }); ak.value = ''; aktip.textContent = '存好了'; setTimeout(() => render(), 900); }
+    try { await vapi('voice', { setAliKey: ak.value.trim() }); ak.value = ''; aktip.textContent = '存好了'; setTimeout(() => render(), 900); }
     catch (e) { aktip.textContent = '失败：' + e.message; }
     akb.disabled = false;
   };
@@ -370,7 +379,7 @@ async function pageVoice(main) {
     for (const f of fs) files.push({ key: f.name.replace(/\.[^.]+$/, ''), name: f.name, mime: f.type, data: await b64(f) });
     tip.textContent = '上传中…';
     try {
-      const r = await api('voice', { pack: voicePackId, files });
+      const r = await vapi('voice', { pack: voicePackId, files });
       tip.textContent = `传好 ${r.saved.length} 条` + (r.skipped.length ? `，${r.skipped.length} 条没认出来（${r.skipped.join('、')}）` : '');
       setTimeout(() => render(), 900);
     } catch (e) { tip.textContent = '失败：' + e.message; }
@@ -393,7 +402,7 @@ async function pageVoice(main) {
     const save = async () => {
       const v = say.value.trim();
       if (v === (it.say ?? it.label)) return;
-      try { await api('voice', { pack: voicePackId, setText: it.key, text: v }); it.say = v || it.label; render(); }
+      try { await vapi('voice', { pack: voicePackId, setText: it.key, text: v }); it.say = v || it.label; render(); }
       catch (e) { alert('改不了：' + e.message); }
     };
     say.onblur = save;
@@ -420,7 +429,7 @@ async function pageVoice(main) {
     }
     if (it.size) {
       const del = $('<button class="ghost">删掉</button>');
-      del.onclick = async () => { await api('voice', { pack: voicePackId, del: it.key }); render(); };
+      del.onclick = async () => { await vapi('voice', { pack: voicePackId, del: it.key }); render(); };
       tr.children[5].appendChild(del);
     }
     tb.appendChild(tr);
@@ -474,7 +483,7 @@ async function startRec(key) {
       recKey = ''; rec = null;
       if (blob.size < 200) { alert('太短了，没录上'); return render(); }
       try {
-        await api('voice', { pack: voicePackId, files: [{ key, mime: r.mimeType, data: await b64(blob) }] });
+        await vapi('voice', { pack: voicePackId, files: [{ key, mime: r.mimeType, data: await b64(blob) }] });
         // 刚录完顺手放一遍给他听（这会儿还在用户手势的上下文里，最容易放得出来）
         setTimeout(() => preview(URL.createObjectURL(blob), null), 200);
       } catch (e) { alert('保存失败：' + e.message); }

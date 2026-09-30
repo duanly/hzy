@@ -731,23 +731,23 @@
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
-/* ---- 摸牌动画：牌从中心飞到玩家手牌上方 ---- */
+/* ---- 摸牌动画：牌从中心慢速飞到玩家手牌上方 ---- */
 .mj-draw-anim {
   position: absolute;
   left: 50%; top: 50%;
-  transform: translate(-50%, -50%) scale(0.6);
+  transform: translate(-50%, -50%) scale(0.5);
   z-index: 15;
   pointer-events: none;
-  filter: drop-shadow(0 0 12px rgba(255,217,138,.7));
-  transition: all .3s cubic-bezier(.32,.9,.3,1);
+  filter: drop-shadow(0 0 20px rgba(255,217,138,.8)) drop-shadow(0 0 8px rgba(255,180,60,.6));
+  transition: all .6s cubic-bezier(.25,.8,.25,1);
 }
-.mj-draw-anim .mj-tile { transition: transform .25s ease-out; }
+.mj-draw-anim .mj-tile { transition: transform .2s ease-out; }
 .mj-draw-anim::after {
-  content: ''; position: absolute; inset: -6px;
-  border-radius: 8px;
+  content: ''; position: absolute; inset: -8px;
+  border-radius: 10px;
   border: 2px solid #ffd98a;
-  box-shadow: 0 0 16px rgba(255,217,138,.7);
-  animation: mjPulse .8s ease-out infinite;
+  box-shadow: 0 0 20px rgba(255,217,138,.8), 0 0 40px rgba(255,180,60,.4);
+  animation: mjPulse 1s ease-out infinite;
 }
 /* 飞行到各玩家手牌位置（带数字的牌背旁） */
 .mj-draw-anim.mj-draw-bottom.mj-draw-fly  { top: calc(50% + 60px);  left: 50%;          transform: translate(-50%, -50%) scale(1); }
@@ -1163,12 +1163,31 @@
   bottom: calc(22% + 70px);
   transform: translateX(-50%);
   z-index: 6;
-  width: 62px; height: 44px; border-radius: 8px; border: none;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 4px;
+  min-width: 62px; height: 44px; border-radius: 22px; border: none;
   font-size: 21px; font-weight: 900; color: #3a2a06;
   background: linear-gradient(#d6b76a, #b58a1a);
   box-shadow: 0 3px 8px rgba(0,0,0,.45);
   cursor: pointer; touch-action: manipulation; user-select: none;
   font-family: var(--mj-font, "STKaiti","KaiTi","楷体",serif);
+}
+.mj-discard-card {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.2);
+  flex-shrink: 0;
+}
+.mj-discard-card .mj-tile {
+  transform: scale(1.05);
+}
+.mj-discard-text {
+  flex: 1;
+  text-align: center;
+  min-width: 24px;
 }
 
 /* ---- 杠牌选择弹层 ---- */
@@ -1187,4 +1206,466 @@
 .mj-gangpick-t {
   background: none; border: none; padding: 0;
   cursor: pointer;
+}
+
+/* ============================================================
+   行动气泡
+   ============================================================ */
+.bubble { position: absolute; z-index: 10;
+  background: radial-gradient(120% 90% at 30% 22%, #ffffff 0%, #fdf7f4 55%, #f3e6e2 100%);
+  color: #c8232c; font-weight: 900; font-size: 22px; line-height: 1.15;
+  width: 44px; height: 34px; padding: 0; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.95), inset 0 -3px 6px rgba(190,140,140,.22);
+  transform-origin: 50% 100%;
+  animation: balloon var(--bub-d, 1.15s) cubic-bezier(.22,.9,.3,1) forwards;
+  left: 50%; top: -42px; transform: translateX(-50%);
+}
+.bubble::before { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px;
+  transform: translateX(-50%) rotate(45deg); border-radius: 0 0 3px 0;
+  background: #f5e9e5; box-shadow: 2px 2px 5px rgba(0,0,0,.18); }
+.bubble::after { content: ''; position: absolute; top: -4px; right: -4px; bottom: -4px; left: -4px; inset: -4px; border-radius: 20px;
+  border: 2px solid rgba(255,255,255,.85); opacity: 0; pointer-events: none;
+  animation: balloon-ring var(--bub-d, 1.15s) cubic-bezier(.22,.9,.3,1) forwards; }
+@keyframes balloon {
+  0%   { transform: translateX(-50%) scale(.28) translateY(6px); opacity: 0 }
+  22%  { transform: translateX(-50%) scale(1.04) translateY(0);  opacity: 1 }
+  32%  { transform: translateX(-50%) scale(.97)  translateY(-1px) }
+  46%  { transform: translateX(-50%) scale(1.01) translateY(-3px) }
+  72%  { transform: translateX(-50%) scale(1)    translateY(-5px); opacity: 1 }
+  86%  { transform: translateX(-50%) scale(1.14) translateY(-6px); opacity: 1 }
+  100% { transform: translateX(-50%) scale(1.55) translateY(-10px); opacity: 0 }
+}
+@keyframes balloon-ring {
+  0%, 82% { opacity: 0; transform: scale(.7) }
+  88%     { opacity: .55; transform: scale(1) }
+  100%    { opacity: 0; transform: scale(1.7) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: balloon-soft var(--bub-d, 1.15s) ease-out forwards; }
+  .bubble::after { animation: none; opacity: 0; }
+  @keyframes balloon-soft { 0% { opacity: 0 } 15%, 80% { opacity: 1 } 100% { opacity: 0 } }
+}
+
+/* ============================================================
+   开局横幅
+   ============================================================ */
+.mj-banner {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 20;
+  text-align: center;
+  pointer-events: none;
+  animation: bannerShow 1.4s ease-out forwards;
+}
+.mj-banner-text {
+  font-size: 48px;
+  font-weight: 900;
+  color: #ffd700;
+  text-shadow: 0 0 20px rgba(255,180,0,.8), 0 4px 8px rgba(0,0,0,.5);
+  letter-spacing: 8px;
+}
+.mj-banner-sub {
+  font-size: 18px;
+  color: #fff;
+  letter-spacing: 4px;
+  margin-top: 4px;
+  text-shadow: 0 2px 4px rgba(0,0,0,.5);
+  opacity: .9;
+}
+@keyframes bannerShow {
+  0%   { opacity: 0; transform: translateY(-50%) scale(.7); }
+  15%  { opacity: 1; transform: translateY(-50%) scale(1.05); }
+  25%  { transform: translateY(-50%) scale(1); }
+  80%  { opacity: 1; transform: translateY(-50%) scale(1); }
+  100% { opacity: 0; transform: translateY(-50%) scale(1.1); }
+}
+
+/* ============================================================
+   设置按钮 & 面板
+   ============================================================ */
+.mj-tools { position: relative; }
+.mj-tools-btn {
+  min-width: 32px;
+  padding: 0 8px !important;
+}
+.mj-tools.open .mj-tools-btn {
+  background: rgba(242,193,78,.28);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.mj-tools-pop {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  z-index: 30;
+  background: rgba(20,34,28,.97);
+  border: 1px solid rgba(214,183,106,.4);
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.mj-tt-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 4px;
+  font-size: 11px;
+  color: #e8dcc8;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.mj-tt-item:hover {
+  background: rgba(255,255,255,.12);
+}
+.mj-tt-item b {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+.mj-tt-item.on {
+  background: rgba(76,217,123,.18);
+  border-color: rgba(76,217,123,.5);
+  color: #7fe6a3;
+}
+.mj-tt-stand {
+  color: #ff9b9b;
+  background: rgba(255,107,107,.12);
+  border-color: rgba(255,107,107,.3);
+}
+.mj-tt-stand:hover {
+  background: rgba(255,107,107,.2);
+}
+
+/* ============================================================
+   配音选择弹窗
+   ============================================================ */
+.mj-voice-modal .modal-body {
+  max-width: 320px;
+}
+.mj-voice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.mj-voice-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  color: #e8dcc8;
+  cursor: pointer;
+  text-align: left;
+  transition: all .2s;
+}
+.mj-voice-item:hover {
+  background: rgba(255,255,255,.12);
+}
+.mj-voice-item.on {
+  background: rgba(76,217,123,.18);
+  border-color: rgba(76,217,123,.5);
+}
+.mj-voice-item b {
+  font-size: 15px;
+  font-weight: 700;
+}
+.mj-voice-item span {
+  font-size: 12px;
+  color: rgba(232,220,200,.6);
+  margin-top: 2px;
+}
+
+/* mj-player-wrap 为气泡提供定位上下文 */
+.mj-player-wrap {
+  position: relative;
+}
+
+/* 不同座位的气泡位置：都飘向桌子中心方向 */
+.mj-seat-bottom .bubble {
+  top: -42px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation-name: balloon-up;
+}
+.mj-seat-top .bubble {
+  bottom: -42px;
+  top: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  animation-name: balloon-down;
+}
+.mj-seat-left .bubble {
+  right: -48px;
+  left: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  animation-name: balloon-right;
+}
+.mj-seat-right .bubble {
+  left: -48px;
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  animation-name: balloon-left;
+}
+
+/* 气泡尖角位置：跟着座位方向 */
+.mj-seat-bottom .bubble::before { left: 50%; bottom: -6px; transform: translateX(-50%) rotate(45deg); top: auto; right: auto; }
+.mj-seat-top .bubble::before { left: 50%; top: -6px; transform: translateX(-50%) rotate(45deg); bottom: auto; right: auto;
+  background: #fdf7f4; box-shadow: -2px -2px 5px rgba(0,0,0,.15); }
+.mj-seat-left .bubble::before { top: 50%; left: -6px; transform: translateY(-50%) rotate(45deg); bottom: auto; right: auto;
+  background: #f5e9e5; box-shadow: -2px 2px 5px rgba(0,0,0,.15); }
+.mj-seat-right .bubble::before { top: 50%; right: -6px; transform: translateY(-50%) rotate(45deg); bottom: auto; left: auto;
+  background: #f5e9e5; box-shadow: 2px -2px 5px rgba(0,0,0,.15); }
+
+@keyframes balloon-up {
+  0%   { transform: translateX(-50%) scale(.28) translateY(6px); opacity: 0 }
+  22%  { transform: translateX(-50%) scale(1.04) translateY(0);  opacity: 1 }
+  32%  { transform: translateX(-50%) scale(.97)  translateY(-1px) }
+  46%  { transform: translateX(-50%) scale(1.01) translateY(-3px) }
+  72%  { transform: translateX(-50%) scale(1)    translateY(-5px); opacity: 1 }
+  86%  { transform: translateX(-50%) scale(1.14) translateY(-6px); opacity: 1 }
+  100% { transform: translateX(-50%) scale(1.55) translateY(-10px); opacity: 0 }
+}
+@keyframes balloon-down {
+  0%   { transform: translateX(-50%) scale(.28) translateY(-6px); opacity: 0 }
+  22%  { transform: translateX(-50%) scale(1.04) translateY(0);  opacity: 1 }
+  32%  { transform: translateX(-50%) scale(.97)  translateY(1px) }
+  46%  { transform: translateX(-50%) scale(1.01) translateY(3px) }
+  72%  { transform: translateX(-50%) scale(1)    translateY(5px); opacity: 1 }
+  86%  { transform: translateX(-50%) scale(1.14) translateY(6px); opacity: 1 }
+  100% { transform: translateX(-50%) scale(1.55) translateY(10px); opacity: 0 }
+}
+@keyframes balloon-right {
+  0%   { transform: translateY(-50%) scale(.28) translateX(-6px); opacity: 0 }
+  22%  { transform: translateY(-50%) scale(1.04) translateX(0);  opacity: 1 }
+  32%  { transform: translateY(-50%) scale(.97)  translateX(1px) }
+  46%  { transform: translateY(-50%) scale(1.01) translateX(3px) }
+  72%  { transform: translateY(-50%) scale(1)    translateX(5px); opacity: 1 }
+  86%  { transform: translateY(-50%) scale(1.14) translateX(6px); opacity: 1 }
+  100% { transform: translateY(-50%) scale(1.55) translateX(10px); opacity: 0 }
+}
+@keyframes balloon-left {
+  0%   { transform: translateY(-50%) scale(.28) translateX(6px); opacity: 0 }
+  22%  { transform: translateY(-50%) scale(1.04) translateX(0);  opacity: 1 }
+  32%  { transform: translateY(-50%) scale(.97)  translateX(-1px) }
+  46%  { transform: translateY(-50%) scale(1.01) translateX(-3px) }
+  72%  { transform: translateY(-50%) scale(1)    translateX(-5px); opacity: 1 }
+  86%  { transform: translateY(-50%) scale(1.14) translateX(-6px); opacity: 1 }
+  100% { transform: translateY(-50%) scale(1.55) translateX(-10px); opacity: 0 }
+}
+
+/* ============================================================
+   每家自己的弃牌区（放在下地牌靠近中心的一侧）
+   ============================================================ */
+.mj-discard-lane {
+  position: absolute;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  z-index: 2;
+}
+/* 底部（我）：下地牌在右侧，弃牌在上地牌上方30px，从左到右增长 */
+.mj-seat-bottom .mj-discard-lane {
+  right: 45px;          /* 跟 melds-wrap 的 margin-right 对齐 */
+  bottom: calc(100% + 30px);
+  flex-direction: row;
+  justify-content: flex-start;
+  width: calc(32px * 8);  /* 8张牌一行 */
+}
+/* 顶部（对家）：下地牌在左侧，弃牌在地牌下方30px，从左到右（对家视角）
+   对家视角左→右 = 屏幕上右→左，所以用 row-reverse + justify-content: flex-end */
+.mj-seat-top .mj-discard-lane {
+  left: 45px;           /* 跟 melds-wrap 的 margin-left 对齐 */
+  top: calc(100% + 30px);
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  width: calc(32px * 8);
+}
+/* 左边（上家）：下地牌在底部，弃牌在地牌右侧30px，从上到下（玩家视角左→右）
+   玩家视角左→右 = 屏幕上从上到下，所以 flex-direction: column */
+.mj-seat-left .mj-discard-lane {
+  bottom: 47px;         /* 跟 melds-wrap 的 margin-bottom 对齐 */
+  left: calc(100% + 30px);
+  flex-direction: column;
+  justify-content: flex-start;
+  height: calc(32px * 8);
+  width: 43px;          /* 牌的高度（横向时） */
+}
+/* 右边（下家）：下地牌在顶部，弃牌在地牌左侧30px，从下到上（玩家视角左→右）
+   玩家视角左→右 = 屏幕上从下到上，所以 flex-direction: column-reverse */
+.mj-seat-right .mj-discard-lane {
+  top: 47px;            /* 跟 melds-wrap 的 margin-top 对齐 */
+  right: calc(100% + 30px);
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  height: calc(32px * 8);
+  width: 43px;
+}
+
+/* 左右两家弃牌的牌也要旋转，跟手牌一样 */
+.mj-seat-left .mj-discard-lane .mj-tile,
+.mj-seat-right .mj-discard-lane .mj-tile {
+  /* 不旋转，保持平铺视觉 —— 平铺牌本身就该是正的 */
+}
+.mj-seat-left .mj-discard-lane .mj-discard-tile {
+  /* 左右两边牌的尺寸调整：平铺牌是横宽的，32px宽 43px高 */
+}
+/* 左右两家弃牌也是平铺牌，不需要旋转，直接放 */
+
+/* 弃牌区内每张牌的定位容器 */
+.mj-discard-tile {
+  position: relative;
+  flex: none;
+}
+
+/* 左右两边弃牌牌面旋转，跟下地牌一致 */
+.mj-seat-left .mj-discard-lane .mj-tile {
+  transform: rotate(90deg);
+  margin: -5.5px 0;
+}
+.mj-seat-right .mj-discard-lane .mj-tile {
+  transform: rotate(270deg);
+  margin: -5.5px 0;
+}
+
+/* 顶部弃牌的牌面朝下（玩家视角），旋转180度让对面玩家看着正 */
+.mj-seat-top .mj-discard-lane .mj-tile {
+  transform: rotate(180deg);
+}
+
+/* ============================================================
+   顶栏布局调整
+   ============================================================ */
+.mj-bar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.mj-bar-center .muted { font-weight: 400; font-size: 12px; }
+
+/* ============================================================
+   记录页总分
+   ============================================================ */
+.mj-hist-total {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(255,255,255,.06);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.1);
+}
+.mj-hist-total-item {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mj-hist-total-name {
+  font-size: 11px;
+  color: rgba(232,220,200,.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mj-hist-total-val {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ============================================================
+   Fixes v3
+   ============================================================ */
+
+/* Item 1: 行动气泡 z-index 提高，确保在最上层 */
+.bubble {
+  z-index: 100 !important;
+}
+.mj-seat {
+  z-index: 3;
+}
+/* 底部玩家的气泡最优先显示 */
+.mj-seat-bottom { z-index: 5; }
+
+/* Item 3: 拖牌虚影提高层级，确保可见 */
+.mj-drag-ghost {
+  z-index: 999 !important;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Item 5: 打牌按钮 —— 字在前，牌在后，位置固定不跳动 */
+.mj-discard {
+  left: auto;
+  right: 20px;
+  bottom: calc(22% + 70px);
+  transform: none;
+  flex-direction: row-reverse;
+  padding: 4px 4px 4px 12px;
+}
+.mj-discard-text {
+  flex: none;
+  min-width: 28px;
+  text-align: center;
+  padding-right: 2px;
+}
+
+/* Item 4: 减少黑线（旋转导致的子像素渲染缝隙） */
+.mj-tile {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+.mj-tile img {
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* 覆盖上面的 row-reverse，改用正常顺序，text 在左 card 在右 */
+.mj-discard {
+  flex-direction: row;
+}
+
+/* 打牌按钮最终样式：字左牌右，固定右边位置不跳动 */
+.mj-discard {
+  left: auto !important;
+  right: 20px;
+  bottom: calc(22% + 70px);
+  transform: none !important;
+  flex-direction: row !important;
+  justify-content: flex-start;
+  padding: 4px 12px 4px 16px !important;
+  gap: 8px;
+}
+.mj-discard-text {
+  flex: none;
+  min-width: 28px;
+  text-align: center;
+}
+.mj-discard-card {
+  flex-shrink: 0;
 }
