@@ -32,6 +32,7 @@ export interface OpenMeld {
 export interface Player {
   seat: number;
   hand: Tile[];          // 手里的（不含下地的）
+  handIds: number[];     // 手里每张牌的唯一 id（跟 hand 一一对应）
   melds: OpenMeld[];
   discards: Tile[];
 }
@@ -79,8 +80,12 @@ export class MahjongGame {
   table: { tile: Tile; from: number } | null = null;
   /** 刚摸上来那张（自摸判定要用它） */
   drawn: Tile | null = null;
+  /** 刚摸上来那张的唯一 id（用于前端定位是哪一张牌） */
+  drawnId: number | null = null;
   /** 胡了之后翻出来的那张马（翻开摆在桌上，不回牌墙） */
   ma: Tile | null = null;
+  /** 开局骰子（两颗，1~6） */
+  dice: [number, number] = [1, 1];
   events: GameEvent[] = [];
   /** 回放用：每一步真正生效的决定 */
   replay: { s: number; t: string; c?: Tile }[] = [];
@@ -102,10 +107,10 @@ export class MahjongGame {
     this.dealer = o.dealer ?? 0;
     this.now = o.now ?? Date.now;
     this.onEvent = o.onEvent;
-    this.turnMs = o.turnMs ?? 15000;
-    this.claimMs = o.claimMs ?? 10000;
+    this.turnMs = o.turnMs ?? 30000;
+    this.claimMs = o.claimMs ?? 15000;
     this.turn = this.dealer;
-    for (let s = 0; s < this.n; s++) this.players.push({ seat: s, hand: [], melds: [], discards: [] });
+    for (let s = 0; s < this.n; s++) this.players.push({ seat: s, hand: [], handIds: [], melds: [], discards: [] });
   }
 
   private emit(e: GameEvent) { this.events.push(e); this.onEvent?.(e); }
@@ -126,12 +131,16 @@ export class MahjongGame {
 
   /** 开局。deck 不给就用内置的洗牌 */
   start(deck?: Tile[], rnd: () => number = Math.random) {
+    this.dice = [Math.floor(rnd() * 6) + 1, Math.floor(rnd() * 6) + 1];
     this.wall = deck && deck.length === DECK_SIZE ? deck.slice() : shuffle(fullDeck(), rnd);
     this.deck = this.wall.slice();
     for (let s = 0; s < this.n; s++) {
       const p = this.players[s];
       p.hand = this.wall.splice(0, 13);
-      sortHand(p.hand);
+      // 用原始牌堆中的索引作为每张牌的唯一 id
+      const baseIdx = s * 13;
+      p.handIds = p.hand.map((_, i) => baseIdx + i);
+      sortHand(p.hand, p.handIds);
     }
     this.emit({ t: 'deal', hands: this.players.map(p => p.hand.slice()), dealer: this.dealer });
     this.phase = 'discard';
@@ -142,10 +151,15 @@ export class MahjongGame {
   /** 摸一张。牌墙空了就流局 */
   private draw(seat: number) {
     if (!this.wall.length) { this.liuju('公牌摸完了'); return; }
+    // 新摸的牌的 id：用它在原始牌堆中的位置（发牌顺序 = id）
+    const newId = DECK_SIZE - this.wall.length;
     const t = this.wall.shift()!;
-    this.players[seat].hand.push(t);
-    sortHand(this.players[seat].hand);
+    const p = this.players[seat];
+    p.hand.push(t);
+    p.handIds.push(newId);
+    sortHand(p.hand, p.handIds);
     this.drawn = t;
+    this.drawnId = newId;
     this.turn = seat;
     this.phase = 'discard';
     this.table = null;
@@ -215,8 +229,10 @@ export class MahjongGame {
         const i = p.hand.indexOf(t);
         if (i < 0) return '这张不在你手里';
         p.hand.splice(i, 1);
+        p.handIds.splice(i, 1);
         p.discards.push(t);
         this.drawn = null;
+        this.drawnId = null;
         this.log(seat, 'discard', t);
         this.emit({ t: 'discard', seat, tile: t });
         this.offer(t, seat);
@@ -284,11 +300,15 @@ export class MahjongGame {
   private doPeng(seat: number, tile: Tile) {
     const p = this.players[seat];
     this.takeFromDiscards();
-    for (let k = 0; k < 2; k++) p.hand.splice(p.hand.indexOf(tile), 1);
+    for (let k = 0; k < 2; k++) {
+      const i = p.hand.indexOf(tile);
+      p.hand.splice(i, 1);
+      p.handIds.splice(i, 1);
+    }
     p.melds.push({ type: 'peng', tile, from: this.table!.from });
     this.emit({ t: 'peng', seat, tile, from: this.table!.from });
     // 碰完轮到他打牌（不摸牌）
-    this.table = null; this.claim = null; this.drawn = null;
+    this.table = null; this.claim = null; this.drawn = null; this.drawnId = null;
     this.turn = seat;
     this.phase = 'discard';
     this.setDeadline(this.turnMs);
@@ -298,7 +318,11 @@ export class MahjongGame {
   private doMingGang(seat: number, tile: Tile) {
     const p = this.players[seat];
     this.takeFromDiscards();
-    for (let k = 0; k < 3; k++) p.hand.splice(p.hand.indexOf(tile), 1);
+    for (let k = 0; k < 3; k++) {
+      const i = p.hand.indexOf(tile);
+      p.hand.splice(i, 1);
+      p.handIds.splice(i, 1);
+    }
     p.melds.push({ type: 'gang', gang: 'ming', tile, from: this.table!.from });
     this.payGang(seat, 'ming');
     this.emit({ t: 'gang', seat, tile, kind: 'ming', from: this.table!.from, scores: this.scores.slice() });
@@ -311,12 +335,18 @@ export class MahjongGame {
     const c = toCounts(p.hand);
     const bu = p.melds.find(m => m.type === 'peng' && m.tile === tile);
     if (c[tile] >= 4) {
-      for (let k = 0; k < 4; k++) p.hand.splice(p.hand.indexOf(tile), 1);
+      for (let k = 0; k < 4; k++) {
+        const i = p.hand.indexOf(tile);
+        p.hand.splice(i, 1);
+        p.handIds.splice(i, 1);
+      }
       p.melds.push({ type: 'gang', gang: 'an', tile });
       this.payGang(seat, 'an');
       this.emit({ t: 'gang', seat, tile, kind: 'an', scores: this.scores.slice() });
     } else if (bu) {
-      p.hand.splice(p.hand.indexOf(tile), 1);
+      const i = p.hand.indexOf(tile);
+      p.hand.splice(i, 1);
+      p.handIds.splice(i, 1);
       bu.type = 'gang'; bu.gang = 'bu';
       this.payGang(seat, 'bu');     // 碰杠跟明杠一个价
       this.emit({ t: 'gang', seat, tile, kind: 'bu', scores: this.scores.slice() });
@@ -406,18 +436,23 @@ export class MahjongGame {
       claimTile: this.phase === 'claim' ? this.table?.tile ?? null : null,
       gangTiles: seat !== null && this.phase === 'discard' && this.turn === seat ? this.selfGangTiles(seat) : [],
       phase: this.phase, turn: this.turn, dealer: this.dealer,
-      wallLeft: this.wall.length, table: this.table, ma: this.ma, scores: this.scores.slice(),
+      wallLeft: this.wall.length, table: this.table, ma: this.ma, dice: this.dice, scores: this.scores.slice(),
       winner: this.winner, deadline: this.deadline,
       players: this.players.map(p => {
         const isSelf = seat === p.seat || this.ended;
+        // 只有当前出牌的玩家（刚摸了牌的那个）才有 drawn
+        const isDrawOwner = this.phase === 'discard' && p.seat === this.turn && this.drawn !== null;
         return {
           seat: p.seat,
           hand: isSelf ? p.hand.slice() : null,
+          handIds: isSelf ? p.handIds.slice() : null,
           handCount: p.hand.length,
-          /** 刚摸上来那张：自己能看到牌面，别人只知道有没有（true=有/刚摸的），null=没有 */
-          drawn: !this.ended
-            ? (this.drawn === null ? null : isSelf ? this.drawn : true as const)
+          /** 刚摸上来那张：只有当前出牌玩家才有值。自己看得到牌面，别人只知道有（true） */
+          drawn: !this.ended && isDrawOwner
+            ? (isSelf ? this.drawn : true as const)
             : null,
+          /** 刚摸上来那张的唯一 id（只有自己看得到），用于前端准确定位 */
+          drawnId: isSelf && isDrawOwner ? this.drawnId : null,
           melds: p.melds.map(m => ({ ...m, tile: m.gang === 'an' && !isSelf ? -1 : m.tile })),
           discards: p.discards.slice(),
         };
@@ -442,7 +477,13 @@ export class MahjongGame {
 
 /** 手牌排序：红中（赖子）钉到最左边，其余按点数从小到大。
     红中放最左一是好看清手里几张赖子，二是托管/自动出牌从右往左挑牌时天然避开它。 */
-function sortHand(h: Tile[]) { h.sort((a, b) => (a === HONG ? 0 : 1) - (b === HONG ? 0 : 1) || a - b); }
+function sortHand(h: Tile[], ids?: number[]) {
+  if (!ids) { h.sort((a, b) => (a === HONG ? 0 : 1) - (b === HONG ? 0 : 1) || a - b); return; }
+  // 手牌和 id 一起排序（保持一一对应）
+  const pairs = h.map((t, i) => ({ t, id: ids[i] }));
+  pairs.sort((a, b) => (a.t === HONG ? 0 : 1) - (b.t === HONG ? 0 : 1) || a.t - b.t || a.id - b.id);
+  for (let i = 0; i < h.length; i++) { h[i] = pairs[i].t; ids[i] = pairs[i].id; }
+}
 function shuffle(a: Tile[], rnd: () => number): Tile[] {
   const d = a.slice();
   for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }

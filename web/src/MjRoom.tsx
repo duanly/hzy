@@ -146,8 +146,11 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   /** 能杠的不止一张时，先弹一排让人挑 */
   const [gangPick, setGangPick] = useState(false);
   /** 点过之后到下一张快照到达之前先锁住，免得连点两次发两条 */
-  const [sent, setSent] = useState<{ deadline: number; act: string } | null>(null);
+  const [sent, setSent] = useState<{ deadline: number; act: string; tile?: Tile } | null>(null);
+  /** 乐观更新的回滚定时器：5秒没收到确认就恢复原状 */
+  const rollbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showEnd, setShowEnd] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   /** 拖牌出牌的拖动状态：按下那一下记起点，拖出弧线就出牌 */
   const dragRef = useRef<{ i: number; tile: Tile; y0: number; started: boolean } | null>(null);
   const [dragOut, setDragOut] = useState(false);
@@ -162,24 +165,36 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   const turnRing = useRing(g?.deadline ?? 0, g?.optionsSpan ?? 0, now);
   const locked = !!sent && sent.deadline === (g?.deadline ?? 0);
 
-  /* 服务端换了新窗口（deadline 变了）＝ 上一步已经揭晓，锁可以松了。
+  /* 服务端换了新窗口（deadline 变了）＝ 上一步已经揭晓，锁可以松了，乐观更新确认成功。
      不靠"收到任何一张快照就解锁"：同一个窗口里快照会来好几张（别人碰了杠了都会广播）。 */
-  useEffect(() => { setSent(null); }, [g?.deadline, g?.phase]);
+  useEffect(() => {
+    setSent(null);
+    if (rollbackRef.current) { clearTimeout(rollbackRef.current); rollbackRef.current = null; }
+  }, [g?.deadline, g?.phase]);
   /* 轮次一变，手里选中的那张就作废 —— 不然上一轮抬起来的牌会一直举着 */
   useEffect(() => { setPicked(undefined); setGangPick(false); dragRef.current = null; setDragOut(false); }, [g?.turn, g?.phase]);
 
-  /* 一局结束：弹结算。用 winner/phase 作触发，不用事件 —— 事件可能因为断线丢掉，
-     而快照一定会到。关掉之后不再自动弹回来（看牌桌是玩家主动要看的）。 */
+  /* 一局结束：先在中心播翻马动画，1.8 秒后再弹结算清单。
+     用 winner/phase 作触发，不用事件 —— 事件可能因为断线丢掉，而快照一定会到。
+     关掉之后不再自动弹回来（看牌桌是玩家主动要看的）。 */
   const endedKey = g?.phase === 'ended' ? `${room.roundNo}` : '';
-  useEffect(() => { if (endedKey) setShowEnd(true); }, [endedKey]);
+  useEffect(() => {
+    if (!endedKey) return;
+    const t = setTimeout(() => setShowEnd(true), 1800);
+    return () => clearTimeout(t);
+  }, [endedKey]);
 
   /* 报牌的声音走事件流。丢了也就少听一声，不影响能不能打 */
   useEffect(() => socket.on((m: ServerMsg) => {
-    /* 服务端把这一步**驳回**了（"这张杠不了""还没轮到你"）：马上解锁。
+    /* 服务端把这一步**驳回**了（"这张杠不了""还没轮到你"）：马上解锁，撤销乐观更新。
        不解的话就僵在这儿了 —— 锁是靠"deadline 变了"解开的，而驳回压根不换窗口，
        于是这一整个读秒里玩家再点什么都没反应，只能眼睁睁看着超时被托管。
        这条是渲染的时候试出来的：打完一张之后按钮全灰，才想到驳回也是这个下场。 */
-    if (m.type === 'error') { setSent(null); return; }
+    if (m.type === 'error') {
+      setSent(null);
+      if (rollbackRef.current) { clearTimeout(rollbackRef.current); rollbackRef.current = null; }
+      return;
+    }
     if (m.type !== 'game.events') return;
     for (const e of ((m as any).events ?? []) as any[]) {
       if (e.t === 'discard') sayTile(e.tile);
@@ -203,8 +218,11 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   const send = (action: string, tile?: number) => {
     if (locked) { toast('上一步还在等服务器回话'); return; }
     socket.send({ type: 'game.act', action, ...(tile === undefined ? {} : { tile }) } as any);
-    setSent({ deadline: g?.deadline ?? 0, act: action });
+    setSent({ deadline: g?.deadline ?? 0, act: action, tile });
     setPicked(undefined); setGangPick(false);
+    // 5 秒兜底：服务端一直不换窗口（比如丢包了）就撤销乐观更新
+    if (rollbackRef.current) clearTimeout(rollbackRef.current);
+    rollbackRef.current = setTimeout(() => { setSent(null); }, 5000);
   };
 
   const gangTiles: Tile[] = g?.gangTiles ?? [];
@@ -218,7 +236,6 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
 
   /** 拖牌出牌：手上方一条弧线，拖过去就出牌；没拖动就是点一下抬起、再点一下出牌 */
   const onTilePointerDown = (e: React.PointerEvent, t: Tile, i: number) => {
-    if (!canDiscard) { toast('还没轮到你出牌'); return; }
     const wasPicked = picked === i;
     dragRef.current = { i, tile: t, y0: e.clientY, started: false };
     setDragOut(false);
@@ -226,7 +243,7 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       const d = dragRef.current; if (!d) return;
       const dy = d.y0 - ev.clientY;
       if (!d.started && Math.abs(dy) > 6) d.started = true;
-      setDragOut(!!d.started && dy > 22);
+      setDragOut(!!d.started && dy > 22 && canDiscard);
       if (d.started) setDragGhost({ tile: d.tile, x: ev.clientX, y: ev.clientY });
     };
     const up = (ev: PointerEvent) => {
@@ -238,10 +255,15 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       const dy = d.y0 - ev.clientY;
       if (d.started && dy > 22) {           // 拖出弧线 → 出牌
         setDragOut(false); setPicked(undefined);
-        send('discard', d.tile);
-      } else if (!d.started) {              // 没拖动 → 点一下抬起，再点一下出牌
-        if (wasPicked) { setPicked(undefined); send('discard', d.tile); }
-        else setPicked(d.i);
+        if (canDiscard) send('discard', d.tile);
+      } else if (!d.started) {              // 没拖动 → 点一下抬起
+        if (wasPicked) {
+          // 再点一次：轮到自己时才出牌，否则只是取消选中
+          if (canDiscard) { setPicked(undefined); send('discard', d.tile); }
+          else setPicked(undefined);
+        } else {
+          setPicked(d.i);
+        }
       }
     };
     window.addEventListener('pointermove', move);
@@ -253,20 +275,51 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     // 胡牌的那一张：亮牌时标在赢家手牌上
     const hu = room.ledger[room.ledger.length - 1]?.hu as any;
     const huSeat = hu?.seat, huTile = hu?.card;
-    const players: MjSeatView[] = g.players.map((p: any, i: number) => ({
-      seat: i,
-      hand: p.hand, handCount: p.handCount, drawn: p.drawn ?? null, melds: p.melds, discards: p.discards,
-      name: room.seats[i]?.user?.nickname ?? (room.seats[i]?.isBot ? '机器人' : `座位${i + 1}`),
-      total: room.seats[i]?.total ?? 0,
-      isDealer: i === g.dealer,
-      isTurn: g.phase === 'claim' ? false : i === g.turn,
-      huTile: i === huSeat ? huTile : undefined,
-    }));
+
+    // 乐观更新：刚打出一张牌，等服务端确认
+    const discarding = sent?.act === 'discard' && sent.tile !== undefined
+      && sent.deadline === g.deadline;
+
+    const players: MjSeatView[] = g.players.map((p: any, i: number) => {
+      let hand = p.hand;
+      let handIds = p.handIds ?? null;
+      let handCount = p.handCount;
+      let drawn: Tile | true | null = p.drawn ?? null;
+      let drawnId: number | null = p.drawnId ?? null;
+      // 自己的手牌：乐观移除刚打出的那张，drawn 清空，牌归位
+      if (discarding && i === mySeat && hand) {
+        const idx = hand.indexOf(sent!.tile);
+        if (idx >= 0) {
+          hand = hand.slice();
+          hand.splice(idx, 1);
+          if (handIds) {
+            handIds = handIds.slice();
+            handIds.splice(idx, 1);
+          }
+          handCount = hand.length;
+          drawn = null;
+          drawnId = null;
+        }
+      }
+      return {
+        seat: i,
+        hand, handIds, handCount, drawn, drawnId, melds: p.melds, discards: p.discards,
+        name: room.seats[i]?.user?.nickname ?? (room.seats[i]?.isBot ? '机器人' : `座位${i + 1}`),
+        total: room.seats[i]?.total ?? 0,
+        isDealer: i === g.dealer,
+        isTurn: g.phase === 'claim' ? false : i === g.turn,
+        huTile: i === huSeat ? huTile : undefined,
+      };
+    });
     return {
       players, mySeat: mySeat ?? 0, wallLeft: g.wallLeft, table: g.table,
-      ma: g.ma, roundNo: room.roundNo, baseScore: room.baseScore,
+      ma: g.ma, dice: g.dice ?? [1, 1], phase: g.phase,
+      roundNo: room.roundNo, baseScore: room.baseScore,
+      dealer: g.dealer,
+      nextRoundAt: (g as any).nextRoundAt ?? null,
+      serverNow: g.serverNow ?? Date.now(),
     };
-  }, [g, room.seats, room.ledger, mySeat, room.roundNo, room.baseScore]);
+  }, [g, room.seats, room.ledger, mySeat, room.roundNo, room.baseScore, sent]);
 
   if (!g || !v) {
     return (
@@ -295,7 +348,9 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
         <button className="btn ghost sm" onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>离开</button>
       </div>
 
-      <MjTable v={v} picked={picked} ringFrac={turnRing?.frac} onTilePointerDown={onTilePointerDown} />
+      <MjTable v={v} picked={picked} ringFrac={turnRing?.frac} now={now}
+        onTilePointerDown={onTilePointerDown}
+        onHistory={() => setShowHistory(true)} />
 
       {/* 出牌弧线：手上方一条线，拖过去松手出牌 */}
       {canDiscard && picked !== undefined && (
@@ -341,6 +396,158 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       )}
 
       {showEnd && <EndPanel room={room} g={g} now={now} onClose={() => setShowEnd(false)} />}
+      {showHistory && <HistoryModal room={room} onClose={() => setShowHistory(false)} />}
     </div>
+  );
+}
+
+/* ============================================================
+   记录弹窗：列出每一局，点进去看每家手牌
+   ============================================================ */
+function HistoryModal({ room, onClose }: { room: any; onClose: () => void }) {
+  const [pick, setPick] = useState<any>(null);
+  if (pick !== null) {
+    return <RoundDetail entry={pick} onClose={() => setPick(null)} />;
+  }
+  const ledger = room.ledger ?? [];
+  const names = room.seats.map(s => s.user?.nickname ?? '机器人');
+  return (
+    <Modal onClose={onClose} className="mj-hist-modal">
+      <div className="col" style={{ gap: 8 }}>
+        <b>牌局记录</b>
+        <div className="muted" style={{ fontSize: 12 }}>共 {room.ledgerCount ?? ledger.length} 局 · 点一局看详情</div>
+        {!ledger.length ? (
+          <div className="muted">还没有打完的局</div>
+        ) : (
+          <div className="mj-hist-scroll">
+            <table className="ledger mj-hist-table">
+              <thead>
+                <tr>
+                  <th>局</th>
+                  <th>胡牌</th>
+                  {names.map((n, i) => <th key={i}>{n}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.slice().reverse().map((e: any) => {
+                  const deltas = e.deltas ?? {};
+                  const hu = e.hu;
+                  const huName = hu ? mjName(hu.card as Tile) : '黄庄';
+                  return (
+                    <tr key={e.round} className="row-pick" onClick={() => setPick(e)}>
+                      <td>第 {e.round} 局</td>
+                      <td>{huName}</td>
+                      {room.seats.map((s, i) => {
+                        const uid = s.user?.id;
+                        const d = uid != null ? (deltas[uid] ?? 0) : 0;
+                        return (
+                          <td key={i} className={d > 0 ? 'pos' : d < 0 ? 'neg' : ''}>
+                            {d > 0 ? `+${d}` : d}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <button className="ghost" onClick={onClose}>关闭</button>
+      </div>
+    </Modal>
+  );
+}
+
+function RoundDetail({ entry, onClose }: { entry: any; onClose: () => void }) {
+  const names: string[] = entry.seatNames ?? ['座位1', '座位2', '座位3', '座位4'];
+  const reveal = entry.reveal;
+  const hu = entry.hu;
+  const gangScores = entry.penalty ?? [0, 0, 0, 0];
+  return (
+    <Modal onClose={onClose} className="mj-hist-modal">
+      <div className="col" style={{ gap: 10 }}>
+        <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+          <b>第 {entry.round} 局</b>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {hu ? `${names[hu.seat]} 自摸 ${mjName(hu.card as Tile)}` : '黄庄'}
+          </span>
+          {hu?.detail?.ma !== undefined && hu.detail.ma !== null && (
+            <span className="muted" style={{ fontSize: 12 }}>
+              马：{mjName(hu.detail.ma as Tile)}
+            </span>
+          )}
+        </div>
+
+        {/* 每家的手牌 + 下地牌 */}
+        {reveal ? (
+          <div className="mj-hist-hands">
+          {names.map((nm: string, i: number) => {
+            const hands = reveal.hands?.[i] ?? [];
+            const melds = reveal.melds?.[i] ?? [];
+            const isWinner = reveal.winner === i;
+            return (
+              <div key={i} className="mj-hist-hand-row">
+                <div className="mj-hist-name">
+                  {nm}
+                  {isWinner && <span className="mj-hist-win">胡</span>}
+                </div>
+                <div className="mj-hist-cards">
+                  {/* 下地牌 */}
+                  {melds.map((m: any, j: number) => {
+                    const count = m.type === 'gang' ? 4 : (m.type === 'peng' ? 3 : 0);
+                    if (count === 0) return null;
+                    return (
+                      <span key={'m' + j} className="mj-hist-meld">
+                        {Array.from({ length: count }).map((_, k) => (
+                          <MjTile key={k} tile={m.tile as Tile} size="xs" variant="flat" />
+                        ))}
+                      </span>
+                    );
+                  })}
+                  {melds.length > 0 && hands.length > 0 && <span className="mj-hist-gap" />}
+                  {/* 手牌 */}
+                  {hands.map((t: Tile, j: number) => (
+                    <MjTile key={'h' + j} tile={t} size="xs" variant="flat" />
+                  ))}
+                </div>
+                <div className="mj-hist-score">
+                  {gangScores[i] ? `杠 ${gangScores[i] > 0 ? '+' : ''}${gangScores[i]}` : ''}
+                </div>
+              </div>
+            );
+          })}
+          </div>
+        ) : (
+          <div className="muted">没有亮牌记录</div>
+        )}
+
+        {/* 算分明细 */}
+        {hu?.detail?.breakdown?.length > 0 && (
+          <ul className="mj-hist-why">
+            {hu.detail.breakdown.map((line: string, i: number) => <li key={i}>{line}</li>)}
+          </ul>
+        )}
+
+        {/* 每家输赢（用 entry.names 或者 seatNames 对应的 deltas） */}
+        <table className="ledger">
+          <tbody>
+            {names.map((n: string, i: number) => {
+              // deltas 是按 userId 存的，但我们只有 seatNames，试试从 entry.deltas 里按顺序取
+              const dArr = entry.scores ?? (entry.hu?.detail?.scores ?? []);
+              const d = dArr[i] ?? 0;
+              return (
+                <tr key={i} className={reveal?.winner === i ? 'win' : ''}>
+                  <td className="n">{n}</td>
+                  <td className={`v ${d > 0 ? 'pos' : d < 0 ? 'neg' : ''}`}>{d > 0 ? `+${d}` : d}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <button className="ghost" onClick={onClose}>关闭</button>
+      </div>
+    </Modal>
   );
 }

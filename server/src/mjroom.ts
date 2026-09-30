@@ -180,8 +180,8 @@ export class MahjongRoom {
     this.game = new MahjongGame({
       rules: this.rules, dealer: this.dealer,
       now: this.now,
-      turnMs: (this.cfg.turnSec ?? 15) * 1000,
-      claimMs: (this.cfg.claimSec ?? 10) * 1000,
+      turnMs: (this.cfg.turnSec ?? 30) * 1000,
+      claimMs: (this.cfg.claimSec ?? 15) * 1000,
       onEvent: e => this.onGameEvent(e),
     });
     this.eventCursor = 0;        // 新一局是新的 events 数组，游标跟着归零
@@ -226,12 +226,16 @@ export class MahjongRoom {
       const isBot = s.isBot || s.autoBot;
       if (!isBot || !g.optionsFor(i)) { s.botAt = undefined; continue; }
       if (s.botAt === undefined) {
-        const t = this.cfg.turnSec ?? 15;
-        // 机器人装着想一下再打 —— 别一张接一张，真人反应不过来
-        // 默认 1.5~3 秒（给玩家看清牌面）；botThink 模式下：读秒的 60%~90% 才出
+        const t = this.cfg.turnSec ?? 30;
+        // 机器人装着想一下再打 —— 给玩家看清摸牌动画和牌面
+        // 出牌阶段：2.5~4 秒（摸牌动画+思考）；叫牌阶段：1.5~2.5 秒（看清明牌再决定）
+        // botThink 模式下：读秒的 60%~90% 才出
+        const base = g.phase === 'claim'
+          ? 1500 + Math.random() * 1000
+          : 2500 + Math.random() * 1500;
         const think = this.cfg.botThink
           ? Math.round(t * 1000 * (0.6 + Math.random() * 0.3))
-          : 1500 + Math.random() * 1500;
+          : base;
         s.botAt = now + think;
       }
     }
@@ -380,7 +384,7 @@ export class MahjongRoom {
       nextRoundAt: this.nextRoundAt,
       pausedReason: this.pausedReason,
       canResume: true,
-      config: { turnSec: this.cfg.turnSec ?? 15, autoNextSec: Math.round((this.cfg.autoNextMs ?? 7000) / 1000), swingCap: 0 },
+      config: { turnSec: this.cfg.turnSec ?? 30, autoNextSec: Math.round((this.cfg.autoNextMs ?? 7000) / 1000), swingCap: 0 },
     };
   }
 

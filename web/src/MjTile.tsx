@@ -42,10 +42,9 @@ export function mjName(t: Tile) {
 function faceImgSrc(tile: Tile, variant: 'standing' | 'flat' = 'standing') {
   const name = TILE_FACE_NAMES[tile];
   if (!name) return '';
-  if (variant === 'standing') {
-    return `mj-tile-bodies/faces-standing/${name}-face.png`;
+  if (variant === 'flat') {
+    return `mj-tile-bodies/faces-flat/${name}-face.png`;
   }
-  // flat 版本目前没有全部提取，先用 standing 的缩小代替
   return `mj-tile-bodies/faces-standing/${name}-face.png`;
 }
 
@@ -71,7 +70,7 @@ export function MjTile({ tile, size = 'md', back, className, onClick, onPointerD
   style?: React.CSSProperties;
   variant?: 'standing' | 'flat';
 }) {
-  const baseCls = `mj-tile mj-${size}${selected ? ' mj-sel' : ''}${dim ? ' mj-dim' : ''}${back ? ' mj-back' : ''}${className ? ' ' + className : ''}`;
+  const baseCls = `mj-tile mj-${size}${variant === 'flat' ? ' mj-tile-flat' : ''}${selected ? ' mj-sel' : ''}${dim ? ' mj-dim' : ''}${back ? ' mj-back' : ''}${className ? ' ' + className : ''}`;
   const title = back || tile === undefined ? undefined : mjName(tile);
 
   // 背面

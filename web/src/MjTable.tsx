@@ -42,9 +42,12 @@ function TurnRing({ frac, size = 40 }: { frac: number; size?: number }) {
 export interface MjSeatView {
   seat: number;
   hand: Tile[] | null;
+  handIds: number[] | null;
   handCount: number;
-  /** 刚摸上来那张：自己看得到牌面（Tile），别人只知道有没有（true/null），UI 上单独放在最右边 */
+  /** 刚摸上来那张：自己看得到牌面（Tile），别人只知道有没有（true/null） */
   drawn: Tile | true | null;
+  /** 刚摸上来那张的唯一 id（只有自己有），用于准确定位哪一张 */
+  drawnId: number | null;
   melds: { type: 'peng' | 'gang'; gang?: 'ming' | 'an' | 'bu'; tile: Tile }[];
   discards: Tile[];
   name: string;
@@ -62,9 +65,13 @@ export interface MjTableView {
   wallLeft: number;
   table: { tile: Tile; from: number } | null;
   ma: Tile | null;
+  dice: [number, number];
+  phase: 'init' | 'discard' | 'claim' | 'ended';
   roundNo: number;
   baseScore: number;
   dealer: number;
+  nextRoundAt: number | null;
+  serverNow: number;
 }
 
 /**
@@ -91,22 +98,67 @@ function Wall({ left }: { left: number }) {
   );
 }
 
-/** 弃牌区：四家各占一边，8张一排 */
-function DiscardPool({ lanes }: { lanes: Tile[][] }) {
+/** 弃牌区：四家各占一边，8张一排。最新一张用蓝点标记，闪烁 10s 后消失 */
+function DiscardPool({ lanes, ghostLane, ghostTile }: {
+  lanes: Tile[][];
+  /** 亮牌区正在展示哪一家的牌（相对座位），如果有则该家最后一张牌隐藏（避免一张牌同时出现在两个地方） */
+  ghostLane: number;
+  ghostTile: Tile | null;
+}) {
+  // 记录每家最后一张牌的"出现时间戳"，用于控制蓝点显示时长（10s）
+  const [lastDotKey, setLastDotKey] = useState<number[]>([0, 0, 0, 0]);
+  const [dotVisible, setDotVisible] = useState<boolean[]>([false, false, false, false]);
+  const timersRef = useRef<(ReturnType<typeof setTimeout> | null)[]>([null, null, null, null]);
+
+  // lanes 变化时，检查每家最新一张牌是否变了
+  const prevLanesRef = useRef<Tile[][]>([[], [], [], []]);
+  useEffect(() => {
+    for (let i = 0; i < 4; i++) {
+      const cur = lanes[i];
+      const prev = prevLanesRef.current[i];
+      if (cur.length > prev.length) {
+        // 新打了一张牌 → 重置蓝点
+        const key = Date.now() + i;
+        setLastDotKey(prev => { const n = [...prev]; n[i] = key; return n; });
+        setDotVisible(prev => { const n = [...prev]; n[i] = true; return n; });
+        if (timersRef.current[i]) clearTimeout(timersRef.current[i]!);
+        timersRef.current[i] = setTimeout(() => {
+          setDotVisible(prev => { const n = [...prev]; n[i] = false; return n; });
+        }, 10000);
+      }
+    }
+    prevLanesRef.current = lanes.map(l => [...l]);
+  }, [lanes]);
+
   // lanes: 0=我(下) 1=下家(右) 2=对家(上) 3=上家(左)
+  const renderLane = (tiles: Tile[], laneIdx: number) => {
+    const hideLast = ghostLane === laneIdx && ghostTile !== null
+      && tiles.length > 0 && tiles[tiles.length - 1] === ghostTile;
+    const shown = hideLast ? tiles.slice(0, -1) : tiles;
+    const showDot = dotVisible[laneIdx] && shown.length > 0;
+    return shown.map((t, i) => {
+      const isLast = i === shown.length - 1 && shown.length > 0;
+      return (
+        <span key={i} className={`mj-discard-tile${isLast ? ' mj-last-discard' : ''}`}>
+          <MjTile tile={t} size="xs" variant="flat" />
+          {isLast && showDot && <i className="mj-discard-dot" key={lastDotKey[laneIdx]} />}
+        </span>
+      );
+    });
+  };
   return (
     <div className="mj-discard-area">
       <div className="mj-discard-lane mj-discard-top">
-        {lanes[2].map((t, i) => <MjTile key={i} tile={t} size="xs" />)}
+        {renderLane(lanes[2], 2)}
       </div>
       <div className="mj-discard-lane mj-discard-bottom">
-        {lanes[0].map((t, i) => <MjTile key={i} tile={t} size="xs" />)}
+        {renderLane(lanes[0], 0)}
       </div>
       <div className="mj-discard-lane mj-discard-left">
-        {lanes[3].map((t, i) => <MjTile key={i} tile={t} size="xs" />)}
+        {renderLane(lanes[3], 3)}
       </div>
       <div className="mj-discard-lane mj-discard-right">
-        {lanes[1].map((t, i) => <MjTile key={i} tile={t} size="xs" />)}
+        {renderLane(lanes[1], 1)}
       </div>
     </div>
   );
@@ -127,16 +179,15 @@ function MjTags({ p }: { p: MjSeatView }) {
   return <div className="mj-tags">{items}</div>;
 }
 
-/** 玩家信息卡（倒计时环移到中心圆圈，头像只保留发光） */
+/** 玩家信息卡：头像在最边上，昵称直接显示在头像里（最多4字），分数在头像下方 */
 function PlayerCard({ p }: { p: MjSeatView }) {
   return (
     <div className="mj-player">
       <div style={{ position: 'relative' }}>
-        <div className="mj-avatar">{p.name.slice(0, 2)}</div>
+        <div className="mj-avatar">{p.name.slice(0, 4)}</div>
         {p.isDealer && <span className="mj-dealer-badge">庄</span>}
       </div>
-      <div className="mj-player-info">
-        <span className="mj-player-name">{p.name}</span>
+      <div className="mj-player-score-wrap">
         <span className={`mj-player-score ${p.total > 0 ? 'pos' : p.total < 0 ? 'neg' : ''}`}>
           {p.total > 0 ? `+${p.total}` : p.total}
         </span>
@@ -165,16 +216,17 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
   const size: 'sm' | 'md' = mine ? 'md' : 'sm';
 
   const hasDrawn = p.drawn !== null && p.drawn !== undefined;
-  // 基础手牌数（去掉刚摸的那张）
-  const baseCount = hasDrawn ? p.handCount - 1 : p.handCount;
+
+  // 用 handIds 里的 drawnId 判断哪一张是刚摸的（同面值多张时能准确定位）
+  const drawnIdx = mine && p.drawnId !== null && p.handIds
+    ? p.handIds.indexOf(p.drawnId) : -1;
 
   const handEl = mine ? (
     <div className="mj-hand">
       {p.hand!.map((t, i) => {
-        // 最后一张是刚摸的：加上 mj-drawn 类（前面空一张牌距离）
-        const isDrawn = hasDrawn && i === p.hand!.length - 1;
+        const isDrawn = i === drawnIdx;
         return (
-          <MjTile key={i} tile={t} size={size}
+          <MjTile key={p.handIds?.[i] ?? i} tile={t} size={size}
             selected={picked === i}
             onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
             className={[
@@ -186,14 +238,10 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
     </div>
   ) : (
     <div className="mj-hand">
-      {/* baseCount 张牌背（正常手牌） */}
-      {Array.from({ length: baseCount }, (_, i) => (
-        <MjTile key={`b${i}`} back size={size} />
-      ))}
-      {/* 刚摸的那张：单独隔开，牌背 */}
-      {hasDrawn && (
-        <MjTile key="d" back size={size} className="mj-drawn" />
-      )}
+      <span className="mj-hand-count">
+        <MjTile back size={size} />
+        <i>{p.handCount}</i>
+      </span>
     </div>
   );
 
@@ -202,9 +250,9 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown }: {
       {p.melds.map((m, i) => (
         <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
           {m.type === 'peng'
-            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} />)
+            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size={size} variant="flat" />)
             : [0, 1, 2, 3].map(k => (
-              <MjTile key={k} tile={m.tile} size={size}
+              <MjTile key={k} tile={m.tile} size={size} variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
         </span>
@@ -263,21 +311,24 @@ function TurnPointer({ angle, color }: { angle: number; color: string }) {
  *
  * rel: 0=bottom(我) 1=right 2=top 3=left
  * 指针角度（从 12 点顺时针）：bottom→180° right→90° top→0° left→270°
- * 环从指针处逆时针走，所以先镜像再转，起点落在指针上。
+ * 环从指针处逆时针走：stroke 默认 3 点起点顺时针，正 dashoffset 时减少方向是逆时针，
+ * 所以把起点旋转到指针位置 + 正 offset = 从指针处逆时针减少。
  */
-function CenterDeco({ wallLeft, currentRel, ringFrac }: {
-  wallLeft: number; currentRel: 0 | 1 | 2 | 3; ringFrac?: number;
+function CenterDeco({ wallLeft, currentRel, ringFrac, nextSec }: {
+  wallLeft: number; currentRel: 0 | 1 | 2 | 3; ringFrac?: number; nextSec?: number;
 }) {
   const pointerDeg = [180, 90, 0, 270][currentRel];
-  // 环的旋转：让起点（3点钟方向）转到指针位置，再镜像（-1 scaleX）让它逆时针走
-  const ringSpin = pointerDeg - 90;  // -90 是因为 stroke 默认从 3 点方向开始
+  // 旋转：让 stroke 起点（3点钟方向）转到指针位置
+  const ringSpin = pointerDeg - 90;
 
   const size = 100;
   const cx = size / 2, cy = size / 2;
-  const r = 33;  // 跟跑胡子一样的半径比例
+  const r = 33;
   const len = 2 * Math.PI * r;
   const frac = ringFrac ?? 1;
-  const color = ringColor(frac);
+  const isNext = nextSec !== undefined;
+  const color = isNext ? '#4fc3f7' : ringColor(frac);
+  const ringFracToUse = isNext ? Math.max(0, Math.min(1, nextSec / 7)) : frac;
 
   return (
     <div className="mj-center-deco">
@@ -289,30 +340,165 @@ function CenterDeco({ wallLeft, currentRel, ringFrac }: {
         <span className="w-w">西</span>
       </div>
 
-      {/* 倒计时环：跑胡子同款，细线贴着环走 */}
+      {/* 倒计时环：起点对准指针，逆时针方向减少 */}
       <svg className="mj-center-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`}
-        style={{ transform: `rotate(${ringSpin}deg) scaleX(-1)` }}>
+        style={{ transform: `rotate(${isNext ? -90 : ringSpin}deg)` }}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.13)" strokeWidth="3" />
         <circle cx={cx} cy={cy} r={r} fill="none"
           stroke={color} strokeWidth="3" strokeLinecap="round"
-          strokeDasharray={len} strokeDashoffset={len * (1 - frac)} />
+          strokeDasharray={len} strokeDashoffset={len * (1 - ringFracToUse)} />
       </svg>
 
-      {/* 指针：指向当前玩家 */}
-      <TurnPointer angle={pointerDeg} color={color} />
+      {/* 指针：指向当前玩家（下一局模式不显示） */}
+      {!isNext && <TurnPointer angle={pointerDeg} color={color} />}
 
-      {/* 剩余张数（跑胡子 deck-head 同款） */}
-      <div className="mj-center-count">
-        <span>{wallLeft}</span>
-      </div>
+      {/* 下一局倒计时文字 / 剩余张数 */}
+      {isNext ? (
+        <div className="mj-center-next">
+          <b>下一局</b>
+          <span>{nextSec}s</span>
+        </div>
+      ) : (
+        <div className="mj-center-count">
+          <span>{wallLeft}</span>
+        </div>
+      )}
     </div>
   );
 }
 
-export function MjTable({ v, picked, ringFrac, onTilePointerDown,
+/** 骰子（两颗）—— 拟物 3D 立方体 */
+function Dice({ values, rolling }: { values: [number, number]; rolling: boolean }) {
+  const dotPositions: Record<number, [number, number][]> = {
+    1: [[50, 50]],
+    2: [[28, 28], [72, 72]],
+    3: [[28, 28], [50, 50], [72, 72]],
+    4: [[28, 28], [72, 28], [28, 72], [72, 72]],
+    5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]],
+    6: [[26, 22], [74, 22], [26, 50], [74, 50], [26, 78], [74, 78]],
+  };
+
+  // 累积旋转角度：rolling 时不断累加，停下时落在目标面上
+  const [rot, setRot] = useState<[number, number]>([20, -25]); // 初始角度：展示立体感
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (rolling) {
+      let last = performance.now();
+      const sx = 540 + Math.random() * 360;
+      const sy = 720 + Math.random() * 480;
+      const step = (now: number) => {
+        const dt = (now - last) / 1000;
+        last = now;
+        setRot(r => [r[0] + sx * dt, r[1] + sy * dt]);
+        rafRef.current = requestAnimationFrame(step);
+      };
+      rafRef.current = requestAnimationFrame(step);
+      return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    } else {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      setRot(r => {
+        const targetForFace = (v: number): [number, number] => {
+          // 让正确的面朝前，同时保持一点倾斜角度显示立体感
+          switch (v) {
+            case 1: return [20, -25];
+            case 2: return [-70, -25];
+            case 3: return [20, 65];
+            case 4: return [20, -115];
+            case 5: return [110, -25];
+            case 6: return [20, 155];
+            default: return [20, -25];
+          }
+        };
+        const t1 = targetForFace(values[0]);
+        const t2 = targetForFace(values[1]);
+        const snap = (cur: number, target: number) => {
+          const full = 360;
+          const diff = target - cur;
+          // 朝当前旋转方向，转到最接近的目标角度
+          const turns = Math.floor(cur / full);
+          let best = target + turns * full;
+          if (Math.abs(best + full - cur) < Math.abs(best - cur)) best += full;
+          if (Math.abs(best - full - cur) < Math.abs(best - cur)) best -= full;
+          // 保证至少再转半圈以上才有"减速停下"的感觉
+          if (Math.abs(best - cur) < 180) best += (best > cur ? full : -full);
+          return best;
+        };
+        return [snap(r[0], t1[0]), snap(r[1], t2[1])];
+      });
+    }
+  }, [rolling, values[0], values[1]]);
+
+  const size = 48;
+  const half = size / 2;
+
+  // 每个面：白色底面 + 渐变高光 + 红色点数
+  const dieFace = (n: number, transform: string, shade: 'light' | 'mid' | 'dark') => {
+    const bg = shade === 'light'
+      ? 'linear-gradient(135deg, #ffffff 0%, #f5f0e0 100%)'
+      : shade === 'mid'
+      ? 'linear-gradient(135deg, #f8f4e6 0%, #e8e0c8 100%)'
+      : 'linear-gradient(135deg, #e8e0c8 0%, #d8d0b4 100%)';
+    return (
+      <div className="mj-die-face" style={{ transform, background: bg, borderRadius: 8 }} key={n}>
+        <div className="mj-die-shine" />
+        {dotPositions[n].map(([cx, cy], j) => (
+          <i key={j} className="mj-die-pip" style={{ left: `${cx}%`, top: `${cy}%` }} />
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className={`mj-dice ${rolling ? 'mj-dice-rolling' : ''}`}>
+      {values.map((v, i) => (
+        <div key={i} className="mj-die-wrap">
+          <div className="mj-die"
+            style={{
+              width: size, height: size,
+              transform: `rotateX(${rot[i]}deg) rotateY(${rot[1 - i]}deg)`,
+            }}>
+            {/* 前 1 · 后 6 · 右 3 · 左 4 · 上 2 · 下 5 */}
+            {dieFace(1, `translateZ(${half}px)`, 'light')}
+            {dieFace(6, `rotateY(180deg) translateZ(${half}px)`, 'dark')}
+            {dieFace(3, `rotateY(90deg) translateZ(${half}px)`, 'mid')}
+            {dieFace(4, `rotateY(-90deg) translateZ(${half}px)`, 'mid')}
+            {dieFace(2, `rotateX(90deg) translateZ(${half}px)`, 'light')}
+            {dieFace(5, `rotateX(-90deg) translateZ(${half}px)`, 'dark')}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 翻马动画：3D 翻转 */
+function MaFlip({ tile, onDone }: { tile: Tile; onDone?: () => void }) {
+  const [flipped, setFlipped] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => { setFlipped(true); onDone?.(); }, 3000);
+    return () => clearTimeout(t);
+  }, [tile, onDone]);
+  return (
+    <div className="mj-ma-flip-wrap">
+      <div className="mj-ma-flip-label">翻马</div>
+      <div className={`mj-ma-flip ${flipped ? 'mj-ma-flipped' : ''}`}>
+        <div className="mj-ma-face mj-ma-back">
+          <div className="mj-tile-back-face" style={{ width: '100%', height: '100%' }} />
+        </div>
+        <div className="mj-ma-face mj-ma-front">
+          <MjTile tile={tile} size="md" variant="flat" />
+        </div>
+      </div>
+      {flipped && <div className="mj-ma-flip-name">{mjName(tile)}</div>}
+    </div>
+  );
+}
+
+export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
   onBack, onSettings, onHistory, onRules,
 }: {
-  v: MjTableView; picked?: number; ringFrac?: number;
+  v: MjTableView; picked?: number; ringFrac?: number; now: number;
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
   onBack?: () => void;
   onSettings?: () => void;
@@ -329,39 +515,126 @@ export function MjTable({ v, picked, ringFrac, onTilePointerDown,
     return lanes;
   }, [v.players]);
 
-  // 当前轮到的玩家（相对位置）
-  const currentSeat = v.players.find(p => p.isTurn)?.seat ?? v.mySeat;
-  const currentRel = rel(currentSeat);
+  // 指针指向的玩家：
+  //   - 出牌阶段：指向当前出牌的玩家
+  //   - 叫碰/杠/胡阶段（有明牌在桌上）：指针停留在打出牌的那家
+  const pointerSeat = v.table ? v.table.from : (v.players.find(p => p.isTurn)?.seat ?? v.mySeat);
+  const pointerRel = rel(pointerSeat);
 
-  // 明牌来自哪一家（相对位置 → 方位词）
-  const discardFromRel = v.table ? rel(v.table.from) : -1;
-  const discardFromPos = ['bottom', 'right', 'top', 'left'][discardFromRel] || '';
+  // 下一局倒计时
+  const nextSec = v.phase === 'ended' && v.nextRoundAt
+    ? Math.max(0, Math.ceil((v.nextRoundAt - now) / 1000))
+    : undefined;
 
-  // 亮牌飞行动画：table 从有到无时，保留一会儿播放缩小+淡出动画，再飞入弃牌区
+  // ============== 骰子动画 ==============
+  const [showDice, setShowDice] = useState(false);
+  const [diceRolling, setDiceRolling] = useState(false);
+  const prevRoundRef = useRef(v.roundNo);
+  useEffect(() => {
+    if (v.roundNo !== prevRoundRef.current && v.phase !== 'ended') {
+      // 新一局开始：播骰子动画
+      setShowDice(true);
+      setDiceRolling(true);
+      const t1 = setTimeout(() => setDiceRolling(false), 1000);
+      const t2 = setTimeout(() => setShowDice(false), 2200);
+      prevRoundRef.current = v.roundNo;
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    }
+    prevRoundRef.current = v.roundNo;
+  }, [v.roundNo, v.phase]);
+
+  // ============== 摸牌动画 ==============
+  // 检测 wallLeft 减少（有人摸牌），触发从中心飞到对应玩家手牌的动画
+  const [drawAnim, setDrawAnim] = useState<{ seat: number; phase: 'fly' | 'hover' | 'land'; tile: Tile | 'back' } | null>(null);
+  const prevWallRef = useRef(v.wallLeft);
+  const prevPhaseRef = useRef(v.phase);
+  const prevTurnRef = useRef(v.dealer);
+
+  useEffect(() => {
+    // wallLeft 减少 = 有人摸了一张牌
+    if (prevWallRef.current > v.wallLeft && v.wallLeft > 0 && v.phase === 'discard'
+        && prevPhaseRef.current !== 'ended') {
+      const turnPlayer = v.players.find(p => p.isTurn);
+      if (turnPlayer) {
+        const isMine = turnPlayer.seat === v.mySeat;
+        const tile: Tile | 'back' = isMine && turnPlayer.drawn !== null && turnPlayer.drawn !== true
+          ? turnPlayer.drawn as Tile : 'back';
+        setDrawAnim({ seat: turnPlayer.seat, phase: 'fly', tile });
+        // 飞行 300ms → 悬停 300ms → 落下
+        const t1 = setTimeout(() => {
+          setDrawAnim(prev => prev ? { ...prev, phase: 'hover' } : null);
+        }, 300);
+        const t2 = setTimeout(() => {
+          setDrawAnim(prev => prev ? { ...prev, phase: 'land' } : null);
+        }, 600);
+        const t3 = setTimeout(() => {
+          setDrawAnim(null);
+        }, 850);
+        prevWallRef.current = v.wallLeft;
+        prevPhaseRef.current = v.phase;
+        return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+      }
+    }
+    prevWallRef.current = v.wallLeft;
+    prevPhaseRef.current = v.phase;
+  }, [v.wallLeft, v.phase, v.players, v.mySeat]);
+
+  const drawRel = drawAnim ? rel(drawAnim.seat) : -1;
+  const drawPos = ['bottom', 'right', 'top', 'left'][drawRel] || '';
+
+  // ============== 亮牌（打牌）动画 ==============
   const [ghostTile, setGhostTile] = useState<{ tile: Tile; from: number } | null>(null);
   const [ghostFalling, setGhostFalling] = useState(false);
   const prevTableRef = useRef<{ tile: Tile; from: number } | null>(null);
+  const appearAtRef = useRef<number>(0); // 亮牌出现的时间，用于最小展示时间
+  const MIN_SHOW_MS = 800; // 亮牌最少展示 800ms 再飞走（没人要也让玩家看清）
   useEffect(() => {
     const cur = v.table ? { tile: v.table.tile, from: v.table.from } : null;
     const prev = prevTableRef.current;
-    if (cur) {
-      // 新的一张亮牌出现了
+    if (cur && (!prev || prev.tile !== cur.tile || prev.from !== cur.from)) {
+      // 新的一张亮牌出现了 → 同一家的摸牌动画立刻让位（避免两张牌重叠）
+      setDrawAnim(prev => {
+        if (prev && prev.seat === cur.from) return null;
+        return prev;
+      });
       setGhostTile(cur);
       setGhostFalling(false);
+      appearAtRef.current = Date.now();
     } else if (prev && !cur) {
-      // 亮牌消失了 → 播放飞行动画
-      setGhostTile(prev);
-      setGhostFalling(true);
+      // 亮牌从服务端消失了 → 检查是否满足最小展示时间
+      const elapsed = Date.now() - appearAtRef.current;
+      const wait = Math.max(0, MIN_SHOW_MS - elapsed);
       const t = setTimeout(() => {
-        setGhostTile(null);
-        setGhostFalling(false);
-      }, 350);
+        setGhostFalling(true);
+        const t2 = setTimeout(() => {
+          setGhostTile(null);
+          setGhostFalling(false);
+        }, 350);
+        return () => clearTimeout(t2);
+      }, wait);
       return () => clearTimeout(t);
     }
     prevTableRef.current = cur;
   }, [v.table?.tile, v.table?.from]);
   const ghostRel = ghostTile ? rel(ghostTile.from) : -1;
   const ghostPos = ['bottom', 'right', 'top', 'left'][ghostRel] || '';
+
+  // ============== 翻马动画 ==============
+  const [maAnimating, setMaAnimating] = useState(false);
+  const prevMaRef = useRef<Tile | null>(null);
+  useEffect(() => {
+    if (v.ma !== null && prevMaRef.current === null && v.phase === 'ended') {
+      // 马刚翻出来 → 播翻转动画
+      setMaAnimating(true);
+      const t = setTimeout(() => setMaAnimating(false), 3000);
+      prevMaRef.current = v.ma;
+      return () => clearTimeout(t);
+    }
+    if (v.ma === null) {
+      prevMaRef.current = null;
+      setMaAnimating(false);
+    }
+  }, [v.ma, v.phase]);
 
   return (
     <div className="mj-table">
@@ -403,22 +676,36 @@ export function MjTable({ v, picked, ringFrac, onTilePointerDown,
 
       {/* 中央区域：弃牌 + 中心装饰（倒计时环+箭头+剩余张数） */}
       <div className="mj-center">
-        <DiscardPool lanes={lanes} />
-        <CenterDeco wallLeft={v.wallLeft} currentRel={currentRel} ringFrac={ringFrac} />
+        <DiscardPool lanes={lanes}
+          ghostLane={ghostRel}
+          ghostTile={ghostTile && !ghostFalling ? ghostTile.tile : null} />
+        <CenterDeco wallLeft={v.wallLeft} currentRel={pointerRel}
+          ringFrac={ringFrac} nextSec={nextSec} />
 
         {/* 亮牌区：刚打出来的牌先亮在风位字外侧（大牌），没人要再飞入弃牌区 */}
         {ghostTile && (
           <div className={`mj-just-discard mj-from-${ghostPos} ${ghostFalling ? 'mj-falling' : ''}`}>
-            <MjTile tile={ghostTile.tile} size="sm" />
+            <MjTile tile={ghostTile.tile} size="sm" variant="flat" />
           </div>
         )}
 
-        {/* 翻出来的马 */}
-        {v.ma !== null && (
-          <div className="mj-ma-display">
-            <div className="mj-ma-label">马</div>
-            <MjTile tile={v.ma} size="sm" />
+        {/* 摸牌动画：牌从中心飞到玩家手牌上方 */}
+        {drawAnim && (
+          <div className={`mj-draw-anim mj-draw-${drawPos} mj-draw-${drawAnim.phase}`}>
+            {drawAnim.tile === 'back'
+              ? <MjTile back size="sm" variant="flat" />
+              : <MjTile tile={drawAnim.tile} size="sm" variant="flat" />}
           </div>
+        )}
+
+        {/* 骰子动画 */}
+        {showDice && (
+          <Dice values={v.dice} rolling={diceRolling} />
+        )}
+
+        {/* 翻马动画（居中播放，结束后马牌在结算面板展示） */}
+        {maAnimating && v.ma !== null && (
+          <MaFlip tile={v.ma} />
         )}
       </div>
 
