@@ -119,6 +119,9 @@
 .mj-table {
   position: relative;
   width: 100%; height: 100%;
+  /* 留出刘海/安全区 */
+  padding: 0 env(safe-area-inset-right, 0) 0 env(safe-area-inset-left, 0);
+  box-sizing: border-box;
   /* 绿色桌布：中心亮、边缘暗，像顶灯照下来 */
   background:
     radial-gradient(ellipse at 50% 48%, #277a50 0%, #1b5c3c 55%, #123f2a 100%);
@@ -173,26 +176,22 @@
 .mj-seat-bottom .mj-seat-inner {
   flex-direction: row;
   width: 100%;
-  padding: 0 8px;
+  padding: 0 calc(160px * var(--tile-scale, 1));
   align-items: flex-end;
-}
-.mj-seat-bottom .mj-seat-inner {
   justify-content: center;
   gap: 0;
-  padding: 0 8px;
   position: relative;
 }
 .mj-seat-bottom .mj-player-wrap {
   position: absolute;
-  left: 40px;
+  left: calc(40px * var(--tile-scale, 1));
   bottom: 0;
   display: flex;
   align-items: flex-end;
 }
 .mj-seat-bottom .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
-.mj-seat-bottom .mj-melds-wrap { position: absolute; right: 8px; bottom: 5px; display: flex; align-items: flex-end; }
+.mj-seat-bottom .mj-melds-wrap { position: absolute; right: calc(8px * var(--tile-scale, 1)); bottom: 5px; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-hand { justify-content: center; }
-.mj-seat-bottom .mj-melds { justify-content: flex-start; }
 
 /* ---- 顶部（对家）：头像居中靠上，手牌居中，下地牌在左 ---- */
 .mj-seat-top {
@@ -472,7 +471,7 @@
 .mj-seat-left .mj-meld .mj-tile + .mj-tile,
 .mj-seat-right .mj-meld .mj-tile + .mj-tile {
   margin-left: 0;
-  margin-top: -20px;
+  margin-top: calc(-20px * var(--tile-scale, 1));
 }
 /* 底部/左边：靠近手牌一侧的牌在最上面（完整可见），往远离手牌方向叠 */
 .mj-seat-bottom .mj-meld .mj-tile:nth-child(1) { z-index: 4; }
@@ -581,20 +580,20 @@
 }
 /* 底部（我）：距底边 100px，8张一行，满了往上叠（sm 尺寸） */
 .mj-discard-bottom {
-  bottom: 100px;
+  bottom: calc(100px * var(--tile-scale, 1));
   left: 50%;
   transform: translateX(-50%);
-  width: calc(32px * 8);
+  width: calc(32px * 8 * var(--tile-scale, 1));
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: row;
 }
 /* 顶部（对家）：距顶边 80px，8张一行，满了往下叠（sm 尺寸） */
 .mj-discard-top {
-  top: 80px;
+  top: calc(80px * var(--tile-scale, 1));
   left: 50%;
   transform: translateX(-50%);
-  width: calc(32px * 8);
+  width: calc(32px * 8 * var(--tile-scale, 1));
   justify-content: flex-end;
   align-content: flex-start;
   flex-direction: row-reverse;
@@ -602,10 +601,10 @@
 /* 左边（上家）：距左边 115px，6张一列，满了往右叠（sm 尺寸）
    牌旋转90度后视觉上宽43高32，用column竖直排列 */
 .mj-discard-left {
-  left: 115px;
+  left: calc(115px * var(--tile-scale, 1));
   top: 50%;
   transform: translateY(-50%);
-  height: calc(32px * 6);
+  height: calc(32px * 6 * var(--tile-scale, 1));
   justify-content: flex-start;
   align-content: flex-start;
   flex-direction: column;
@@ -613,10 +612,10 @@
 }
 /* 右边（下家）：距右边 115px，6张一列，满了往左叠（sm 尺寸） */
 .mj-discard-right {
-  right: 115px;
+  right: calc(115px * var(--tile-scale, 1));
   top: 50%;
   transform: translateY(-50%);
-  height: calc(32px * 6);
+  height: calc(32px * 6 * var(--tile-scale, 1));
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: column;
@@ -630,9 +629,9 @@
 .mj-discard-top .mj-discard-tile    { transform: rotate(180deg); }
 .mj-discard-left .mj-discard-tile,
 .mj-discard-right .mj-discard-tile {
-  width: 43px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: calc(43px * var(--tile-scale, 1));
+  height: calc(32px * var(--tile-scale, 1));
+  flex: 0 0 calc(32px * var(--tile-scale, 1));
   position: relative;
 }
 .mj-discard-left .mj-discard-tile .mj-tile,
@@ -970,28 +969,28 @@
 
 /* 飞向下边居中（bottom 我）：尖头朝下 */
 .mj-draw-anim.mj-draw-fly.mj-draw-bottom {
-  left: 50%; top: calc(100% - 40px);
+  left: 50%; top: calc(100% - 40px * var(--tile-scale, 1));
 }
 .mj-draw-anim.mj-draw-fly.mj-draw-bottom .mj-draw-meteor {
   transform: rotate(180deg);
 }
 /* 飞向上边居中（top 对家）：尖头朝上 */
 .mj-draw-anim.mj-draw-fly.mj-draw-top {
-  left: 50%; top: 40px;
+  left: 50%; top: calc(40px * var(--tile-scale, 1));
 }
 .mj-draw-anim.mj-draw-fly.mj-draw-top .mj-draw-meteor {
   transform: rotate(0deg);
 }
 /* 飞向左边居中（left 上家）：尖头朝左 */
 .mj-draw-anim.mj-draw-fly.mj-draw-left {
-  left: 40px; top: 50%;
+  left: calc(40px * var(--tile-scale, 1)); top: 50%;
 }
 .mj-draw-anim.mj-draw-fly.mj-draw-left .mj-draw-meteor {
   transform: rotate(-90deg);
 }
 /* 飞向右边居中（right 下家）：尖头朝右 */
 .mj-draw-anim.mj-draw-fly.mj-draw-right {
-  left: calc(100% - 40px); top: 50%;
+  left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%;
 }
 .mj-draw-anim.mj-draw-fly.mj-draw-right .mj-draw-meteor {
   transform: rotate(90deg);
@@ -1002,10 +1001,10 @@
   opacity: 0;
   transition: opacity .25s ease, transform .25s ease;
 }
-.mj-draw-anim.mj-draw-end.mj-draw-bottom { left: 50%; top: calc(100% - 40px); }
-.mj-draw-anim.mj-draw-end.mj-draw-top    { left: 50%; top: 40px; }
-.mj-draw-anim.mj-draw-end.mj-draw-left   { left: 40px; top: 50%; }
-.mj-draw-anim.mj-draw-end.mj-draw-right  { left: calc(100% - 40px); top: 50%; }
+.mj-draw-anim.mj-draw-end.mj-draw-bottom { left: 50%; top: calc(100% - 40px * var(--tile-scale, 1)); }
+.mj-draw-anim.mj-draw-end.mj-draw-top    { left: 50%; top: calc(40px * var(--tile-scale, 1)); }
+.mj-draw-anim.mj-draw-end.mj-draw-left   { left: calc(40px * var(--tile-scale, 1)); top: 50%; }
+.mj-draw-anim.mj-draw-end.mj-draw-right  { left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%; }
 .mj-draw-anim.mj-draw-end .mj-draw-meteor {
   opacity: 0;
   transform: scale(1.3);
@@ -1043,16 +1042,16 @@
 }
 /* ---- 起点位置（出牌者的弃牌区最后一张牌的大致位置） ---- */
 /* 从下边出发 */
-.mj-meld-anim.mj-meld-from-bottom { left: 50%; top: calc(100% - 100px); }
+.mj-meld-anim.mj-meld-from-bottom { left: 50%; top: calc(100% - 100px * var(--tile-scale, 1)); }
 .mj-meld-anim.mj-meld-from-bottom .mj-meld-beam { transform: rotate(0deg); }
 /* 从上边出发 */
-.mj-meld-anim.mj-meld-from-top { left: 50%; top: 80px; }
+.mj-meld-anim.mj-meld-from-top { left: 50%; top: calc(80px * var(--tile-scale, 1)); }
 .mj-meld-anim.mj-meld-from-top .mj-meld-beam { transform: rotate(180deg); }
 /* 从左边出发 */
-.mj-meld-anim.mj-meld-from-left { left: 115px; top: 50%; }
+.mj-meld-anim.mj-meld-from-left { left: calc(115px * var(--tile-scale, 1)); top: 50%; }
 .mj-meld-anim.mj-meld-from-left .mj-meld-beam { transform: rotate(-90deg); }
 /* 从右边出发 */
-.mj-meld-anim.mj-meld-from-right { left: calc(100% - 115px); top: 50%; }
+.mj-meld-anim.mj-meld-from-right { left: calc(100% - 115px * var(--tile-scale, 1)); top: 50%; }
 .mj-meld-anim.mj-meld-from-right .mj-meld-beam { transform: rotate(90deg); }
 
 /* ---- 阶段1：在起点出现 ---- */
@@ -1069,16 +1068,16 @@
 }
 .mj-meld-anim.mj-meld-fly .mj-meld-beam { opacity: 1; }
 /* 飞向下边 */
-.mj-meld-anim.mj-meld-fly.mj-meld-to-bottom { left: 50%; top: calc(100% - 40px); }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-bottom { left: 50%; top: calc(100% - 40px * var(--tile-scale, 1)); }
 .mj-meld-anim.mj-meld-fly.mj-meld-to-bottom .mj-meld-beam { transform: rotate(0deg); }
 /* 飞向上边 */
-.mj-meld-anim.mj-meld-fly.mj-meld-to-top { left: 50%; top: 40px; }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-top { left: 50%; top: calc(40px * var(--tile-scale, 1)); }
 .mj-meld-anim.mj-meld-fly.mj-meld-to-top .mj-meld-beam { transform: rotate(180deg); }
 /* 飞向左边 */
-.mj-meld-anim.mj-meld-fly.mj-meld-to-left { left: 40px; top: 50%; }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-left { left: calc(40px * var(--tile-scale, 1)); top: 50%; }
 .mj-meld-anim.mj-meld-fly.mj-meld-to-left .mj-meld-beam { transform: rotate(90deg); }
 /* 飞向右边 */
-.mj-meld-anim.mj-meld-fly.mj-meld-to-right { left: calc(100% - 40px); top: 50%; }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-right { left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%; }
 .mj-meld-anim.mj-meld-fly.mj-meld-to-right .mj-meld-beam { transform: rotate(-90deg); }
 
 /* ---- 阶段3：到达淡出 ---- */
@@ -1086,10 +1085,10 @@
   opacity: 0;
   transition: opacity .2s ease, transform .2s ease;
 }
-.mj-meld-anim.mj-meld-end.mj-meld-to-bottom { left: 50%; top: calc(100% - 40px); }
-.mj-meld-anim.mj-meld-end.mj-meld-to-top    { left: 50%; top: 40px; }
-.mj-meld-anim.mj-meld-end.mj-meld-to-left   { left: 40px; top: 50%; }
-.mj-meld-anim.mj-meld-end.mj-meld-to-right  { left: calc(100% - 40px); top: 50%; }
+.mj-meld-anim.mj-meld-end.mj-meld-to-bottom { left: 50%; top: calc(100% - 40px * var(--tile-scale, 1)); }
+.mj-meld-anim.mj-meld-end.mj-meld-to-top    { left: 50%; top: calc(40px * var(--tile-scale, 1)); }
+.mj-meld-anim.mj-meld-end.mj-meld-to-left   { left: calc(40px * var(--tile-scale, 1)); top: 50%; }
+.mj-meld-anim.mj-meld-end.mj-meld-to-right  { left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%; }
 .mj-meld-anim.mj-meld-end .mj-meld-beam {
   opacity: 0;
   transform: scale(1.4);
