@@ -306,7 +306,10 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     }
   }, [canHu, locked, g?.deadline]);
 
-  /** 拖牌出牌：手上方一条弧线，拖过去就出牌；没拖动就是点一下抬起、再点一下出牌 */
+  /** 拖牌出牌：手上方一条弧线，拖过去就出牌；单击选中/取消，快速双击出牌 */
+  const lastTapRef = useRef<{ i: number; t: number } | null>(null);
+  const DOUBLE_TAP_MS = 280;
+
   const onTilePointerDown = (e: React.PointerEvent, t: Tile, i: number) => {
     const wasPicked = picked === i;
     dragRef.current = { i, tile: t, y0: e.clientY, started: false };
@@ -328,13 +331,23 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       if (d.started && dy > 22) {           // 拖出弧线 → 出牌
         setDragOut(false); setPicked(undefined);
         if (canDiscard) send('discard', d.tile);
-      } else if (!d.started) {              // 没拖动 → 点一下抬起
-        if (wasPicked) {
-          // 再点一次：轮到自己时才出牌，否则只是取消选中
-          if (canDiscard) { setPicked(undefined); send('discard', d.tile); }
-          else setPicked(undefined);
+      } else if (!d.started) {              // 没拖动 → 单击选中/取消，双击出牌
+        const now = Date.now();
+        const last = lastTapRef.current;
+        const isDouble = last && last.i === d.i && now - last.t < DOUBLE_TAP_MS;
+        if (isDouble && canDiscard) {
+          // 快速双击 → 直接出牌
+          setPicked(undefined);
+          lastTapRef.current = null;
+          send('discard', d.tile);
+        } else if (wasPicked) {
+          // 单击已选中的牌 → 取消选中（落下）
+          setPicked(undefined);
+          lastTapRef.current = { i: d.i, t: now };
         } else {
+          // 单击未选中的牌 → 选中（抬高）
           setPicked(d.i);
+          lastTapRef.current = { i: d.i, t: now };
         }
       }
     };

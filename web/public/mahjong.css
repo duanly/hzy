@@ -407,7 +407,7 @@
 /* ---- 手牌区 ---- */
 .mj-hand { display: flex; align-items: flex-end; gap: 0; flex: none; }
 /* 刚摸的牌：左右各半张牌距离（把它和左右邻居隔开） */
-.mj-seat-bottom .mj-hand .mj-drawn { margin-left: 23px; margin-right: 23px; filter: drop-shadow(0 0 6px rgba(255,217,138,.8)); }
+.mj-seat-bottom .mj-hand .mj-drawn { margin-left: 5px; margin-right: 5px; filter: drop-shadow(0 0 6px rgba(255,217,138,.8)); }
 .mj-seat-top .mj-hand .mj-drawn { margin-left: 16px; margin-right: 16px; }     /* sm 半宽 32/2 */
 /* 左右两边：竖排，用 margin-top/bottom 代替 margin-left/right */
 .mj-seat-left .mj-hand .mj-drawn { margin-top: 16px; margin-bottom: 16px; margin-left: 0; margin-right: 0; }
