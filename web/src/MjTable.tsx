@@ -155,7 +155,7 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
   bubbles?: { id: number; seat: number; text: string; ms?: number }[];
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
-  const size: 'sm' | 'md' = mine ? 'md' : 'sm';
+  const size: 'sm' | 'lg' = mine ? 'lg' : 'sm';
 
   const hasDrawn = p.drawn !== null && p.drawn !== undefined;
 
@@ -192,9 +192,9 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
       {p.melds.map((m, i) => (
         <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
           {m.type === 'peng'
-            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size="sm" variant="flat" />)
+            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size="xs" variant="flat" />)
             : [0, 1, 2, 3].map(k => (
-              <MjTile key={k} tile={m.tile} size="sm" variant="flat"
+              <MjTile key={k} tile={m.tile} size="xs" variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
         </span>
@@ -708,7 +708,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         {/* 亮牌区：刚打出来的牌先从出牌者飞入明牌区，等待碰/杠/胡 */}
         {ghostTile && (
           <div className={`mj-just-discard mj-ghost-${ghostPhase} mj-from-${ghostPos} ${ghostTo ? `mj-to-${ghostToPos}` : ''}`}>
-            <MjTile tile={ghostTile.tile} size="sm" variant="flat" />
+            <MjTile tile={ghostTile.tile} size="xs" variant="flat" />
           </div>
         )}
 
@@ -742,7 +742,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
               const isLast = j === lane.length - 1;
               return (
                 <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
-                  <MjTile tile={t} size="sm" variant="flat" />
+                  <MjTile tile={t} size="xs" variant="flat" />
                 </span>
               );
             })}
@@ -755,7 +755,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         <div className={`mj-draw-anim mj-draw-${drawPos} mj-draw-${drawAnim.phase}`}>
           {drawIsMine && drawAnim.tile !== 'star' ? (
             <div className="mj-draw-tile">
-              <MjTile tile={drawAnim.tile as Tile} size="sm" variant="flat" />
+              <MjTile tile={drawAnim.tile as Tile} size="xs" variant="flat" />
             </div>
           ) : null}
           <div className="mj-draw-meteor" />
