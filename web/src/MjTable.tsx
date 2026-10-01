@@ -187,18 +187,28 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
     </div>
   );
 
+  // 新的碰/杠靠近手牌一侧：bottom 新在左，left 新在上 → 反转组的顺序
+  const meldsForDisplay = (pos === 'bottom' || pos === 'left')
+    ? [...p.melds].reverse()
+    : p.melds;
+  // 组内也反转：靠近手牌的那一张完整可见，往远离手牌的方向叠
+  const reverseMeldTiles = pos === 'bottom' || pos === 'left';
   const meldsEl = p.melds.length > 0 && (
     <div className="mj-melds">
-      {p.melds.map((m, i) => (
-        <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
-          {m.type === 'peng'
-            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size="ml" variant="flat" />)
-            : [0, 1, 2, 3].map(k => (
+      {meldsForDisplay.map((m, i) => {
+        const count = m.type === 'peng' ? 3 : 4;
+        const indices = reverseMeldTiles
+          ? [...Array(count).keys()].reverse()
+          : [...Array(count).keys()];
+        return (
+          <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
+            {indices.map(k => (
               <MjTile key={k} tile={m.tile} size="ml" variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
-        </span>
-      ))}
+          </span>
+        );
+      })}
     </div>
   );
 
@@ -742,7 +752,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
               const isLast = j === lane.length - 1;
               return (
                 <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
-                  <MjTile tile={t} size="xs" variant="flat" />
+                  <MjTile tile={t} size="ml" variant="flat" />
                 </span>
               );
             })}

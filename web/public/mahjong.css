@@ -182,7 +182,7 @@
 .mj-seat-bottom .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-melds-wrap { position: absolute; right: 8px; bottom: 5px; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-hand { justify-content: flex-start; }
-.mj-seat-bottom .mj-melds { justify-content: flex-end; }
+.mj-seat-bottom .mj-melds { justify-content: flex-start; }
 
 /* ---- 顶部（对家）：头像居中靠上，手牌居中，下地牌在左 ---- */
 .mj-seat-top {
@@ -434,14 +434,24 @@
   flex-wrap: wrap;
 }
 .mj-meld { display: flex; gap: 0; }
-/* 落地牌重叠 1/3，最后一张完整可见 */
-.mj-meld .mj-tile + .mj-tile { margin-left: -17px; }
-/* 左右两家竖排：上下重叠 */
+/* 落地牌重叠。横排-22px ≈ 竖排-30px的比例 (52*30/70≈22) */
+.mj-meld .mj-tile { position: relative; }
+.mj-meld .mj-tile + .mj-tile { margin-left: -22px; }
+/* 左右两家竖排：往上重叠 */
 .mj-seat-left .mj-meld .mj-tile + .mj-tile,
 .mj-seat-right .mj-meld .mj-tile + .mj-tile {
   margin-left: 0;
-  margin-top: -17px;
+  margin-top: -30px;
 }
+/* 底部/左边：靠近手牌一侧的牌在最上面（完整可见），往远离手牌方向叠 */
+.mj-seat-bottom .mj-meld .mj-tile:nth-child(1) { z-index: 4; }
+.mj-seat-bottom .mj-meld .mj-tile:nth-child(2) { z-index: 3; }
+.mj-seat-bottom .mj-meld .mj-tile:nth-child(3) { z-index: 2; }
+.mj-seat-bottom .mj-meld .mj-tile:nth-child(4) { z-index: 1; }
+.mj-seat-left .mj-meld .mj-tile:nth-child(1) { z-index: 4; }
+.mj-seat-left .mj-meld .mj-tile:nth-child(2) { z-index: 3; }
+.mj-seat-left .mj-meld .mj-tile:nth-child(3) { z-index: 2; }
+.mj-seat-left .mj-meld .mj-tile:nth-child(4) { z-index: 1; }
 /* 暗杠：四张全扣着（服务端发 tile=-1，由 back 属性控制） */
 
 /* 自己的手牌：悬停抬起 */
@@ -538,7 +548,7 @@
   bottom: 100px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(24px * 8);
+  width: calc(52px * 8);
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: row;
@@ -548,7 +558,7 @@
   top: 80px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(24px * 8);
+  width: calc(52px * 8);
   justify-content: flex-end;
   align-content: flex-start;
   flex-direction: row-reverse;
@@ -558,7 +568,7 @@
   left: 115px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(32px * 6);
+  height: calc(70px * 6);
   justify-content: flex-start;
   align-content: flex-start;
   flex-direction: column;
@@ -568,7 +578,7 @@
   right: 115px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(32px * 6);
+  height: calc(70px * 6);
   justify-content: flex-end;
   align-content: flex-start;
   flex-direction: column-reverse;
