@@ -192,9 +192,9 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
       {p.melds.map((m, i) => (
         <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
           {m.type === 'peng'
-            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size="xs" variant="flat" />)
+            ? [0, 1, 2].map(k => <MjTile key={k} tile={m.tile} size="ml" variant="flat" />)
             : [0, 1, 2, 3].map(k => (
-              <MjTile key={k} tile={m.tile} size="xs" variant="flat"
+              <MjTile key={k} tile={m.tile} size="ml" variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
         </span>
