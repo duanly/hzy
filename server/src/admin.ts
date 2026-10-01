@@ -36,14 +36,14 @@ for (let i = 1; i <= 10; i++) { VOICE_LABEL[`s${i}`] = `小${'一二三四五六
 
 /* ---- 麻将报牌音 ---- */
 const MJ_VOICE_KEYS = [
-  'mj_peng', 'mj_gang', 'mj_angang', 'mj_hu', 'mj_liuju', 'mj_pass', 'mj_your_turn', 'mj_ma', 'mj_hong',
+  'mj_peng', 'mj_gang', 'mj_angang', 'mj_hu', 'mj_liuju', 'mj_pass', 'mj_your_turn', 'mj_draw', 'mj_ma', 'mj_hong',
   ...Array.from({ length: 9 }, (_, i) => `mj_w${i + 1}`),
   ...Array.from({ length: 9 }, (_, i) => `mj_t${i + 1}`),
   ...Array.from({ length: 9 }, (_, i) => `mj_b${i + 1}`),
 ];
 const MJ_VOICE_LABEL: Record<string, string> = {
   mj_peng: '碰', mj_gang: '杠', mj_angang: '暗杠', mj_hu: '自摸，胡了', mj_liuju: '荒庄',
-  mj_pass: '过', mj_your_turn: '该你出牌', mj_ma: '翻马', mj_hong: '红中',
+  mj_pass: '过', mj_your_turn: '该你出牌', mj_draw: '该我摸牌', mj_ma: '翻马', mj_hong: '红中',
 };
 for (let i = 1; i <= 9; i++) {
   MJ_VOICE_LABEL[`mj_w${i}`] = `${'一二三四五六七八九'[i - 1]}万`;

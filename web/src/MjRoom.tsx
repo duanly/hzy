@@ -55,8 +55,8 @@ function useRing(until: number, span: number, now: number) {
 }
 
 const ACT_LABEL: Record<string, string> = { peng: '碰', gang: '杠', hu: '胡', pass: '过' };
-/** 按钮从上往下的固定次序：胡最上（手指够得着的那头），过最下 */
-const ACT_ORDER = ['hu', 'gang', 'peng', 'pass'];
+/** 按钮从上往下的固定次序：自动胡牌，所以没有胡按钮；杠最上，过最下 */
+const ACT_ORDER = ['gang', 'peng', 'pass'];
 
 /**
  * 一枚行动按钮。倒计时不描圈，让**整个按钮自己褪色** ——
@@ -295,6 +295,16 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
     if (gangTiles.length === 1) return send('gang', gangTiles[0]);
     setGangPick(true);
   };
+
+  // 自动胡牌：只要可以胡就直接胡，不需要点按钮
+  const huSentRef = useRef<number | null>(null);
+  const canHu = opts.includes('hu');
+  useEffect(() => {
+    if (canHu && !locked && huSentRef.current !== g?.deadline) {
+      huSentRef.current = g?.deadline ?? null;
+      send('hu');
+    }
+  }, [canHu, locked, g?.deadline]);
 
   /** 拖牌出牌：手上方一条弧线，拖过去就出牌；没拖动就是点一下抬起、再点一下出牌 */
   const onTilePointerDown = (e: React.PointerEvent, t: Tile, i: number) => {

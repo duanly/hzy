@@ -76,7 +76,12 @@
 
 /* 平铺牌：弃牌区/下地/明牌区用，图片本身就是平铺视角 */
 .mj-tile-flat {
+  border-radius: 5px;
+  overflow: hidden;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+}
+.mj-tile-flat img {
+  border-radius: 5px;
 }
 
 /* 手牌竖立：微仰角 + 底部厚边阴影，模拟立在桌上的3D感 */
@@ -489,7 +494,9 @@
   align-content: flex-start;
   flex-direction: column-reverse;
 }
-/* 弃牌区每张牌的方向：从打出牌的玩家视角看是正的（旋转加在容器上，红点跟着一起转） */
+/* 弃牌区每张牌的方向：牌头朝向中心（旋转加在容器上，红点跟着一起转）
+   左边：牌头朝右 → rotate(90deg)
+   右边：牌头朝左 → rotate(270deg) */
 .mj-discard-top .mj-discard-tile    { transform: rotate(180deg); }
 .mj-discard-left .mj-discard-tile   { transform: rotate(90deg); }
 .mj-discard-right .mj-discard-tile  { transform: rotate(270deg); }
@@ -562,17 +569,20 @@
 .mj-wind-ring .w-e { right: -2px;  top: 50%;  transform: translateY(-50%); }
 .mj-wind-ring .w-w { left: -2px;   top: 50%;  transform: translateY(-50%); }
 
-/* ---- 亮牌区：刚打出来的牌，先亮在东南西北风位字外侧（大牌），没人要再飞入弃牌区 ---- */
+/* ---- 亮牌区：刚打出来的牌 ----
+   四阶段：
+   - flyIn: 从出牌者位置飞到明牌区（中心）
+   - wait: 停在明牌区等待碰/杠/胡
+   - flyOut: 有人碰/杠，飞到那家下地区
+   - fall: 没人要，落入弃牌区
+*/
 .mj-just-discard {
   position: absolute;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
   pointer-events: none;
-  transition: transform .35s cubic-bezier(.32,.9,.3,1), opacity .25s ease-out;
-}
-.mj-just-discard .mj-tile {
-  transition: width .35s ease, height .35s ease;
+  transition: all .35s cubic-bezier(.32,.9,.3,1), opacity .25s ease-out;
 }
 .mj-just-discard::after {
   content: ''; position: absolute; inset: -6px;
@@ -585,48 +595,72 @@
   0%   { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.3); }
 }
-/* 亮牌位置：在风位字外侧（距离中心装饰边缘约22px，风位字+2px间距） */
-.mj-just-discard.mj-from-bottom { top: calc(50% + 72px); bottom: auto; left: 50%; transform: translate(-50%, -50%); }
-.mj-just-discard.mj-from-top    { top: calc(50% - 72px); bottom: auto; left: 50%; transform: translate(-50%, -50%); }
-.mj-just-discard.mj-from-left   { left: calc(50% - 72px); right: auto; top: 50%; transform: translate(-50%, -50%); }
-.mj-just-discard.mj-from-right  { left: calc(50% + 72px); right: auto; top: 50%; transform: translate(-50%, -50%); }
 
-/* 亮牌也跟着旋转方向 */
+/* 明牌区位置（中心）— wait 阶段 */
+.mj-just-discard.mj-ghost-wait {
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* flyIn 阶段：从出牌者位置开始（牌刚打出来，在出牌者那边）
+   过渡到 wait 的中心位置 = 飞行动画 */
+.mj-just-discard.mj-ghost-flyIn.mj-from-bottom { top: calc(50% + 130px); left: 50%; transform: translate(-50%, -50%) scale(.8); opacity: 0; }
+.mj-just-discard.mj-ghost-flyIn.mj-from-top    { top: calc(50% - 130px); left: 50%; transform: translate(-50%, -50%) scale(.8); opacity: 0; }
+.mj-just-discard.mj-ghost-flyIn.mj-from-left   { left: calc(50% - 130px); top: 50%; transform: translate(-50%, -50%) scale(.8); opacity: 0; }
+.mj-just-discard.mj-ghost-flyIn.mj-from-right  { left: calc(50% + 130px); top: 50%; transform: translate(-50%, -50%) scale(.8); opacity: 0; }
+
+/* flyOut 阶段：飞到碰/杠那家的下地区 */
+.mj-just-discard.mj-ghost-flyOut.mj-to-bottom { top: calc(50% + 120px); left: calc(50% + 120px); transform: translate(-50%, -50%) scale(.7); opacity: 0; }
+.mj-just-discard.mj-ghost-flyOut.mj-to-top    { top: calc(50% - 120px); left: calc(50% - 120px); transform: translate(-50%, -50%) scale(.7); opacity: 0; }
+.mj-just-discard.mj-ghost-flyOut.mj-to-left   { left: calc(50% - 120px); top: calc(50% + 120px); transform: translate(-50%, -50%) scale(.7); opacity: 0; }
+.mj-just-discard.mj-ghost-flyOut.mj-to-right  { left: calc(50% + 120px); top: calc(50% - 120px); transform: translate(-50%, -50%) scale(.7); opacity: 0; }
+
+/* fall 阶段：落入弃牌区（往下掉+缩小） */
+.mj-just-discard.mj-ghost-fall {
+  opacity: 0;
+  transform: translate(-50%, 40px) scale(0.6);
+}
+
+/* 亮牌旋转方向：牌头朝向中心 */
 .mj-just-discard.mj-from-left .mj-tile  { transform: rotate(90deg); }
 .mj-just-discard.mj-from-right .mj-tile { transform: rotate(270deg); }
 .mj-just-discard.mj-from-top .mj-tile   { transform: rotate(180deg); }
-
-/* 牌飞入弃牌区的动画：缩小+淡出 */
-.mj-just-discard.mj-falling {
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.6);
-}
 
 /* ---- 牌旋转 ---- */
 .mj-rot-90  { transform: rotate(90deg); }
 .mj-rot-180 { transform: rotate(180deg); }
 .mj-rot-270 { transform: rotate(270deg); }
 
-/* ---- 弃牌区最新一张红点标识 ---- */
+/* ---- 弃牌区最新一张红色光晕（呼吸圈） ---- */
 .mj-discard-tile {
   position: relative;
   display: inline-flex;
 }
-.mj-discard-dot {
-  position: absolute;
-  top: 1px;
-  right: 2px;
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: #2196f3;
-  box-shadow: 0 0 3px rgba(33,150,243,.8);
-  pointer-events: none;
-  z-index: 2;
-  animation: mjDotBlink 1s ease-in-out infinite;
+.mj-discard-glow {
+  animation: mjDiscardGlow 1.6s ease-in-out infinite;
+  border-radius: 6px;
 }
-@keyframes mjDotBlink {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: .3; transform: scale(.8); }
+.mj-discard-glow::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 80, 80, .85);
+  box-shadow:
+    0 0 12px rgba(255, 60, 60, .7),
+    0 0 24px rgba(255, 30, 30, .35),
+    inset 0 0 8px rgba(255, 100, 100, .25);
+  animation: mjDiscardGlowRing 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 3;
+}
+@keyframes mjDiscardGlow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(255,60,60,.5)); }
+  50%      { filter: drop-shadow(0 0 12px rgba(255,40,40,.9)) drop-shadow(0 0 6px rgba(255,80,80,.6)); }
+}
+@keyframes mjDiscardGlowRing {
+  0%, 100% { opacity: .6; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.06); }
 }
 
 /* 翻出来的马：放在中心右侧 */
@@ -731,37 +765,180 @@
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
-/* ---- 摸牌动画：牌从中心慢速飞到玩家手牌上方 ---- */
+/* ---- 摸牌动画：牌从公牌区飞到我手牌位置 ---- */
+/* ============================================================
+   摸牌动画：星光从中心飞向头像/手牌
+   ============================================================ */
 .mj-draw-anim {
   position: absolute;
   left: 50%; top: 50%;
-  transform: translate(-50%, -50%) scale(0.5);
+  transform: translate(-50%, -50%) scale(0.3);
   z-index: 15;
   pointer-events: none;
-  filter: drop-shadow(0 0 20px rgba(255,217,138,.8)) drop-shadow(0 0 8px rgba(255,180,60,.6));
-  transition: all .6s cubic-bezier(.25,.8,.25,1);
+  transition: left .4s cubic-bezier(.3,.7,.3,1), top .4s cubic-bezier(.3,.7,.3,1),
+              transform .4s cubic-bezier(.3,.7,.3,1), opacity .3s ease;
+  opacity: 0;
 }
-.mj-draw-anim .mj-tile { transition: transform .2s ease-out; }
-.mj-draw-anim::after {
-  content: ''; position: absolute; inset: -8px;
-  border-radius: 10px;
-  border: 2px solid #ffd98a;
-  box-shadow: 0 0 20px rgba(255,217,138,.8), 0 0 40px rgba(255,180,60,.4);
-  animation: mjPulse 1s ease-out infinite;
+.mj-draw-tile {
+  position: relative;
+  transition: opacity .15s ease, filter .15s ease;
 }
-/* 飞行到各玩家手牌位置（带数字的牌背旁） */
-.mj-draw-anim.mj-draw-bottom.mj-draw-fly  { top: calc(50% + 60px);  left: 50%;          transform: translate(-50%, -50%) scale(1); }
-.mj-draw-anim.mj-draw-bottom.mj-draw-hover{ top: calc(50% + 95px);  left: calc(50% + 180px); transform: translate(-50%, -60%) scale(1); }
-.mj-draw-anim.mj-draw-bottom.mj-draw-land { top: calc(50% + 110px); left: calc(50% + 180px); transform: translate(-50%, -50%) scale(1); opacity: 0; }
-.mj-draw-anim.mj-draw-top.mj-draw-fly     { top: calc(50% - 60px);  left: 50%;          transform: translate(-50%, -50%) scale(1); }
-.mj-draw-anim.mj-draw-top.mj-draw-hover   { top: calc(50% - 95px);  left: 50%; transform: translate(-50%, -40%) scale(1); }
-.mj-draw-anim.mj-draw-top.mj-draw-land    { top: calc(50% - 110px); left: 50%; transform: translate(-50%, -50%) scale(1); opacity: 0; }
-.mj-draw-anim.mj-draw-left.mj-draw-fly    { left: calc(50% - 60px); top: 50%;           transform: translate(-50%, -50%) scale(1) rotate(90deg); }
-.mj-draw-anim.mj-draw-left.mj-draw-hover  { left: calc(50% - 85px); top: 50%; transform: translate(-50%, -40%) scale(1) rotate(90deg); }
-.mj-draw-anim.mj-draw-left.mj-draw-land   { left: calc(50% - 100px);top: 50%; transform: translate(-50%, -50%) scale(1) rotate(90deg); opacity: 0; }
-.mj-draw-anim.mj-draw-right.mj-draw-fly   { left: calc(50% + 60px); top: 50%;           transform: translate(-50%, -50%) scale(1) rotate(270deg); }
-.mj-draw-anim.mj-draw-right.mj-draw-hover { left: calc(50% + 85px); top: 50%; transform: translate(-50%, -60%) scale(1) rotate(270deg); }
-.mj-draw-anim.mj-draw-right.mj-draw-land  { left: calc(50% + 100px);top: 50%; transform: translate(-50%, -50%) scale(1) rotate(270deg); opacity: 0; }
+/* 星光/流星层 */
+.mj-draw-meteor {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  opacity: 0;
+  transition: all .4s cubic-bezier(.3,.7,.3,1);
+  pointer-events: none;
+}
+
+/* ---- 阶段1：中心出现一个光点 ---- */
+.mj-draw-anim.mj-draw-start {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(0.5);
+  left: 50%; top: 50%;
+}
+.mj-draw-anim.mj-draw-start .mj-draw-meteor {
+  opacity: .9;
+  transform: translate(-50%, -50%) scale(1);
+}
+/* 统一金橙色流星 */
+.mj-draw-anim .mj-draw-meteor {
+  background: radial-gradient(circle, rgba(255,230,140,1) 0%, rgba(255,190,70,.8) 30%, rgba(255,150,30,.4) 60%, rgba(255,100,0,0) 100%);
+  box-shadow: 0 0 12px rgba(255,190,70,.9), 0 0 24px rgba(255,150,30,.6);
+}
+
+/* ---- 阶段2：流星飞出去，边飞边变大 ---- */
+.mj-draw-anim.mj-draw-fly {
+  opacity: 1;
+}
+.mj-draw-anim.mj-draw-fly .mj-draw-tile {
+  opacity: 0;
+}
+.mj-draw-anim.mj-draw-fly .mj-draw-meteor {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(2);
+}
+
+/* ---- 阶段3：到达后淡出（位置由方位类决定，这里只控制透明度） ---- */
+.mj-draw-anim.mj-draw-end {
+  opacity: 0;
+}
+.mj-draw-anim.mj-draw-end .mj-draw-meteor {
+  opacity: 0;
+}
+/* fly 和 end 阶段共享目标位置 */
+.mj-draw-anim.mj-draw-fly.mj-draw-bottom,
+.mj-draw-anim.mj-draw-end.mj-draw-bottom {
+  top: 100%; left: 50%;
+  transform: translate(-50%, 50%) scale(1.2);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-bottom .mj-draw-meteor,
+.mj-draw-anim.mj-draw-end.mj-draw-bottom .mj-draw-meteor {
+  width: 80px; height: 36px;
+  background: linear-gradient(to top, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
+  box-shadow:
+    0 0 16px rgba(255,200,80,1),
+    0 0 32px rgba(255,160,40,.7),
+    0 -24px 24px rgba(255,210,90,.5),
+    0 -48px 16px rgba(255,230,140,.3);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-top,
+.mj-draw-anim.mj-draw-end.mj-draw-top {
+  top: 0%; left: 50%;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-top .mj-draw-meteor,
+.mj-draw-anim.mj-draw-end.mj-draw-top .mj-draw-meteor {
+  width: 80px; height: 36px;
+  background: linear-gradient(to bottom, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
+  box-shadow:
+    0 0 16px rgba(255,200,80,1),
+    0 0 32px rgba(255,160,40,.7),
+    0 24px 24px rgba(255,210,90,.5),
+    0 48px 16px rgba(255,230,140,.3);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-left,
+.mj-draw-anim.mj-draw-end.mj-draw-left {
+  left: 0%; top: 50%;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-left .mj-draw-meteor,
+.mj-draw-anim.mj-draw-end.mj-draw-left .mj-draw-meteor {
+  width: 80px; height: 36px;
+  background: linear-gradient(to right, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
+  box-shadow:
+    0 0 16px rgba(255,200,80,1),
+    0 0 32px rgba(255,160,40,.7),
+    24px 0 24px rgba(255,210,90,.5),
+    48px 0 16px rgba(255,230,140,.3);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-right,
+.mj-draw-anim.mj-draw-end.mj-draw-right {
+  left: 100%; top: 50%;
+  transform: translate(50%, -50%) scale(1.2);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-right .mj-draw-meteor,
+.mj-draw-anim.mj-draw-end.mj-draw-right .mj-draw-meteor {
+  width: 80px; height: 36px;
+  background: linear-gradient(to left, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
+  box-shadow:
+    0 0 16px rgba(255,200,80,1),
+    0 0 32px rgba(255,160,40,.7),
+    -24px 0 24px rgba(255,210,90,.5),
+    -48px 0 16px rgba(255,230,140,.3);
+}
+
+/* ============================================================
+   头像发光：刚摸了牌的玩家头像周围一圈金色光晕
+   ============================================================ */
+.mj-avatar-glow::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,200,80,.8);
+  box-shadow:
+    0 0 12px rgba(255,180,60,.7),
+    0 0 24px rgba(255,140,30,.45),
+    inset 0 0 8px rgba(255,200,80,.35);
+  animation: mjAvatarGlow 1.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+@keyframes mjAvatarGlow {
+  0%, 100% { opacity: .6; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
+}
+
+/* ---- 其他三家：刚摸牌时手牌呼吸光晕 ---- */
+.mj-just-drew {
+  animation: mjDrawGlow 1.5s ease-out;
+}
+.mj-just-drew .mj-tile {
+  filter: drop-shadow(0 0 12px rgba(100,255,140,.8)) drop-shadow(0 0 4px rgba(40,220,100,.5));
+}
+@keyframes mjDrawGlow {
+  0%   { filter: drop-shadow(0 0 4px rgba(80,255,140,.3)); }
+  30%  { filter: drop-shadow(0 0 16px rgba(100,255,160,.9)) drop-shadow(0 0 8px rgba(40,220,100,.6)); }
+  60%  { filter: drop-shadow(0 0 10px rgba(80,255,140,.6)); }
+  100% { filter: drop-shadow(0 0 4px rgba(80,255,140,.3)); }
+}
+
+/* ---- 我手牌里刚摸的牌：抬高+间隙+呼吸光晕 ---- */
+.mj-seat-bottom .mj-hand .mj-drawn {
+  margin-left: 23px;
+  margin-right: 23px;
+  transform: translateY(-20px);
+  animation: mjDrawnPulse 1.5s ease-out;
+}
+@keyframes mjDrawnPulse {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(255,217,138,.5)); }
+  50%      { filter: drop-shadow(0 0 14px rgba(255,217,138,.95)) drop-shadow(0 0 6px rgba(255,180,60,.7)); }
+}
 
 /* ---- 翻马动画：3D 翻转 ---- */
 .mj-ma-flip-wrap {
@@ -1536,7 +1713,9 @@
   flex: none;
 }
 
-/* 左右两边弃牌牌面旋转，跟下地牌一致 */
+/* 左右两边弃牌牌面旋转，牌头朝向中心
+   左边：牌头朝右 → rotate(90deg)
+   右边：牌头朝左 → rotate(270deg) */
 .mj-seat-left .mj-discard-lane .mj-tile {
   transform: rotate(90deg);
   margin: -5.5px 0;
@@ -1650,16 +1829,17 @@
   flex-direction: row;
 }
 
-/* 打牌按钮最终样式：字左牌右，固定右边位置不跳动 */
+/* 打牌按钮最终样式：字左牌右，固定位置不跳动 */
 .mj-discard {
-  left: auto !important;
-  right: 20px;
+  left: 75% !important;
+  right: auto !important;
   bottom: calc(22% + 70px);
-  transform: none !important;
+  transform: translateX(-50%) !important;
   flex-direction: row !important;
   justify-content: flex-start;
   padding: 4px 12px 4px 16px !important;
   gap: 8px;
+  min-width: 90px;
 }
 .mj-discard-text {
   flex: none;
@@ -1669,3 +1849,75 @@
 .mj-discard-card {
   flex-shrink: 0;
 }
+
+/* ============================================================
+   弃牌区 v2：居中放置在中心区域四边，距离中心远一点
+   ============================================================ */
+.mj-center .mj-discard-lane {
+  position: absolute;
+  display: flex;
+  flex-wrap: wrap;
+  z-index: 2;
+}
+
+/* 底部弃牌区：水平居中，在中心区域底部再往外一点
+   左端固定，往右增长（flex-start = 从左开始） */
+.mj-center .mj-discard-bottom {
+  left: 50%;
+  bottom: -2%;
+  transform: translateX(-50%);
+  flex-direction: row;
+  justify-content: flex-start;
+  width: calc(32px * 8);
+}
+
+/* 顶部弃牌区：水平居中，在中心区域顶部再往外一点
+   对家视角左→右 = 屏幕上右→左，所以 row-reverse + flex-end
+   但用户看到的效果是"从右端开始往左长"，符合对家视角 */
+.mj-center .mj-discard-top {
+  left: 50%;
+  top: -2%;
+  transform: translateX(-50%);
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  width: calc(32px * 8);
+}
+
+/* 左边弃牌区：垂直居中，在中心区域左侧再往外一点
+   上家视角左→右 = 屏幕上→下，所以 column + flex-start */
+.mj-center .mj-discard-left {
+  top: 50%;
+  left: -2%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  justify-content: flex-start;
+  height: calc(32px * 8);
+  width: 43px;
+}
+
+/* 右边弃牌区：垂直居中，在中心区域右侧再往外一点
+   下家视角左→右 = 屏幕下→上，所以 column-reverse + flex-end */
+.mj-center .mj-discard-right {
+  top: 50%;
+  right: -2%;
+  transform: translateY(-50%);
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  height: calc(32px * 8);
+  width: 43px;
+}
+
+/* 顶部弃牌的牌面旋转180度（对家看着正） */
+.mj-center .mj-discard-top .mj-tile {
+  transform: rotate(180deg) !important;
+}
+
+/* 左右弃牌的牌面：平铺牌图片本身就是横着的，不需要旋转
+   牌头朝上，玩家直接可读 */
+
+/* 弃牌区内每张牌的定位容器 */
+.mj-center .mj-discard-tile {
+  position: relative;
+  flex: none;
+}
+

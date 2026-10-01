@@ -40,13 +40,13 @@ export const MJ_WORDS: Record<string, string> = {
   liuju: '荒庄',
   pass: '过',
   discard: '',
-  draw: '',
+  draw: '该我摸牌',
 };
 
 /** 动作对应的录音文件名 */
 const MJ_KEY: Record<string, string> = {
   peng: 'mj_peng', gang: 'mj_gang', angang: 'mj_angang', bugang: 'mj_gang',
-  hu: 'mj_hu', liuju: 'mj_liuju', pass: 'mj_pass',
+  hu: 'mj_hu', liuju: 'mj_liuju', pass: 'mj_pass', draw: 'mj_draw',
 };
 
 /** 后台语音页要列的条目：key → 中文标签 */
@@ -58,6 +58,7 @@ export const MJ_VOICE_KEYS: { key: string; label: string }[] = [
   { key: 'mj_liuju', label: '荒庄' },
   { key: 'mj_pass', label: '过' },
   { key: 'mj_your_turn', label: '该你出牌' },
+  { key: 'mj_draw', label: '该我摸牌' },
   { key: 'mj_ma', label: '翻马' },
   { key: 'mj_hong', label: '红中' },
   ...(['w', 't', 'b'] as const).flatMap(s => RANK_CN.map((cn, i) => ({
@@ -98,3 +99,10 @@ export function sayTile(t: number) { say(tileSpeech(t), tileKey(t)); }
 
 /** 轮到你了：只出个提示音 + 一句短的，别吵 */
 export function sayYourTurn() { cue('mj_your_turn'); }
+
+/** 摸牌：30% 概率念一句「该我摸牌」，别每次都念太吵 */
+export function sayDraw() {
+  if (Math.random() < 0.3) {
+    say(MJ_WORDS.draw, MJ_KEY.draw);
+  }
+}
