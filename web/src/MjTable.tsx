@@ -203,7 +203,7 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
         return (
           <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
             {indices.map(k => (
-              <MjTile key={k} tile={m.tile} size="ml" variant="flat"
+              <MjTile key={k} tile={m.tile} size="md" variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
           </span>
@@ -752,7 +752,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
               const isLast = j === lane.length - 1;
               return (
                 <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
-                  <MjTile tile={t} size="ml" variant="flat" />
+                  <MjTile tile={t} size="md" variant="flat" />
                 </span>
               );
             })}

@@ -79,10 +79,12 @@
 .mj-tile-flat {
   border-radius: 5px;
   overflow: hidden;
+  border: 1px solid rgba(80,60,40,.55);
+  box-sizing: border-box;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
 }
 .mj-tile-flat img {
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 /* 手牌竖立：微仰角 + 底部厚边阴影，模拟立在桌上的3D感 */
@@ -548,7 +550,7 @@
   bottom: 100px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(52px * 8);
+  width: calc(46px * 8);
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: row;
@@ -558,41 +560,59 @@
   top: 80px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(52px * 8);
+  width: calc(46px * 8);
   justify-content: flex-end;
   align-content: flex-start;
   flex-direction: row-reverse;
 }
-/* 左边（上家）：距左边 115px，6张一列，满了往右叠 */
+/* 左边（上家）：距左边 115px，6张一列，满了往右叠
+   牌旋转90度后视觉上宽70高52，用column竖直排列 */
 .mj-discard-left {
   left: 115px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(70px * 6);
+  height: calc(46px * 6);
   justify-content: flex-start;
   align-content: flex-start;
   flex-direction: column;
+  flex-wrap: wrap;
 }
 /* 右边（下家）：距右边 115px，6张一列，满了往左叠 */
 .mj-discard-right {
   right: 115px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(70px * 6);
-  justify-content: flex-end;
-  align-content: flex-start;
-  flex-direction: column-reverse;
+  height: calc(46px * 6);
+  justify-content: flex-start;
+  align-content: flex-end;
+  flex-direction: column;
+  flex-wrap: wrap;
 }
-/* 弃牌区每张牌的方向：牌头朝向中心（旋转加在容器上，红点跟着一起转）
-   左边：牌头朝右 → rotate(90deg)
-   右边：牌头朝左 → rotate(270deg) */
+/* 弃牌区每张牌的方向
+   顶：牌头朝下 → rotate(180deg)
+   左：牌头朝右 → rotate(90deg)
+   右：牌头朝左 → rotate(-90deg)
+   左右的牌：flex item 按 70×52 占位（视觉尺寸），牌本身旋转 */
 .mj-discard-top .mj-discard-tile    { transform: rotate(180deg); }
-.mj-discard-left .mj-discard-tile   { transform: rotate(90deg); }
-.mj-discard-right .mj-discard-tile  { transform: rotate(270deg); }
-/* 左右弃牌：旋转后布局高度>视觉高度，用负margin让长边贴着 */
 .mj-discard-left .mj-discard-tile,
 .mj-discard-right .mj-discard-tile {
-  margin: -4px 0;
+  width: 62px;
+  height: 46px;
+  flex: 0 0 46px;
+  position: relative;
+}
+.mj-discard-left .mj-discard-tile .mj-tile,
+.mj-discard-right .mj-discard-tile .mj-tile {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+}
+.mj-discard-left .mj-discard-tile .mj-tile {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+.mj-discard-right .mj-discard-tile .mj-tile {
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 /* ---- 中心装饰：跑胡子同款 ---- */
