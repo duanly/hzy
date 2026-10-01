@@ -1472,10 +1472,16 @@
 .mj-screen .mj-table { flex: 1; min-height: 0; height: auto; width: 100%; }
 
 /* 牌桌整体随屏幕尺寸缩放
-   以 375px（vmin）为基准，最小 0.75 倍，最大 1.4 倍
-   用 zoom 比 transform: scale 好：真实布局尺寸也跟着变 */
-.mj-table {
-  zoom: clamp(0.75, calc(100vmin / 375), 1.4);
+   以 375px（vmin）为基准，小屏缩小，大屏保持 1:1
+   用 transform scale 从中心缩放，避免 zoom 在安卓上的定位偏差 */
+.mj-table-inner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%) scale(min(1, calc(100vmin / 375)));
+  transform-origin: center center;
 }
 
 .mj-bar {

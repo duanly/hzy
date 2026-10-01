@@ -725,8 +725,23 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
     }
   }, [v.ma, v.phase]);
 
+  // 根据屏幕尺寸计算牌的缩放比例
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [tileScale, setTileScale] = useState(1);
+  useEffect(() => {
+    const updateScale = () => {
+      const vmin = Math.min(window.innerWidth, window.innerHeight);
+      // 375px 基准，最小 0.75，最大 1.4
+      const scale = Math.min(1.4, Math.max(0.75, vmin / 375));
+      setTileScale(scale);
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
   return (
-    <div className="mj-table">
+    <div className="mj-table" ref={tableRef} style={{ ['--tile-scale' as any]: tileScale }}>
       {/* 中央区域：中心装饰（倒计时环+箭头+剩余张数） */}
       <div className="mj-center">
         <CenterDeco wallLeft={v.wallLeft} currentRel={pointerRel}
