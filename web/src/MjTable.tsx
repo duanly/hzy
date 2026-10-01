@@ -730,24 +730,25 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
           </div>
         )}
 
-        {/* 四家弃牌区：居中放置，距离中心远一点避免互相覆盖 */}
-        {lanes.map((lane, i) => {
-          if (!lane.length) return null;
-          const pos = ['bottom', 'right', 'top', 'left'][i];
-          return (
-            <div key={i} className={`mj-discard-lane mj-discard-${pos}`}>
-              {lane.map((t, j) => {
-                const isLast = j === lane.length - 1;
-                return (
-                  <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
-                    <MjTile tile={t} size="sm" variant="flat" />
-                  </span>
-                );
-              })}
-            </div>
-          );
-        })}
       </div>
+
+      {/* 四家弃牌区：贴桌面四边内侧 */}
+      {lanes.map((lane, i) => {
+        if (!lane.length) return null;
+        const pos = ['bottom', 'right', 'top', 'left'][i];
+        return (
+          <div key={i} className={`mj-discard-lane mj-discard-${pos}`}>
+            {lane.map((t, j) => {
+              const isLast = j === lane.length - 1;
+              return (
+                <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
+                  <MjTile tile={t} size="sm" variant="flat" />
+                </span>
+              );
+            })}
+          </div>
+        );
+      })}
 
       {/* 摸牌动画：星光从桌面中心飞向玩家头像 */}
       {drawAnim && (

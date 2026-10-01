@@ -203,7 +203,7 @@
   z-index: 1;
 }
 .mj-seat-top .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 80px; display: flex; align-items: flex-start; }
+.mj-seat-top .mj-melds-wrap { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; align-items: flex-start; z-index: 0; }
 .mj-seat-top .mj-hand { justify-content: flex-end; }
 .mj-seat-top .mj-melds { justify-content: flex-start; }
 /* 对家的牌旋转180度，从他们视角看是正的 */
@@ -521,20 +521,21 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0;
+  z-index: 2;
 }
-/* 底部（我）：从左到右横排，8张一行，满了往上叠 */
+/* 底部（我）：距底边 100px，8张一行，满了往上叠 */
 .mj-discard-bottom {
-  bottom: 0;
+  bottom: 100px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(24px * 8); /* 8张 xs 牌宽 */
+  width: calc(24px * 8);
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: row;
 }
-/* 顶部（对家）：从他视角左→右 = 我们视角右→左，8张一行，满了往下叠 */
+/* 顶部（对家）：距顶边 100px，8张一行，满了往下叠 */
 .mj-discard-top {
-  top: 0;
+  top: 100px;
   left: 50%;
   transform: translateX(-50%);
   width: calc(24px * 8);
@@ -542,19 +543,19 @@
   align-content: flex-start;
   flex-direction: row-reverse;
 }
-/* 左边（上家）：从他视角左→右 = 我们视角上→下，8张一列，满了往右叠 */
+/* 左边（上家）：距左边 100px，8张一列，满了往右叠 */
 .mj-discard-left {
-  left: 0;
+  left: 100px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(32px * 8); /* 8张 xs 牌高 */
+  height: calc(32px * 8);
   justify-content: flex-start;
   align-content: flex-start;
   flex-direction: column;
 }
-/* 右边（下家）：从他视角左→右 = 我们视角下→上，8张一列，满了往左叠 */
+/* 右边（下家）：距右边 100px，8张一列，满了往左叠 */
 .mj-discard-right {
-  right: 0;
+  right: 100px;
   top: 50%;
   transform: translateY(-50%);
   height: calc(32px * 8);
