@@ -176,14 +176,21 @@
   align-items: flex-end;
 }
 .mj-seat-bottom .mj-seat-inner {
-  justify-content: flex-start;
-  gap: 2px;
-  padding-left: 40px;
+  justify-content: center;
+  gap: 0;
+  padding: 0 8px;
+  position: relative;
 }
-.mj-seat-bottom .mj-player-wrap { flex: none; display: flex; align-items: flex-end; }
+.mj-seat-bottom .mj-player-wrap {
+  position: absolute;
+  left: 40px;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+}
 .mj-seat-bottom .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-melds-wrap { position: absolute; right: 8px; bottom: 5px; display: flex; align-items: flex-end; }
-.mj-seat-bottom .mj-hand { justify-content: flex-start; }
+.mj-seat-bottom .mj-hand { justify-content: center; }
 .mj-seat-bottom .mj-melds { justify-content: flex-start; }
 
 /* ---- 顶部（对家）：头像居中靠上，手牌居中，下地牌在左 ---- */
@@ -367,24 +374,26 @@
   border-color: #ffd98a;
   box-shadow: 0 0 0 2px rgba(255,217,138,.35), 0 0 14px rgba(255,217,138,.55);
 }
-.mj-player-name {
-  font-size: 12px;
-  color: #f2e6c4;
-  text-shadow: 0 1px 2px rgba(0,0,0,.6);
-  white-space: nowrap;
-  line-height: 1.2;
-}
-.mj-hand-count-inline {
+/* 头像里的手牌数字：底部横条，金色字 */
+.mj-hand-count-avatar {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 0;
+  height: 16px;
+  background: rgba(0,0,0,.55);
   color: #ffd870;
+  font-size: 11px;
   font-weight: 700;
-  margin-left: 2px;
+  line-height: 16px;
+  text-align: center;
+  font-style: normal;
 }
-.mj-hand-count-inline.mj-just-drew {
+.mj-hand-count-avatar.mj-just-drew {
   animation: mjHandCountPulse 1s ease-in-out 2;
 }
 @keyframes mjHandCountPulse {
-  0%, 100% { color: #ffd870; }
-  50% { color: #fff; text-shadow: 0 0 8px rgba(255,216,112,.9); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,216,112,0); }
+  50% { box-shadow: 0 0 8px 2px rgba(255,216,112,.8); }
 }
 .mj-player-score-wrap {
   display: flex; flex-direction: column; align-items: center;
@@ -428,7 +437,7 @@
 /* ---- 手牌区 ---- */
 .mj-hand { display: flex; align-items: flex-end; gap: 0; flex: none; }
 /* 刚摸的牌：左右各半张牌距离（把它和左右邻居隔开） */
-.mj-seat-bottom .mj-hand .mj-drawn { margin-left: 5px; margin-right: 5px; filter: drop-shadow(0 0 6px rgba(255,217,138,.8)); }
+.mj-seat-bottom .mj-hand .mj-drawn { margin-left: 5px; margin-right: 5px; filter: drop-shadow(0 0 10px rgba(255,217,138,.85)); }
 .mj-seat-top .mj-hand .mj-drawn { margin-left: 16px; margin-right: 16px; }     /* sm 半宽 32/2 */
 /* 左右两边：竖排，用 margin-top/bottom 代替 margin-left/right */
 .mj-seat-left .mj-hand .mj-drawn { margin-top: 16px; margin-bottom: 16px; margin-left: 0; margin-right: 0; }
@@ -1005,6 +1014,90 @@
 }
 
 /* ============================================================
+   碰/杠蓝光动画：从出牌者弃牌区飞向碰/杠玩家边中心
+   ============================================================ */
+.mj-meld-anim {
+  position: absolute;
+  width: 60px; height: 60px;
+  margin-left: -30px; margin-top: -30px;
+  z-index: 19;
+  pointer-events: none;
+  opacity: 0;
+  transition: left .65s cubic-bezier(.25,.7,.25,1),
+              top .65s cubic-bezier(.25,.7,.25,1),
+              transform .65s cubic-bezier(.25,.7,.25,1),
+              opacity .2s ease;
+}
+.mj-meld-beam {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 8px; height: 50px;
+  margin-left: -4px; margin-top: -25px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(100,200,255,0) 0%, #5dc8ff 30%, #a8e4ff 50%, #5dc8ff 70%, rgba(100,200,255,0) 100%);
+  box-shadow:
+    0 0 10px #4db8ff,
+    0 0 22px #2a9eff,
+    0 0 36px rgba(40,150,255,.6);
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+/* ---- 起点位置（出牌者的弃牌区最后一张牌的大致位置） ---- */
+/* 从下边出发 */
+.mj-meld-anim.mj-meld-from-bottom { left: 50%; top: calc(100% - 100px); }
+.mj-meld-anim.mj-meld-from-bottom .mj-meld-beam { transform: rotate(0deg); }
+/* 从上边出发 */
+.mj-meld-anim.mj-meld-from-top { left: 50%; top: 80px; }
+.mj-meld-anim.mj-meld-from-top .mj-meld-beam { transform: rotate(180deg); }
+/* 从左边出发 */
+.mj-meld-anim.mj-meld-from-left { left: 115px; top: 50%; }
+.mj-meld-anim.mj-meld-from-left .mj-meld-beam { transform: rotate(-90deg); }
+/* 从右边出发 */
+.mj-meld-anim.mj-meld-from-right { left: calc(100% - 115px); top: 50%; }
+.mj-meld-anim.mj-meld-from-right .mj-meld-beam { transform: rotate(90deg); }
+
+/* ---- 阶段1：在起点出现 ---- */
+.mj-meld-anim.mj-meld-start {
+  opacity: 1;
+  transform: scale(0.6);
+}
+.mj-meld-anim.mj-meld-start .mj-meld-beam { opacity: .7; }
+
+/* ---- 阶段2：飞向终点（碰/杠玩家的边中心） ---- */
+.mj-meld-anim.mj-meld-fly {
+  opacity: 1;
+  transform: scale(1);
+}
+.mj-meld-anim.mj-meld-fly .mj-meld-beam { opacity: 1; }
+/* 飞向下边 */
+.mj-meld-anim.mj-meld-fly.mj-meld-to-bottom { left: 50%; top: calc(100% - 40px); }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-bottom .mj-meld-beam { transform: rotate(0deg); }
+/* 飞向上边 */
+.mj-meld-anim.mj-meld-fly.mj-meld-to-top { left: 50%; top: 40px; }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-top .mj-meld-beam { transform: rotate(180deg); }
+/* 飞向左边 */
+.mj-meld-anim.mj-meld-fly.mj-meld-to-left { left: 40px; top: 50%; }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-left .mj-meld-beam { transform: rotate(90deg); }
+/* 飞向右边 */
+.mj-meld-anim.mj-meld-fly.mj-meld-to-right { left: calc(100% - 40px); top: 50%; }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-right .mj-meld-beam { transform: rotate(-90deg); }
+
+/* ---- 阶段3：到达淡出 ---- */
+.mj-meld-anim.mj-meld-end {
+  opacity: 0;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.mj-meld-anim.mj-meld-end.mj-meld-to-bottom { left: 50%; top: calc(100% - 40px); }
+.mj-meld-anim.mj-meld-end.mj-meld-to-top    { left: 50%; top: 40px; }
+.mj-meld-anim.mj-meld-end.mj-meld-to-left   { left: 40px; top: 50%; }
+.mj-meld-anim.mj-meld-end.mj-meld-to-right  { left: calc(100% - 40px); top: 50%; }
+.mj-meld-anim.mj-meld-end .mj-meld-beam {
+  opacity: 0;
+  transform: scale(1.4);
+  transition: all .2s ease;
+}
+
+/* ============================================================
    头像发光：刚摸了牌的玩家头像周围一圈金色光晕
    ============================================================ */
 .mj-avatar-glow::after {
@@ -1045,7 +1138,7 @@
   margin-left: 0;
   margin-right: 0;
   transform: translateY(0);
-  animation: mjDrawnPop 2s ease-out forwards, mjDrawnGlow 1.8s ease-in-out infinite;
+  animation: mjDrawnPop 2s ease-out forwards, mjDrawnGlow 3s ease-in-out infinite;
 }
 @keyframes mjDrawnPop {
   0%   { margin-left: 5px; margin-right: 5px; transform: translateY(-20px); }
@@ -1053,8 +1146,8 @@
   100% { margin-left: 0; margin-right: 0; transform: translateY(0); }
 }
 @keyframes mjDrawnGlow {
-  0%, 100% { filter: drop-shadow(0 0 6px rgba(255,217,138,.55)); }
-  50%      { filter: drop-shadow(0 0 12px rgba(255,217,138,.9)) drop-shadow(0 0 4px rgba(255,180,60,.6)); }
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(255,217,138,.6)); }
+  50%      { filter: drop-shadow(0 0 18px rgba(255,217,138,.95)) drop-shadow(0 0 6px rgba(255,180,60,.7)); }
 }
 
 /* ---- 翻马动画：3D 翻转 ---- */
@@ -1365,8 +1458,8 @@
 }
 
 /* ---- 整屏布局：顶栏 + 牌桌 ---- */
-.mj-screen { display: flex; flex-direction: column; min-height: 0; }
-.mj-screen .mj-table { flex: 1; min-height: 0; height: auto; }
+.mj-screen { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; }
+.mj-screen .mj-table { flex: 1; min-height: 0; height: auto; width: 100%; }
 
 .mj-bar {
   display: flex; align-items: center; gap: 10px; flex: none;

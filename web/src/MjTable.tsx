@@ -124,17 +124,16 @@ function PlayerCard({ p, justDrew, showHandCount }: {
     <div className="mj-player">
       <div className="mj-avatar-row">
         <div style={{ position: 'relative' }} className={justDrew ? 'mj-avatar-glow' : ''}>
-          <div className="mj-avatar">{p.name.slice(0, 2)}</div>
+          <div className="mj-avatar">
+            {p.name.slice(0, 2)}
+            {showHandCount && (
+              <span className={`mj-hand-count-avatar${justDrew ? ' mj-just-drew' : ''}`}>
+                {p.handCount}
+              </span>
+            )}
+          </div>
           {p.isDealer && <span className="mj-dealer-badge">庄</span>}
         </div>
-      </div>
-      <div className="mj-player-name">
-        {p.name.slice(0, 4)}
-        {showHandCount && (
-          <span className={`mj-hand-count-inline${justDrew ? ' mj-just-drew' : ''}`}>
-            [{p.handCount}]
-          </span>
-        )}
       </div>
       <MjTags p={p} />
     </div>
@@ -494,19 +493,20 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
     return lanes;
   }, [v.players]);
 
-  // 每家弃牌最新一张的红色光晕（10s呼吸效果后消失）
-  const [glowVisible, setGlowVisible] = useState<boolean[]>([false, false, false, false]);
-  const glowTimersRef = useRef<(ReturnType<typeof setTimeout> | null)[]>([null, null, null, null]);
+  // 四家弃牌中最新一张的光晕（只有一张牌有，10s后消失）
+  const [glowSeat, setGlowSeat] = useState<number | null>(null);
+  const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevLanesRef = useRef<Tile[][]>([[], [], [], []]);
   useEffect(() => {
     for (let i = 0; i < 4; i++) {
       const cur = lanes[i];
       const prev = prevLanesRef.current[i];
       if (cur.length > prev.length) {
-        setGlowVisible(prev => { const n = [...prev]; n[i] = true; return n; });
-        if (glowTimersRef.current[i]) clearTimeout(glowTimersRef.current[i]!);
-        glowTimersRef.current[i] = setTimeout(() => {
-          setGlowVisible(prev => { const n = [...prev]; n[i] = false; return n; });
+        // 新打出的牌 → 光晕移到这家，之前的自动消失
+        setGlowSeat(i);
+        if (glowTimerRef.current) clearTimeout(glowTimerRef.current);
+        glowTimerRef.current = setTimeout(() => {
+          setGlowSeat(null);
         }, 10000);
       }
     }
@@ -614,14 +614,16 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
   const drawIsMine = drawAnim ? drawAnim.seat === v.mySeat : false;
 
   // ============== 亮牌（打牌）动画 ==============
-  // 打出的牌先从出牌者位置飞到明牌区，然后：
-  //   - 没人要：飞到弃牌区
-  //   - 有人碰/杠：飞到碰/杠那家的下地区
+  // 打出的牌（中央不再显示，只在被碰/杠时播放蓝光飞行动画）
+  //   - 没人要：直接落入弃牌区
+  //   - 有人碰/杠：蓝光从中心飞向碰/杠那家
   const [ghostTile, setGhostTile] = useState<{ tile: Tile; from: number } | null>(null);
-  // phase: flyIn（从玩家飞过来）→ wait（停在明牌区等待）→ flyOut（飞走）
+  // phase: flyIn（飞入）→ wait（等待）→ flyOut（被碰/杠飞走）→ fall（落入弃牌）
   const [ghostPhase, setGhostPhase] = useState<'flyIn' | 'wait' | 'flyOut' | 'fall'>('wait');
   // 如果是被碰/杠，飞到哪家
   const [ghostTo, setGhostTo] = useState<number | null>(null);
+  // 碰/杠蓝光飞行动画：从出牌者弃牌区飞向碰/杠玩家
+  const [meldAnim, setMeldAnim] = useState<{ fromSeat: number; toSeat: number; phase: 'start' | 'fly' | 'end' } | null>(null);
   const prevTableRef = useRef<{ tile: Tile; from: number } | null>(null);
   const prevMeldsRef = useRef<number[]>([0, 0, 0, 0]); // 记录各家 meld 数量，用于检测谁碰/杠了
   const appearAtRef = useRef<number>(0); // 亮牌出现的时间，用于最小展示时间
@@ -664,21 +666,33 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
       }
 
       const t = setTimeout(() => {
-        if (claimant !== null) {
-          // 被碰/杠了 → 飞到碰/杠那家
-          setGhostTo(claimant);
-          setGhostPhase('flyOut');
+        if (claimant !== null && prev) {
+          // 被碰/杠了 → 播放蓝光飞行动画，从出牌者弃牌区飞向碰/杠那家
+          setMeldAnim({ fromSeat: prev.from, toSeat: claimant, phase: 'start' });
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setMeldAnim(prev => prev ? { ...prev, phase: 'fly' } : prev);
+            });
+          });
+          const tFly = setTimeout(() => {
+            setMeldAnim(prev => prev ? { ...prev, phase: 'end' } : prev);
+          }, 700);
+          const tEnd = setTimeout(() => {
+            setMeldAnim(null);
+          }, 900);
+          setGhostTile(null);
+          setGhostPhase('wait');
+          (cleanup as any) = () => { clearTimeout(t); clearTimeout(tFly); clearTimeout(tEnd); };
         } else {
           // 没人要 → 落入弃牌区
           setGhostPhase('fall');
+          const t2 = setTimeout(() => {
+            setGhostTile(null);
+            setGhostPhase('wait');
+            setGhostTo(null);
+          }, 400);
+          (cleanup as any) = () => { clearTimeout(t); clearTimeout(t2); };
         }
-        const t2 = setTimeout(() => {
-          setGhostTile(null);
-          setGhostPhase('wait');
-          setGhostTo(null);
-        }, 400);
-        // t2 清理由外层 cleanup 统一管
-        (cleanup as any) = () => { clearTimeout(t); clearTimeout(t2); };
       }, wait);
       if (!cleanup) cleanup = () => clearTimeout(t);
     }
@@ -718,9 +732,9 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         <CenterDeco wallLeft={v.wallLeft} currentRel={pointerRel}
           ringFrac={ringFrac} nextSec={nextSec} />
 
-        {/* 亮牌区：刚打出来的牌先从出牌者飞入明牌区，等待碰/杠/胡 */}
-        {ghostTile && (
-          <div className={`mj-just-discard mj-ghost-${ghostPhase} mj-from-${ghostPos} ${ghostTo ? `mj-to-${ghostToPos}` : ''}`}>
+        {/* 亮牌区：没人要的牌从中央落入弃牌区（中央不再停留展示） */}
+        {ghostTile && ghostPhase === 'fall' && (
+          <div className={`mj-just-discard mj-ghost-fall mj-from-${ghostPos}`}>
             <MjTile tile={ghostTile.tile} size="xs" variant="flat" />
           </div>
         )}
@@ -753,8 +767,9 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
           <div key={i} className={`mj-discard-lane mj-discard-${pos}`}>
             {lane.map((t, j) => {
               const isLast = j === lane.length - 1;
+              const showGlow = isLast && glowSeat === i;
               return (
-                <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
+                <span key={j} className={`mj-discard-tile${showGlow ? ' mj-discard-glow' : ''}`}>
                   <MjTile tile={t} size={i === 0 ? 'md' : 'sm'} variant="flat" />
                 </span>
               );
@@ -774,6 +789,19 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
           <div className="mj-draw-meteor" />
         </div>
       )}
+
+      {/* 碰/杠蓝光动画：从出牌者弃牌区飞向碰/杠那家 */}
+      {meldAnim && (() => {
+        const fromRel = rel(meldAnim.fromSeat);
+        const toRel = rel(meldAnim.toSeat);
+        const fromPos = ['bottom', 'right', 'top', 'left'][fromRel];
+        const toPos = ['bottom', 'right', 'top', 'left'][toRel];
+        return (
+          <div className={`mj-meld-anim mj-meld-from-${fromPos} mj-meld-to-${toPos} mj-meld-${meldAnim.phase}`}>
+            <div className="mj-meld-beam" />
+          </div>
+        );
+      })()}
 
       {/* 四方玩家 */}
       {v.players.map(p => {
