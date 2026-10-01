@@ -178,7 +178,7 @@
 }
 .mj-seat-bottom .mj-player-wrap { flex: none; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
-.mj-seat-bottom .mj-melds-wrap { position: absolute; right: 8px; bottom: 80px; display: flex; align-items: flex-end; }
+.mj-seat-bottom .mj-melds-wrap { position: absolute; right: 8px; bottom: 5px; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-hand { justify-content: flex-start; }
 .mj-seat-bottom .mj-melds { justify-content: flex-end; }
 
@@ -203,7 +203,7 @@
   z-index: 5;
 }
 .mj-seat-top .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 80px; display: flex; align-items: flex-start; z-index: 0; }
+.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 5px; display: flex; align-items: flex-start; z-index: 0; }
 .mj-seat-top .mj-hand { justify-content: flex-end; }
 .mj-seat-top .mj-melds { justify-content: flex-start; }
 /* 对家的牌旋转180度，从他们视角看是正的 */
