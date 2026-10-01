@@ -1,3 +1,10 @@
+
+:root {
+  --felt: #0f3d2e; --felt2: #155a43; --ink: #1a1a1a; --red: #c8232c; --gold: #f2c14e; --paper: #fbf6e6;
+  --panel: rgba(0,0,0,.45); --text: #f4f1e8; --muted: #b9c7bf; --accent: #ffb347; --danger: #ff5b5b; --ok: #4cd97b;
+  --edge: 14px;   /* 牌桌四周统一的边距：退出 / 纪录表按钮、两侧玩家、行动按钮都对齐到这条线 */
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+}
 /* =========================================================
    麻将牌桌 · 通用样式
    参考：腾讯欢乐麻将 · 上海敲麻
