@@ -172,13 +172,17 @@
   padding: 0 8px;
   align-items: flex-end;
 }
-.mj-seat-bottom .mj-player-wrap { flex: none; margin-left: -8px; }
+.mj-seat-bottom .mj-seat-inner {
+  justify-content: center;
+  gap: 20px;
+}
+.mj-seat-bottom .mj-player-wrap { flex: none; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
-.mj-seat-bottom .mj-melds-wrap { flex: none; display: flex; align-items: flex-end; position: relative; transform: translateY(-20px); margin-right: 45px; }
+.mj-seat-bottom .mj-melds-wrap { position: absolute; right: 8px; bottom: 80px; display: flex; align-items: flex-end; }
 .mj-seat-bottom .mj-hand { justify-content: flex-start; }
 .mj-seat-bottom .mj-melds { justify-content: flex-end; }
 
-/* ---- 顶部（对家）：头像在右贴边，手牌居中，下地牌在左 ---- */
+/* ---- 顶部（对家）：头像居中靠上，手牌居中，下地牌在左 ---- */
 .mj-seat-top {
   top: 0;
   left: 0; right: 0;
@@ -189,17 +193,60 @@
   width: 100%;
   padding: 0 8px;
   align-items: flex-start;
+  position: relative;
 }
-.mj-seat-top .mj-player-wrap { flex: none; margin-right: -8px; }
+.mj-seat-top .mj-player-wrap {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  z-index: 1;
+}
 .mj-seat-top .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-top .mj-melds-wrap { flex: none; display: flex; align-items: flex-start; position: relative; transform: translateY(20px); margin-left: 45px; }
+.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 80px; display: flex; align-items: flex-start; }
 .mj-seat-top .mj-hand { justify-content: flex-end; }
 .mj-seat-top .mj-melds { justify-content: flex-start; }
 /* 对家的牌旋转180度，从他们视角看是正的 */
 .mj-seat-top .mj-hand .mj-tile,
 .mj-seat-top .mj-melds .mj-tile { transform: rotate(180deg); }
 
-/* ---- 左边（上家）：头像在上贴边，手牌居中，下地牌在下 ---- */
+
+/* 头像旁的手牌数字 chip */
+.mj-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mj-hand-count-chip {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: rgba(30,20,10,.85);
+  border: 1px solid rgba(255,200,80,.5);
+  color: #ffd870;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 6px rgba(255,180,50,.3);
+}
+/* 左右两家：数字在头像下方，垂直排列 */
+.mj-seat-left .mj-avatar-row,
+.mj-seat-right .mj-avatar-row {
+  flex-direction: column;
+  gap: 4px;
+}
+.mj-hand-count-chip.mj-just-drew {
+  animation: mjHandCountGlow 1.5s ease-in-out infinite;
+}
+@keyframes mjHandCountGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(255,180,50,.4); }
+  50%      { box-shadow: 0 0 12px rgba(255,210,80,.9), 0 0 20px rgba(255,170,40,.6); }
+}
+
+/* ---- 左边（上家）：头像居中靠左，手牌居中，下地牌在下 ---- */
 .mj-seat-left {
   left: 0;
   top: 0; bottom: 0;
@@ -210,10 +257,17 @@
   padding: 6px 0;
   align-items: flex-start;
   justify-content: space-between;
+  position: relative;
 }
-.mj-seat-left .mj-player-wrap { flex: none; margin-top: -6px; }
+.mj-seat-left .mj-player-wrap {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
 .mj-seat-left .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-left .mj-melds-wrap { flex: none; display: flex; align-items: flex-start; transform: translateX(20px); margin-bottom: 47px; }
+.mj-seat-left .mj-melds-wrap { position: absolute; left: 80px; bottom: 6px; display: flex; align-items: flex-start; }
 /* 左边的牌：每张顺时针转90度，容器竖排 */
 .mj-seat-left .mj-hand,
 .mj-seat-left .mj-melds {
@@ -235,7 +289,7 @@
   transform: translate(-50%, -50%) rotate(-90deg);
 }
 
-/* ---- 右边（下家）：头像在下贴边，手牌居中，下地牌在上 ---- */
+/* ---- 右边（下家）：头像居中靠右，手牌居中，下地牌在上 ---- */
 .mj-seat-right {
   right: 0;
   top: 0; bottom: 0;
@@ -246,10 +300,24 @@
   padding: 6px 0;
   align-items: flex-end;
   justify-content: space-between;
+  position: relative;
 }
-.mj-seat-right .mj-player-wrap { flex: none; margin-bottom: -6px; }
+.mj-seat-right .mj-player-wrap {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
 .mj-seat-right .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
-.mj-seat-right .mj-melds-wrap { flex: none; display: flex; align-items: flex-end; transform: translateX(-20px); margin-top: 47px; }
+.mj-seat-right .mj-melds-wrap { position: absolute; right: 80px; top: 6px; display: flex; align-items: flex-end; }
+
+/* 其他三家的手牌区域（牌背）隐藏，只在头像旁显示数字 */
+.mj-seat-top .mj-hand-wrap,
+.mj-seat-left .mj-hand-wrap,
+.mj-seat-right .mj-hand-wrap {
+  display: none !important;
+}
 /* 右边的牌：每张逆时针转90度，容器竖排 */
 .mj-seat-right .mj-hand,
 .mj-seat-right .mj-melds {
@@ -765,131 +833,105 @@
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
-/* ---- 摸牌动画：牌从公牌区飞到我手牌位置 ---- */
 /* ============================================================
-   摸牌动画：星光从中心飞向头像/手牌
+   摸牌动画：一道金橙色星光从桌面中心飞向玩家头像
    ============================================================ */
 .mj-draw-anim {
   position: absolute;
   left: 50%; top: 50%;
-  transform: translate(-50%, -50%) scale(0.3);
-  z-index: 15;
+  width: 60px; height: 60px;
+  margin-left: -30px; margin-top: -30px;
+  z-index: 20;
   pointer-events: none;
-  transition: left .4s cubic-bezier(.3,.7,.3,1), top .4s cubic-bezier(.3,.7,.3,1),
-              transform .4s cubic-bezier(.3,.7,.3,1), opacity .3s ease;
   opacity: 0;
+  transition: left .45s cubic-bezier(.25,.7,.25,1),
+              top .45s cubic-bezier(.25,.7,.25,1),
+              transform .45s cubic-bezier(.25,.7,.25,1),
+              opacity .2s ease;
 }
 .mj-draw-tile {
-  position: relative;
-  transition: opacity .15s ease, filter .15s ease;
-}
-/* 星光/流星层 */
-.mj-draw-meteor {
   position: absolute;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: 20px; height: 20px;
-  border-radius: 50%;
+  transition: opacity .15s ease;
+}
+/* 水滴形流星：圆头朝前、尖头朝后 */
+.mj-draw-meteor {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 14px; height: 22px;
+  margin-left: -7px; margin-top: -11px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: radial-gradient(ellipse at 50% 30%, #fffce6 0%, #ffe07a 25%, #ffac30 55%, rgba(255,140,30,0) 100%);
+  box-shadow:
+    0 0 8px #ffcf48,
+    0 0 16px #ff9820,
+    0 0 26px rgba(255,140,30,.5);
   opacity: 0;
-  transition: all .4s cubic-bezier(.3,.7,.3,1);
-  pointer-events: none;
+  transition: all .9s cubic-bezier(.25,.7,.25,1);
 }
 
-/* ---- 阶段1：中心出现一个光点 ---- */
+/* ---- 阶段1：中心出现一个小光点 ---- */
 .mj-draw-anim.mj-draw-start {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(0.5);
-  left: 50%; top: 50%;
+  transform: scale(0.6);
 }
 .mj-draw-anim.mj-draw-start .mj-draw-meteor {
-  opacity: .9;
-  transform: translate(-50%, -50%) scale(1);
-}
-/* 统一金橙色流星 */
-.mj-draw-anim .mj-draw-meteor {
-  background: radial-gradient(circle, rgba(255,230,140,1) 0%, rgba(255,190,70,.8) 30%, rgba(255,150,30,.4) 60%, rgba(255,100,0,0) 100%);
-  box-shadow: 0 0 12px rgba(255,190,70,.9), 0 0 24px rgba(255,150,30,.6);
+  opacity: 1;
 }
 
-/* ---- 阶段2：流星飞出去，边飞边变大 ---- */
+/* ---- 阶段2：飞向玩家头像 ---- */
 .mj-draw-anim.mj-draw-fly {
   opacity: 1;
+  transform: scale(1);
 }
-.mj-draw-anim.mj-draw-fly .mj-draw-tile {
-  opacity: 0;
-}
+.mj-draw-anim.mj-draw-fly .mj-draw-tile { opacity: 0; }
 .mj-draw-anim.mj-draw-fly .mj-draw-meteor {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(2);
 }
 
-/* ---- 阶段3：到达后淡出（位置由方位类决定，这里只控制透明度） ---- */
+/* 飞向下边居中（bottom 我）：尖头朝下 */
+.mj-draw-anim.mj-draw-fly.mj-draw-bottom {
+  left: 50%; top: calc(100% - 40px);
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-bottom .mj-draw-meteor {
+  transform: rotate(180deg);
+}
+/* 飞向上边居中（top 对家）：尖头朝上 */
+.mj-draw-anim.mj-draw-fly.mj-draw-top {
+  left: 50%; top: 40px;
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-top .mj-draw-meteor {
+  transform: rotate(0deg);
+}
+/* 飞向左边居中（left 上家）：尖头朝左 */
+.mj-draw-anim.mj-draw-fly.mj-draw-left {
+  left: 40px; top: 50%;
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-left .mj-draw-meteor {
+  transform: rotate(-90deg);
+}
+/* 飞向右边居中（right 下家）：尖头朝右 */
+.mj-draw-anim.mj-draw-fly.mj-draw-right {
+  left: calc(100% - 40px); top: 50%;
+}
+.mj-draw-anim.mj-draw-fly.mj-draw-right .mj-draw-meteor {
+  transform: rotate(90deg);
+}
+
+/* ---- 阶段3：到达后淡出 ---- */
 .mj-draw-anim.mj-draw-end {
   opacity: 0;
+  transition: opacity .25s ease, transform .25s ease;
 }
+.mj-draw-anim.mj-draw-end.mj-draw-bottom { left: 50%; top: calc(100% - 40px); }
+.mj-draw-anim.mj-draw-end.mj-draw-top    { left: 50%; top: 40px; }
+.mj-draw-anim.mj-draw-end.mj-draw-left   { left: 40px; top: 50%; }
+.mj-draw-anim.mj-draw-end.mj-draw-right  { left: calc(100% - 40px); top: 50%; }
 .mj-draw-anim.mj-draw-end .mj-draw-meteor {
   opacity: 0;
-}
-/* fly 和 end 阶段共享目标位置 */
-.mj-draw-anim.mj-draw-fly.mj-draw-bottom,
-.mj-draw-anim.mj-draw-end.mj-draw-bottom {
-  top: 100%; left: 50%;
-  transform: translate(-50%, 50%) scale(1.2);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-bottom .mj-draw-meteor,
-.mj-draw-anim.mj-draw-end.mj-draw-bottom .mj-draw-meteor {
-  width: 80px; height: 36px;
-  background: linear-gradient(to top, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
-  box-shadow:
-    0 0 16px rgba(255,200,80,1),
-    0 0 32px rgba(255,160,40,.7),
-    0 -24px 24px rgba(255,210,90,.5),
-    0 -48px 16px rgba(255,230,140,.3);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-top,
-.mj-draw-anim.mj-draw-end.mj-draw-top {
-  top: 0%; left: 50%;
-  transform: translate(-50%, -50%) scale(1.2);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-top .mj-draw-meteor,
-.mj-draw-anim.mj-draw-end.mj-draw-top .mj-draw-meteor {
-  width: 80px; height: 36px;
-  background: linear-gradient(to bottom, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
-  box-shadow:
-    0 0 16px rgba(255,200,80,1),
-    0 0 32px rgba(255,160,40,.7),
-    0 24px 24px rgba(255,210,90,.5),
-    0 48px 16px rgba(255,230,140,.3);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-left,
-.mj-draw-anim.mj-draw-end.mj-draw-left {
-  left: 0%; top: 50%;
-  transform: translate(-50%, -50%) scale(1.2);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-left .mj-draw-meteor,
-.mj-draw-anim.mj-draw-end.mj-draw-left .mj-draw-meteor {
-  width: 80px; height: 36px;
-  background: linear-gradient(to right, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
-  box-shadow:
-    0 0 16px rgba(255,200,80,1),
-    0 0 32px rgba(255,160,40,.7),
-    24px 0 24px rgba(255,210,90,.5),
-    48px 0 16px rgba(255,230,140,.3);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-right,
-.mj-draw-anim.mj-draw-end.mj-draw-right {
-  left: 100%; top: 50%;
-  transform: translate(50%, -50%) scale(1.2);
-}
-.mj-draw-anim.mj-draw-fly.mj-draw-right .mj-draw-meteor,
-.mj-draw-anim.mj-draw-end.mj-draw-right .mj-draw-meteor {
-  width: 80px; height: 36px;
-  background: linear-gradient(to left, rgba(255,230,140,0) 0%, rgba(255,210,90,.9) 40%, rgba(255,170,40,1) 100%);
-  box-shadow:
-    0 0 16px rgba(255,200,80,1),
-    0 0 32px rgba(255,160,40,.7),
-    -24px 0 24px rgba(255,210,90,.5),
-    -48px 0 16px rgba(255,230,140,.3);
+  transform: scale(1.3);
+  transition: all .25s ease;
 }
 
 /* ============================================================

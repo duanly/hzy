@@ -114,13 +114,24 @@ function MjTags({ p }: { p: MjSeatView }) {
   return <div className="mj-tags">{items}</div>;
 }
 
-/** 玩家信息卡：头像在最边上，昵称直接显示在头像里（最多4字），分数在头像下方 */
-function PlayerCard({ p, justDrew }: { p: MjSeatView; justDrew?: boolean }) {
+/** 玩家信息卡：头像在最边上，昵称直接显示在头像里（最多4字），分数在头像下方
+ *  非自己：手牌张数也显示在头像旁边（跟头像连在一起）
+ */
+function PlayerCard({ p, justDrew, showHandCount }: {
+  p: MjSeatView; justDrew?: boolean; showHandCount?: boolean;
+}) {
   return (
     <div className="mj-player">
-      <div style={{ position: 'relative' }} className={justDrew ? 'mj-avatar-glow' : ''}>
-        <div className="mj-avatar">{p.name.slice(0, 4)}</div>
-        {p.isDealer && <span className="mj-dealer-badge">庄</span>}
+      <div className="mj-avatar-row">
+        <div style={{ position: 'relative' }} className={justDrew ? 'mj-avatar-glow' : ''}>
+          <div className="mj-avatar">{p.name.slice(0, 4)}</div>
+          {p.isDealer && <span className="mj-dealer-badge">庄</span>}
+        </div>
+        {showHandCount && (
+          <div className={`mj-hand-count-chip${justDrew ? ' mj-just-drew' : ''}`}>
+            {p.handCount}
+          </div>
+        )}
       </div>
       <MjTags p={p} />
     </div>
@@ -196,7 +207,7 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
       <div className="mj-seat-inner">
         {/* 头像：靠边线 */}
         <div className="mj-player-wrap">
-          <PlayerCard p={p} justDrew={p.drawn !== null && p.drawn !== undefined} />
+          <PlayerCard p={p} justDrew={p.drawn !== null && p.drawn !== undefined} showHandCount={!mine} />
           {bubbles.filter(b => b.seat === p.seat).map(b => (
             <div key={b.id} className="bubble"
               style={{ ['--bub-d' as any]: `${b.ms ?? 1150}ms` }}>
@@ -542,7 +553,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         const seat = turnPlayer.seat;
 
         if (isMine && turnPlayer.drawn !== null && turnPlayer.drawn !== true) {
-          // 我方：金橙色流星从中心飞到手牌（总时长 ~1100ms）
+          // 我方：金橙色水滴形流星从中心飞向下边（总时长 ~1.9s）
           const tile = turnPlayer.drawn as Tile;
           clearDrawTimers();
           sayDraw();
@@ -550,29 +561,29 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
             setDrawAnim({ seat, phase: 'start', tile });   // 中心光点出现
             const t1 = window.setTimeout(() => {
               setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
-            }, 250);
+            }, 200);
             const t2 = window.setTimeout(() => {
-              setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 扩散消失
-            }, 750);
+              setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 到达淡出
+            }, 1100);
             const t3 = window.setTimeout(() => {
               setDrawAnim(null);
-            }, 1100);
+            }, 1400);
             drawTimersRef.current.push(t1, t2, t3);
           }, 500);
           drawTimersRef.current.push(t0);
         } else if (!isMine) {
-          // 其他三家：翠绿色星光飞向头像，头像发光（总时长 ~900ms）
+          // 其他三家：金橙色水滴形流星飞向各自边的中心（总时长 ~1.4s）
           clearDrawTimers();
           setDrawAnim({ seat, phase: 'start', tile: 'star' });   // 中心光点出现
           const t1 = window.setTimeout(() => {
-            setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞向头像
+            setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
           }, 150);
           const t2 = window.setTimeout(() => {
-            setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 扩散消失
-          }, 600);
+            setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 到达淡出
+          }, 1050);
           const t3 = window.setTimeout(() => {
             setDrawAnim(null);
-          }, 900);
+          }, 1350);
           drawTimersRef.current.push(t1, t2, t3);
         }
 
@@ -701,18 +712,6 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
           </div>
         )}
 
-        {/* 摸牌动画：星光从中心飞向头像/手牌 */}
-        {drawAnim && (
-          <div className={`mj-draw-anim mj-draw-${drawPos} mj-draw-${drawAnim.phase} ${drawIsMine ? 'mj-draw-mine' : 'mj-draw-other'}`}>
-            {drawIsMine && drawAnim.tile !== 'star' ? (
-              <div className="mj-draw-tile">
-                <MjTile tile={drawAnim.tile as Tile} size="sm" variant="flat" />
-              </div>
-            ) : null}
-            <div className="mj-draw-meteor" />
-          </div>
-        )}
-
         {/* 骰子动画 */}
         {showDice && (
           <Dice values={v.dice} rolling={diceRolling} />
@@ -749,6 +748,18 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
           );
         })}
       </div>
+
+      {/* 摸牌动画：星光从桌面中心飞向玩家头像 */}
+      {drawAnim && (
+        <div className={`mj-draw-anim mj-draw-${drawPos} mj-draw-${drawAnim.phase}`}>
+          {drawIsMine && drawAnim.tile !== 'star' ? (
+            <div className="mj-draw-tile">
+              <MjTile tile={drawAnim.tile as Tile} size="sm" variant="flat" />
+            </div>
+          ) : null}
+          <div className="mj-draw-meteor" />
+        </div>
+      )}
 
       {/* 四方玩家 */}
       {v.players.map(p => {
