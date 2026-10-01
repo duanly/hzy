@@ -23,13 +23,14 @@
   -drag: none;
 }
 
-/* 尺寸：真牌比例约 3:4（宽:高） */
-.mj-xxs { width: 15px; height: 20px; }
-.mj-xs  { width: 24px; height: 32px; }
-.mj-sm  { width: 32px; height: 43px; }
-.mj-md  { width: 46px; height: 62px; }
-.mj-ml  { width: 52px; height: 70px; }
-.mj-lg  { width: 58px; height: 78px; }
+/* 尺寸：真牌比例约 3:4（宽:高）
+   --tile-scale 由 JS 根据屏幕尺寸设置，默认 1 */
+.mj-xxs { width: calc(15px * var(--tile-scale, 1)); height: calc(20px * var(--tile-scale, 1)); }
+.mj-xs  { width: calc(24px * var(--tile-scale, 1)); height: calc(32px * var(--tile-scale, 1)); }
+.mj-sm  { width: calc(32px * var(--tile-scale, 1)); height: calc(43px * var(--tile-scale, 1)); }
+.mj-md  { width: calc(46px * var(--tile-scale, 1)); height: calc(62px * var(--tile-scale, 1)); }
+.mj-ml  { width: calc(52px * var(--tile-scale, 1)); height: calc(70px * var(--tile-scale, 1)); }
+.mj-lg  { width: calc(58px * var(--tile-scale, 1)); height: calc(78px * var(--tile-scale, 1)); }
 
 /* 旧版牌面颜色（兜底 SVG 用） */
 .mj-ink-fill   { fill: #2b2b2b; }
@@ -1470,19 +1471,6 @@
 /* ---- 整屏布局：顶栏 + 牌桌 ---- */
 .mj-screen { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; }
 .mj-screen .mj-table { flex: 1; min-height: 0; height: auto; width: 100%; }
-
-/* 牌桌整体随屏幕尺寸缩放
-   以 375px（vmin）为基准，小屏缩小，大屏保持 1:1
-   用 transform scale 从中心缩放，避免 zoom 在安卓上的定位偏差 */
-.mj-table-inner {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 100%;
-  height: 100%;
-  transform: translate(-50%, -50%) scale(min(1, calc(100vmin / 375)));
-  transform-origin: center center;
-}
 
 .mj-bar {
   display: flex; align-items: center; gap: 10px; flex: none;
