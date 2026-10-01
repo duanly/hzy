@@ -177,7 +177,7 @@
 }
 .mj-seat-bottom .mj-seat-inner {
   justify-content: flex-start;
-  gap: 20px;
+  gap: 2px;
   padding-left: 40px;
 }
 .mj-seat-bottom .mj-player-wrap { flex: none; display: flex; align-items: flex-end; }
@@ -367,6 +367,25 @@
   border-color: #ffd98a;
   box-shadow: 0 0 0 2px rgba(255,217,138,.35), 0 0 14px rgba(255,217,138,.55);
 }
+.mj-player-name {
+  font-size: 12px;
+  color: #f2e6c4;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.mj-hand-count-inline {
+  color: #ffd870;
+  font-weight: 700;
+  margin-left: 2px;
+}
+.mj-hand-count-inline.mj-just-drew {
+  animation: mjHandCountPulse 1s ease-in-out 2;
+}
+@keyframes mjHandCountPulse {
+  0%, 100% { color: #ffd870; }
+  50% { color: #fff; text-shadow: 0 0 8px rgba(255,216,112,.9); }
+}
 .mj-player-score-wrap {
   display: flex; flex-direction: column; align-items: center;
   font-size: 11px; line-height: 1.2;
@@ -436,15 +455,17 @@
   flex-wrap: wrap;
 }
 .mj-meld { display: flex; gap: 0; }
-/* 落地牌重叠。横排-22px ≈ 竖排-30px的比例 (52*30/70≈22) */
+/* 落地牌重叠（默认 sm 尺寸：横排-15px ≈ 竖排-20px，比例约47%） */
 .mj-meld .mj-tile { position: relative; }
-.mj-meld .mj-tile + .mj-tile { margin-left: -22px; }
+.mj-meld .mj-tile + .mj-tile { margin-left: -15px; }
 /* 左右两家竖排：往上重叠 */
 .mj-seat-left .mj-meld .mj-tile + .mj-tile,
 .mj-seat-right .mj-meld .mj-tile + .mj-tile {
   margin-left: 0;
-  margin-top: -30px;
+  margin-top: -20px;
 }
+/* 底部（我）md 尺寸：横排-22px 竖排无，约48% */
+.mj-seat-bottom .mj-meld .mj-tile + .mj-tile { margin-left: -22px; }
 /* 底部/左边：靠近手牌一侧的牌在最上面（完整可见），往远离手牌方向叠 */
 .mj-seat-bottom .mj-meld .mj-tile:nth-child(1) { z-index: 4; }
 .mj-seat-bottom .mj-meld .mj-tile:nth-child(2) { z-index: 3; }
@@ -462,6 +483,14 @@
 }
 .mj-seat-bottom .mj-hand .mj-sel {
   transform: translateY(-40%);
+}
+/* 刚摸的牌被选中时，强制抬起，暂停摸牌动画 */
+.mj-seat-bottom .mj-hand .mj-drawn.mj-sel {
+  transform: translateY(-40%);
+  animation: none;
+  filter:
+    drop-shadow(0 8px 10px rgba(0,0,0,.5))
+    drop-shadow(0 0 8px rgba(255,217,138,.8));
 }
 .mj-seat-bottom .mj-hand .mj-tile:hover {
   transform: translateY(-15%);
@@ -555,34 +584,34 @@
   align-content: flex-end;
   flex-direction: row;
 }
-/* 顶部（对家）：距顶边 80px，8张一行，满了往下叠 */
+/* 顶部（对家）：距顶边 80px，8张一行，满了往下叠（sm 尺寸） */
 .mj-discard-top {
   top: 80px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(46px * 8);
+  width: calc(32px * 8);
   justify-content: flex-end;
   align-content: flex-start;
   flex-direction: row-reverse;
 }
-/* 左边（上家）：距左边 115px，6张一列，满了往右叠
-   牌旋转90度后视觉上宽70高52，用column竖直排列 */
+/* 左边（上家）：距左边 115px，6张一列，满了往右叠（sm 尺寸）
+   牌旋转90度后视觉上宽43高32，用column竖直排列 */
 .mj-discard-left {
   left: 115px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(46px * 6);
+  height: calc(32px * 6);
   justify-content: flex-start;
   align-content: flex-start;
   flex-direction: column;
   flex-wrap: wrap;
 }
-/* 右边（下家）：距右边 115px，6张一列，满了往左叠 */
+/* 右边（下家）：距右边 115px，6张一列，满了往左叠（sm 尺寸） */
 .mj-discard-right {
   right: 115px;
   top: 50%;
   transform: translateY(-50%);
-  height: calc(46px * 6);
+  height: calc(32px * 6);
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: column;
@@ -590,15 +619,15 @@
 }
 /* 弃牌区每张牌的方向
    顶：牌头朝下 → rotate(180deg)
-   左：牌头朝右 → rotate(90deg)
-   右：牌头朝左 → rotate(-90deg)
-   左右的牌：flex item 按 70×52 占位（视觉尺寸），牌本身旋转 */
+   左：牌头朝右 → 牌旋转90度
+   右：牌头朝左 → 牌旋转-90度
+   左右的牌：sm尺寸，flex item 按 43×32 占位（视觉尺寸） */
 .mj-discard-top .mj-discard-tile    { transform: rotate(180deg); }
 .mj-discard-left .mj-discard-tile,
 .mj-discard-right .mj-discard-tile {
-  width: 62px;
-  height: 46px;
-  flex: 0 0 46px;
+  width: 43px;
+  height: 32px;
+  flex: 0 0 32px;
   position: relative;
 }
 .mj-discard-left .mj-discard-tile .mj-tile,

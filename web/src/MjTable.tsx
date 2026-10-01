@@ -124,13 +124,16 @@ function PlayerCard({ p, justDrew, showHandCount }: {
     <div className="mj-player">
       <div className="mj-avatar-row">
         <div style={{ position: 'relative' }} className={justDrew ? 'mj-avatar-glow' : ''}>
-          <div className="mj-avatar">{p.name.slice(0, 4)}</div>
+          <div className="mj-avatar">{p.name.slice(0, 2)}</div>
           {p.isDealer && <span className="mj-dealer-badge">庄</span>}
         </div>
+      </div>
+      <div className="mj-player-name">
+        {p.name.slice(0, 4)}
         {showHandCount && (
-          <div className={`mj-hand-count-chip${justDrew ? ' mj-just-drew' : ''}`}>
-            {p.handCount}
-          </div>
+          <span className={`mj-hand-count-inline${justDrew ? ' mj-just-drew' : ''}`}>
+            [{p.handCount}]
+          </span>
         )}
       </div>
       <MjTags p={p} />
@@ -203,7 +206,7 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
         return (
           <span key={i} className={`mj-meld${m.gang === 'an' ? ' mj-angang' : ''}`}>
             {indices.map(k => (
-              <MjTile key={k} tile={m.tile} size="md" variant="flat"
+              <MjTile key={k} tile={m.tile} size={mine ? 'md' : 'sm'} variant="flat"
                 back={m.gang === 'an' && !mine} />
             ))}
           </span>
@@ -752,7 +755,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
               const isLast = j === lane.length - 1;
               return (
                 <span key={j} className={`mj-discard-tile${isLast && glowVisible[i] ? ' mj-discard-glow' : ''}`}>
-                  <MjTile tile={t} size="md" variant="flat" />
+                  <MjTile tile={t} size={i === 0 ? 'md' : 'sm'} variant="flat" />
                 </span>
               );
             })}
