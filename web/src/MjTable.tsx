@@ -732,7 +732,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
     const updateScale = () => {
       const vmin = Math.min(window.innerWidth, window.innerHeight);
       // 375px 基准，最小 0.75，最大 1.4
-      const scale = Math.min(1.4, Math.max(0.75, vmin / 375));
+      const scale = Math.min(1.4, Math.max(0.75, vmin / 393));
       setTileScale(scale);
     };
     updateScale();
