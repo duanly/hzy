@@ -437,7 +437,7 @@
 /* ---- 手牌区 ---- */
 .mj-hand { display: flex; align-items: flex-end; gap: 0; flex: none; }
 /* 刚摸的牌：左右各半张牌距离（把它和左右邻居隔开） */
-.mj-seat-bottom .mj-hand .mj-drawn { margin-left: 5px; margin-right: 5px; filter: drop-shadow(0 0 10px rgba(255,217,138,.85)); }
+.mj-seat-bottom .mj-hand .mj-drawn { margin-left: 5px; margin-right: 5px; position: relative; }
 .mj-seat-top .mj-hand .mj-drawn { margin-left: 16px; margin-right: 16px; }     /* sm 半宽 32/2 */
 /* 左右两边：竖排，用 margin-top/bottom 代替 margin-left/right */
 .mj-seat-left .mj-hand .mj-drawn { margin-top: 16px; margin-bottom: 16px; margin-left: 0; margin-right: 0; }
@@ -464,17 +464,15 @@
   flex-wrap: wrap;
 }
 .mj-meld { display: flex; gap: 0; }
-/* 落地牌重叠（默认 sm 尺寸：横排-15px ≈ 竖排-20px，比例约47%） */
+/* 落地牌：左右两家竖排重叠，上下两家不重叠 */
 .mj-meld .mj-tile { position: relative; }
-.mj-meld .mj-tile + .mj-tile { margin-left: -15px; }
+.mj-meld .mj-tile + .mj-tile { margin-left: 0; }
 /* 左右两家竖排：往上重叠 */
 .mj-seat-left .mj-meld .mj-tile + .mj-tile,
 .mj-seat-right .mj-meld .mj-tile + .mj-tile {
   margin-left: 0;
   margin-top: -20px;
 }
-/* 底部（我）md 尺寸：横排-22px 竖排无，约48% */
-.mj-seat-bottom .mj-meld .mj-tile + .mj-tile { margin-left: -22px; }
 /* 底部/左边：靠近手牌一侧的牌在最上面（完整可见），往远离手牌方向叠 */
 .mj-seat-bottom .mj-meld .mj-tile:nth-child(1) { z-index: 4; }
 .mj-seat-bottom .mj-meld .mj-tile:nth-child(2) { z-index: 3; }
@@ -497,9 +495,6 @@
 .mj-seat-bottom .mj-hand .mj-drawn.mj-sel {
   transform: translateY(-40%);
   animation: none;
-  filter:
-    drop-shadow(0 8px 10px rgba(0,0,0,.5))
-    drop-shadow(0 0 8px rgba(255,217,138,.8));
 }
 .mj-seat-bottom .mj-hand .mj-tile:hover {
   transform: translateY(-15%);
@@ -583,12 +578,12 @@
   gap: 0;
   z-index: 2;
 }
-/* 底部（我）：距底边 100px，8张一行，满了往上叠 */
+/* 底部（我）：距底边 100px，8张一行，满了往上叠（sm 尺寸） */
 .mj-discard-bottom {
   bottom: 100px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(46px * 8);
+  width: calc(32px * 8);
   justify-content: flex-start;
   align-content: flex-end;
   flex-direction: row;
@@ -953,13 +948,16 @@
 /* ---- 阶段1：中心出现一个小光点 ---- */
 .mj-draw-anim.mj-draw-start {
   opacity: 1;
-  transform: scale(0.6);
+  transform: scale(0.25);
 }
 .mj-draw-anim.mj-draw-start .mj-draw-meteor {
-  opacity: 1;
+  opacity: .8;
+  width: 8px; height: 8px;
+  margin-left: -4px; margin-top: -4px;
+  border-radius: 50%;
 }
 
-/* ---- 阶段2：飞向玩家头像 ---- */
+/* ---- 阶段2：飞向玩家头像（边飞边变大） ---- */
 .mj-draw-anim.mj-draw-fly {
   opacity: 1;
   transform: scale(1);
@@ -1138,16 +1136,28 @@
   margin-left: 0;
   margin-right: 0;
   transform: translateY(0);
-  animation: mjDrawnPop 2s ease-out forwards, mjDrawnGlow 3s ease-in-out infinite;
+  animation: mjDrawnPop 2s ease-out forwards;
 }
 @keyframes mjDrawnPop {
   0%   { margin-left: 5px; margin-right: 5px; transform: translateY(-20px); }
   80%  { margin-left: 5px; margin-right: 5px; transform: translateY(-20px); }
   100% { margin-left: 0; margin-right: 0; transform: translateY(0); }
 }
-@keyframes mjDrawnGlow {
-  0%, 100% { filter: drop-shadow(0 0 8px rgba(255,217,138,.6)); }
-  50%      { filter: drop-shadow(0 0 18px rgba(255,217,138,.95)) drop-shadow(0 0 6px rgba(255,180,60,.7)); }
+/* 摸上来的牌：牌顶一个金色星光小点标志 */
+.mj-seat-bottom .mj-hand .mj-drawn::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fffce6 0%, #ffe07a 40%, rgba(255,170,50,0) 100%);
+  box-shadow:
+    0 0 6px #ffcf48,
+    0 0 12px rgba(255,150,30,.6);
+  z-index: 5;
 }
 
 /* ---- 翻马动画：3D 翻转 ---- */
@@ -1460,6 +1470,13 @@
 /* ---- 整屏布局：顶栏 + 牌桌 ---- */
 .mj-screen { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; }
 .mj-screen .mj-table { flex: 1; min-height: 0; height: auto; width: 100%; }
+
+/* 牌桌整体随屏幕尺寸缩放
+   以 375px（vmin）为基准，最小 0.75 倍，最大 1.4 倍
+   用 zoom 比 transform: scale 好：真实布局尺寸也跟着变 */
+.mj-table {
+  zoom: clamp(0.75, calc(100vmin / 375), 1.4);
+}
 
 .mj-bar {
   display: flex; align-items: center; gap: 10px; flex: none;

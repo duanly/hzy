@@ -770,7 +770,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
               const showGlow = isLast && glowSeat === i;
               return (
                 <span key={j} className={`mj-discard-tile${showGlow ? ' mj-discard-glow' : ''}`}>
-                  <MjTile tile={t} size={i === 0 ? 'md' : 'sm'} variant="flat" />
+                  <MjTile tile={t} size="sm" variant="flat" />
                 </span>
               );
             })}
