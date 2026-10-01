@@ -155,7 +155,7 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
   bubbles?: { id: number; seat: number; text: string; ms?: number }[];
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
-  const size: 'sm' | 'md' = mine ? 'md' : 'sm';
+  const size: 'sm' | 'ml' = mine ? 'ml' : 'sm';
 
   const hasDrawn = p.drawn !== null && p.drawn !== undefined;
 

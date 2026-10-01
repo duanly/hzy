@@ -28,6 +28,7 @@
 .mj-xs  { width: 24px; height: 32px; }
 .mj-sm  { width: 32px; height: 43px; }
 .mj-md  { width: 46px; height: 62px; }
+.mj-ml  { width: 52px; height: 70px; }
 .mj-lg  { width: 58px; height: 78px; }
 
 /* 旧版牌面颜色（兜底 SVG 用） */
@@ -204,7 +205,7 @@
   z-index: 5;
 }
 .mj-seat-top .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 80px; display: flex; align-items: flex-start; z-index: 0; }
+.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 5px; display: flex; align-items: flex-start; z-index: 0; }
 .mj-seat-top .mj-hand { justify-content: flex-end; }
 .mj-seat-top .mj-melds { justify-content: flex-start; }
 /* 对家的牌旋转180度，从他们视角看是正的 */
@@ -534,9 +535,9 @@
   align-content: flex-end;
   flex-direction: row;
 }
-/* 顶部（对家）：距顶边 115px，8张一行，满了往下叠 */
+/* 顶部（对家）：距顶边 80px，8张一行，满了往下叠 */
 .mj-discard-top {
-  top: 115px;
+  top: 80px;
   left: 50%;
   transform: translateX(-50%);
   width: calc(24px * 8);

@@ -66,7 +66,7 @@ export function MjFace({ tile }: { tile: Tile }) {
    ============================================================ */
 
 export function MjTile({ tile, size = 'md', back, className, onClick, onPointerDown, selected, dim, style, variant = 'standing' }: {
-  tile?: Tile; size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg'; back?: boolean;
+  tile?: Tile; size?: 'xxs' | 'xs' | 'sm' | 'md' | 'ml' | 'lg'; back?: boolean;
   className?: string; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; selected?: boolean; dim?: boolean;
   style?: React.CSSProperties;
   variant?: 'standing' | 'flat';
