@@ -200,10 +200,10 @@
   left: 50%;
   top: 0;
   transform: translateX(-50%);
-  z-index: 1;
+  z-index: 5;
 }
 .mj-seat-top .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-top .mj-melds-wrap { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; align-items: flex-start; z-index: 0; }
+.mj-seat-top .mj-melds-wrap { position: absolute; left: 8px; top: 25px; display: flex; align-items: flex-start; z-index: 0; }
 .mj-seat-top .mj-hand { justify-content: flex-end; }
 .mj-seat-top .mj-melds { justify-content: flex-start; }
 /* 对家的牌旋转180度，从他们视角看是正的 */
@@ -264,10 +264,10 @@
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 1;
+  z-index: 5;
 }
 .mj-seat-left .mj-hand-wrap { flex: none; display: flex; align-items: flex-start; }
-.mj-seat-left .mj-melds-wrap { position: absolute; left: 80px; bottom: 6px; display: flex; align-items: flex-start; }
+.mj-seat-left .mj-melds-wrap { position: absolute; left: 25px; bottom: 10px; display: flex; align-items: flex-start; z-index: 0; }
 /* 左边的牌：每张顺时针转90度，容器竖排 */
 .mj-seat-left .mj-hand,
 .mj-seat-left .mj-melds {
@@ -307,10 +307,10 @@
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 1;
+  z-index: 5;
 }
 .mj-seat-right .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
-.mj-seat-right .mj-melds-wrap { position: absolute; right: 80px; top: 6px; display: flex; align-items: flex-end; }
+.mj-seat-right .mj-melds-wrap { position: absolute; right: 25px; top: 10px; display: flex; align-items: flex-end; z-index: 0; }
 
 /* 其他三家的手牌区域（牌背）隐藏，只在头像旁显示数字 */
 .mj-seat-top .mj-hand-wrap,
@@ -533,9 +533,9 @@
   align-content: flex-end;
   flex-direction: row;
 }
-/* 顶部（对家）：距顶边 100px，8张一行，满了往下叠 */
+/* 顶部（对家）：距顶边 115px，8张一行，满了往下叠 */
 .mj-discard-top {
-  top: 100px;
+  top: 115px;
   left: 50%;
   transform: translateX(-50%);
   width: calc(24px * 8);
@@ -543,9 +543,9 @@
   align-content: flex-start;
   flex-direction: row-reverse;
 }
-/* 左边（上家）：距左边 100px，8张一列，满了往右叠 */
+/* 左边（上家）：距左边 115px，8张一列，满了往右叠 */
 .mj-discard-left {
-  left: 100px;
+  left: 115px;
   top: 50%;
   transform: translateY(-50%);
   height: calc(32px * 8);
@@ -553,9 +553,9 @@
   align-content: flex-start;
   flex-direction: column;
 }
-/* 右边（下家）：距右边 100px，8张一列，满了往左叠 */
+/* 右边（下家）：距右边 115px，8张一列，满了往左叠 */
 .mj-discard-right {
-  right: 100px;
+  right: 115px;
   top: 50%;
   transform: translateY(-50%);
   height: calc(32px * 8);
