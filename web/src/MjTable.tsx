@@ -845,11 +845,6 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
       {/* 摸牌动画：星光从桌面中心飞向玩家头像 */}
       {drawAnim && (
         <div className={`mj-draw-anim mj-draw-${drawPos} mj-draw-${drawAnim.phase}`}>
-          {drawIsMine && drawAnim.tile !== 'star' ? (
-            <div className="mj-draw-tile">
-              <MjTile tile={drawAnim.tile as Tile} size="xs" variant="flat" />
-            </div>
-          ) : null}
           {!drawIsMine && (
             <div className="mj-draw-back-tile">
               <MjTile back size="sm" variant="flat" />

@@ -21,8 +21,49 @@ import { sayAction, sayMa, sayTile, sayYourTurn } from './mjvoice.ts';
 import { settings as voiceSettings, voicePack, setVoicePack, voicePacks } from './voice.ts';
 
 /** 服务器时间的秒针。切到后台就停 —— 看不见的时候还每秒跳四次纯属费电 */
-function useNow(active: boolean) {
-  const [now, setNow] = useState(() => socket.now());
+/* ---- 屋檐组件：显示红中麻将 · 第x局 · 底分x ---- */
+const EAVE_THEMES: Record<string, { a: string; b: string; c: string; trim: string }> = {
+  green: { a: '#1f7a58', b: '#166049', c: '#0f4530', trim: 'rgba(255,233,168,.55)' },
+  qing: { a: '#2b3a33', b: '#1b2722', c: '#121a17', trim: 'rgba(242,193,78,.5)' },
+  red: { a: '#6b2327', b: '#45151a', c: '#280c0f', trim: 'rgba(255,217,138,.62)' },
+  blue: { a: '#24405f', b: '#172b42', c: '#0d1826', trim: 'rgba(190,220,255,.6)' },
+  gold: { a: '#7a6528', b: '#54441a', c: '#2e250c', trim: 'rgba(255,233,168,.7)' },
+};
+const EAVE_ORDER = ['green', 'qing', 'red', 'blue', 'gold'];
+
+function EaveBar({ children, theme, onCycle }: { children: React.ReactNode; theme: string; onCycle: () => void }) {
+  const W = 480, X0 = 26, X1 = W - 26, Y = 34, CY = 46;
+  const t = EAVE_THEMES[theme] ?? EAVE_THEMES.green;
+  const pt = (k: number) => {
+    const u = 1 - k;
+    return [u * u * X0 + 2 * u * k * (W / 2) + k * k * X1, u * u * Y + 2 * u * k * CY + k * k * Y] as const;
+  };
+  const N = 22, R = (X1 - X0) / N / 2;
+  const tiles = Array.from({ length: N }, (_, i) => {
+    const [x, y] = pt((i + 0.5) / N);
+    return `M ${(x - R).toFixed(1)} ${y.toFixed(1)} a ${R.toFixed(1)} ${(R * 0.9).toFixed(1)} 0 0 0 ${(R * 2).toFixed(1)} 0`;
+  }).join(' ');
+  return (
+    <div className="mj-eave" onClick={onCycle} title="点一下换个檐色">
+      <svg viewBox={`0 0 ${W} 56`} preserveAspectRatio="none" aria-hidden>
+        <defs>
+          <linearGradient id={`mj-eave-fill-${theme}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={t.a} />
+            <stop offset=".62" stopColor={t.b} />
+            <stop offset="1" stopColor={t.c} />
+          </linearGradient>
+        </defs>
+        <path fill={`url(#mj-eave-fill-${theme})`} stroke={t.trim} strokeWidth="1.4"
+          d={`M 0 0 H ${W} V 18 C ${W - 4} 30, ${X1 + 10} 24, ${X1} ${Y} Q ${W / 2} ${CY} ${X0} ${Y} C ${X0 - 10} 24, 4 30, 0 18 Z`} />
+        <path fill="none" stroke={t.trim} strokeOpacity=".7" strokeWidth="1.2" d={`M 10 14 H ${W - 10}`} />
+        <path fill="none" stroke={t.trim} strokeOpacity=".85" strokeWidth="1.3" d={tiles} />
+      </svg>
+      <span className="mj-eave-text">{children}</span>
+    </div>
+  );
+}
+
+function useNow(active: boolean) {  const [now, setNow] = useState(() => socket.now());
   useEffect(() => {
     if (!active) return;
     let t: ReturnType<typeof setInterval> | null = null;
@@ -178,6 +219,15 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
 
   /** 设置面板 */
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [eaveTheme, setEaveTheme] = useState(() => {
+    try { return localStorage.getItem('mj_eave') || 'green'; } catch { return 'green'; }
+  });
+  const cycleEave = () => {
+    const idx = EAVE_ORDER.indexOf(eaveTheme);
+    const n = EAVE_ORDER[(idx + 1) % EAVE_ORDER.length];
+    setEaveTheme(n);
+    try { localStorage.setItem('mj_eave', n); } catch { /* ignore */ }
+  };
   const [voicePick, setVoicePick] = useState(false);
   const [packs, setPacks] = useState<{ id: string; name: string; count: number }[]>([]);
   const [brightness, setBrightness] = useState<'dim' | 'normal' | 'bright'>(() => {
@@ -441,15 +491,14 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
           onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
                strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
+            <path d="M15 21h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4" />
+            <polyline points="8 17 3 12 8 7" />
+            <line x1="3" y1="12" x2="15" y2="12" />
           </svg>
         </button>
-        <div className="mj-bar-center">
-          <span>第 {room.roundNo} 局</span>
-          <span className="muted">底分 {room.baseScore}</span>
-        </div>
+        <EaveBar theme={eaveTheme} onCycle={cycleEave}>
+          红中麻将 · 第 {room.roundNo} 局 · 底分 {room.baseScore}
+        </EaveBar>
         <span className="grow" />
         {ring && <span className="mj-clock">{ring.sec}s</span>}
         <button className="mj-ico-btn" title="记录"
