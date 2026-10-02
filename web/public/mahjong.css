@@ -1155,10 +1155,10 @@
   content: '';
   position: absolute;
   left: 50%;
-  top: -4px;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
+  top: -20px;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
   border-radius: 50%;
   background: radial-gradient(circle, #fffce6 0%, #ffe07a 40%, rgba(255,170,50,0) 100%);
   box-shadow:
