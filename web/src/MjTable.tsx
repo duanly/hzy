@@ -11,7 +11,7 @@
  *
  * 牌面暂时用 SVG，后面替换成图片只动 MjTile。
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { MjTile, mjName, HONG, type Tile } from './MjTile.tsx';
 import { sayDraw } from './mjvoice.ts';
 import { cue } from './voice.ts';
