@@ -52,9 +52,11 @@ export function setVoicePack(id: string) {
   try { localStorage.setItem('phz_voicepack', id); } catch { /* ignore */ }
   loadVoicePack(lastVariant);   // 换了一套：立刻重拉
 }
-/** 有哪些套可以挑（后台传了录音的才算） */
-export function voicePacks(): Promise<{ id: string; name: string; count: number }[]> {
-  return fetch('/api/voice?packs=1').then(r => r.json()).then((d: any) => d.packs ?? []).catch(() => []);
+/** 有哪些套可以挑（后台传了录音的才算）
+ *  game 参数：不传返回全部，'mj' 只返麻将的，'phz' 只返跑胡子的 */
+export function voicePacks(game?: 'mj' | 'phz'): Promise<{ id: string; name: string; count: number }[]> {
+  const q = game ? `&game=${game}` : '';
+  return fetch(`/api/voice?packs=1${q}`).then(r => r.json()).then((d: any) => d.packs ?? []).catch(() => []);
 }
 
 /**

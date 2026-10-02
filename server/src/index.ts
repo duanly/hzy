@@ -239,7 +239,7 @@ const server = createServer(async (req, res) => {
          `p` = 玩家挑的套（空 = 跟这个玩法的默认）；`v` = 玩法，用来查默认套。 */
       try {
         const EXTS = ['mp3', 'm4a', 'mp4', 'webm', 'ogg', 'wav'];
-        const listPacks = () => {
+        const listPacks = (game?: 'phz' | 'mj') => {
           const out: { id: string; name: string; count: number }[] = [];
           const dir = join(VOICE_DIR, 'packs');
           if (existsSync(dir)) for (const d of readdirSync(dir)) {
@@ -248,13 +248,27 @@ const server = createServer(async (req, res) => {
             try { if (!statSync(full).isDirectory()) continue; } catch { continue; }
             let name = d, count = 0;
             try { name = JSON.parse(readFileSync(join(full, 'pack.json'), 'utf8')).name || d; } catch { /* ignore */ }
-            try { count = readdirSync(full).filter(f => EXTS.includes(f.split('.').pop()?.toLowerCase() ?? '')).length; } catch { /* ignore */ }
-            if (count) out.push({ id: d, name, count });   // 一条都没录的套不用给玩家看
+            let files: string[] = [];
+            try { files = readdirSync(full).filter(f => EXTS.includes(f.split('.').pop()?.toLowerCase() ?? '')); } catch { /* ignore */ }
+            count = files.length;
+            if (!count) continue;   // 一条都没录的套不用给玩家看
+            // 按玩法过滤：pack.json 里有 game 字段就按它来，否则看文件名前缀
+            if (game) {
+              let packGame: 'phz' | 'mj' = 'phz';
+              try {
+                const meta = JSON.parse(readFileSync(join(full, 'pack.json'), 'utf8'));
+                if (meta.game === 'mj' || meta.game === 'phz') packGame = meta.game;
+              } catch { /* ignore */ }
+              if (packGame === 'phz' && files.some(f => f.startsWith('mj_'))) packGame = 'mj';
+              if (packGame !== game) continue;
+            }
+            out.push({ id: d, name, count });
           }
           return out;
         };
         if (url.searchParams.get('packs') !== null) {
-          return json(res, 200, { packs: listPacks(), byVariant: db.getSetting<Record<string, string>>('voicePacks', {}) });
+          const game = url.searchParams.get('game') === 'mj' ? 'mj' : undefined;
+          return json(res, 200, { packs: listPacks(game), byVariant: db.getSetting<Record<string, string>>('voicePacks', {}) });
         }
         const v = String(url.searchParams.get('v') ?? '');
         let pack = String(url.searchParams.get('p') ?? '');

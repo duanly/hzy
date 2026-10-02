@@ -64,16 +64,34 @@ const VARIANT_CN: Record<string, string> = { hy_honghei: '衡阳红黑', hy_liuh
    根目录 data/voice/ 那一套是**内置**的（id 为空），当"默认"用。 */
 const PACK_ID = /^[a-z0-9_-]{1,24}$/;
 function packDir(root: string, id: string) { return id ? join(root, 'packs', id) : root; }
-/** 有哪些套：内置那一套 + packs/ 下每个目录 */
-function listPacks(root: string) {
-  const out: { id: string; name: string; count: number }[] = [
-    { id: '', name: '默认（内置）', count: voiceFiles(root).size },
-  ];
+/** 判断一个语音包属于哪个玩法：
+ *  1. pack.json 里有 game 字段的话直接用
+ *  2. 否则看里面的文件 key：有 mj_ 前缀 → mj，否则 → phz */
+function packGame(dir: string): 'phz' | 'mj' {
+  // 先看 pack.json
+  try {
+    const meta = JSON.parse(readFileSync(join(dir, 'pack.json'), 'utf8'));
+    if (meta.game === 'mj' || meta.game === 'phz') return meta.game;
+  } catch { /* ignore */ }
+  // 再看文件 key
+  const files = voiceFiles(dir);
+  for (const k of files.keys()) if (k.startsWith('mj_')) return 'mj';
+  return 'phz';
+}
+/** 有哪些套：内置那一套 + packs/ 下每个目录
+ *  game 参数：不传返回全部，'mj' 只返麻将的，'phz' 只返跑胡子的 */
+function listPacks(root: string, game?: 'phz' | 'mj') {
+  const out: { id: string; name: string; count: number }[] = [];
+  // 内置那一套：按根目录的文件判断属于哪个玩法
+  if (!game || packGame(root) === game) {
+    out.push({ id: '', name: '默认（内置）', count: voiceFiles(root).size });
+  }
   const dir = join(root, 'packs');
   if (existsSync(dir)) for (const d of readdirSync(dir)) {
     if (!PACK_ID.test(d)) continue;
     const full = join(dir, d);
     try { if (!statSync(full).isDirectory()) continue; } catch { continue; }
+    if (game && packGame(full) !== game) continue;
     let name = d;
     try { name = JSON.parse(readFileSync(join(full, 'pack.json'), 'utf8')).name || d; } catch { /* 没名字就用目录名 */ }
     out.push({ id: d, name, count: voiceFiles(full).size });
@@ -335,7 +353,7 @@ export async function handleAdmin(
         const base = packId ? voiceFiles(voiceDir) : have;
         return json(res, 200, {
           pack: packId,
-          packs: listPacks(voiceDir),
+          packs: listPacks(voiceDir, game === 'mj' ? 'mj' : game === 'phz' ? 'phz' : undefined),
           // 每个玩法默认用哪一套（玩家没自己挑的时候）
           byVariant: db.getSetting<Record<string, string>>('voicePacks', {}),
           variants: VOICE_VARIANTS.map(v => ({ id: v, name: VARIANT_CN[v] ?? v })),

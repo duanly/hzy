@@ -198,7 +198,7 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
 
   /** 加载配音包列表 */
   useEffect(() => {
-    if (voicePick) voicePacks().then(setPacks);
+    if (voicePick) voicePacks('mj').then(setPacks);
   }, [voicePick]);
 
   const opts: string[] = g?.options ?? [];
