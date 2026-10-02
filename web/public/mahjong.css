@@ -1188,29 +1188,28 @@
   transform: translateY(0);
   animation: mjDrawnPop 2s ease-out forwards;
 }
-/* 摸牌动画中：星光还在飞，牌缩成光点藏着（跟星光呼应） */
+/* 摸牌动画中：星光还在飞，牌完全收起占0宽度，位置不留空 */
 .mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-flying {
   animation: none;
-  transform: translateY(-20px) scale(0.1);
+  width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  overflow: hidden;
   opacity: 0;
-  margin-left: 0;
-  margin-right: 0;
 }
 .mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-flying::before {
-  opacity: 1;
-  top: 50%;
-  transform: translateY(-50%) scale(3);
+  opacity: 0;
 }
 /* 星光到达：牌弹出来（放大+抬高），然后正常进入 drawn 动画 */
 .mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-landing {
   animation: mjDrawnLand 1.6s ease-out forwards;
 }
 @keyframes mjDrawnLand {
-  0%   { transform: translateY(-20px) scale(0.2); opacity: 0; margin-left: 0; margin-right: 0; }
-  20%  { transform: translateY(-20px) scale(1.1); opacity: 1; margin-left: 5px; margin-right: 5px; }
+  0%   { width: 0; transform: translateY(-20px) scale(0.2); opacity: 0; margin-left: 0; margin-right: 0; }
+  20%  { width: calc(52px * var(--tile-scale, 1)); transform: translateY(-20px) scale(1.1); opacity: 1; margin-left: 5px; margin-right: 5px; }
   30%  { transform: translateY(-20px) scale(1); margin-left: 5px; margin-right: 5px; }
   85%  { transform: translateY(-20px); margin-left: 5px; margin-right: 5px; }
-  100% { transform: translateY(0); margin-left: 0; margin-right: 0; }
+  100% { width: calc(52px * var(--tile-scale, 1)); transform: translateY(0); margin-left: 0; margin-right: 0; }
 }
 @keyframes mjDrawnPop {
   0%   { margin-left: 5px; margin-right: 5px; transform: translateY(-20px); }
