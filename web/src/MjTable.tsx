@@ -765,7 +765,8 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
       ['--tile-scale' as any]: tileScale,
       ['--center-size' as any]: centerSize ? `${centerSize}px` : '0px',
     }}>
-      {/* 中央区域：中心装饰（倒计时环+箭头+剩余张数） */}
+      <div className="mj-table-inner">
+        {/* 中央区域：中心装饰（倒计时环+箭头+剩余张数） */}
       <div className="mj-center">
         <CenterDeco wallLeft={v.wallLeft} currentRel={pointerRel}
           ringFrac={ringFrac} nextSec={nextSec} />
@@ -853,6 +854,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
             bubbles={bubbles} />
         );
       })}
+      </div>
     </div>
   );
 }
