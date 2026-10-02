@@ -593,25 +593,23 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         const seat = turnPlayer.seat;
 
         if (isMine && turnPlayer.drawn !== null && turnPlayer.drawn !== true) {
-          // 我方：金橙色水滴形流星从中心飞向下边（总时长 ~1.9s）
+          // 我方：金橙色水滴形流星从中心飞向下边（总时长 ~1.3s）
           const tile = turnPlayer.drawn as Tile;
           clearDrawTimers();
           sayDraw();
-          const t0 = window.setTimeout(() => {
-            cue('mj_draw');
-            setDrawAnim({ seat, phase: 'start', tile });   // 中心光点出现
-            const t1 = window.setTimeout(() => {
-              setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
-            }, 200);
-            const t2 = window.setTimeout(() => {
-              setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 到达淡出
-            }, 1100);
-            const t3 = window.setTimeout(() => {
-              setDrawAnim(null);
-            }, 1400);
-            drawTimersRef.current.push(t1, t2, t3);
-          }, 500);
-          drawTimersRef.current.push(t0);
+          cue('mj_draw');
+          // 立即设为 start：手牌中的 drawn 牌立刻隐藏（缩成光点），星光在中心出现
+          setDrawAnim({ seat, phase: 'start', tile });
+          const t1 = window.setTimeout(() => {
+            setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
+          }, 150);
+          const t2 = window.setTimeout(() => {
+            setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 到达淡出
+          }, 1050);
+          const t3 = window.setTimeout(() => {
+            setDrawAnim(null);
+          }, 1350);
+          drawTimersRef.current.push(t1, t2, t3);
         } else if (!isMine) {
           // 其他三家：金橙色水滴形流星飞向各自边的中心（总时长 ~1.4s）
           clearDrawTimers();

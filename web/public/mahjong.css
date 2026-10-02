@@ -198,7 +198,7 @@
 }
 .mj-seat-bottom .mj-player-wrap {
   position: absolute;
-  left: calc(40px * var(--tile-scale, 1));
+  left: 0;
   bottom: 0;
   display: flex;
   align-items: flex-end;
@@ -208,6 +208,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin-left: calc(80px * var(--tile-scale, 1));
+  margin-right: calc(5px * var(--tile-scale, 1));
   display: flex;
   justify-content: flex-end;
   align-items: flex-end;
