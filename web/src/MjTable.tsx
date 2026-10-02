@@ -880,7 +880,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
             onTilePointerDown={p.seat === v.mySeat ? onTilePointerDown : undefined}
             bubbles={bubbles}
             drawPhase={
-              mine && drawAnim && drawAnim.seat === p.seat
+              p.seat === v.mySeat && drawAnim && drawAnim.seat === p.seat
                 ? (drawAnim.phase === 'end' ? 'landing' : 'flying')
                 : undefined
             } />
