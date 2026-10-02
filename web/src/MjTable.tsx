@@ -234,9 +234,11 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
         </div>
 
         {/* 下地牌：靠另一侧 */}
-        <div className="mj-melds-wrap">
-          {meldsEl}
-        </div>
+        {p.melds.length > 0 && (
+          <div className="mj-melds-wrap">
+            {meldsEl}
+          </div>
+        )}
       </div>
     </div>
   );

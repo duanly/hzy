@@ -188,10 +188,10 @@
 .mj-seat-bottom .mj-seat-inner {
   flex-direction: row;
   width: 100%;
-  padding: 0 calc(160px * var(--tile-scale, 1));
+  padding: 0 calc(20px * var(--tile-scale, 1));
   align-items: flex-end;
-  justify-content: center;
-  gap: 0;
+  justify-content: flex-start;
+  gap: calc(20px * var(--tile-scale, 1));
   position: relative;
 }
 .mj-seat-bottom .mj-player-wrap {
@@ -201,8 +201,18 @@
   display: flex;
   align-items: flex-end;
 }
-.mj-seat-bottom .mj-hand-wrap { flex: none; display: flex; align-items: flex-end; }
-.mj-seat-bottom .mj-melds-wrap { position: absolute; right: calc(8px * var(--tile-scale, 1)); bottom: 5px; display: flex; align-items: flex-end; }
+.mj-seat-bottom .mj-hand-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+.mj-seat-bottom .mj-melds-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
 .mj-seat-bottom .mj-hand { justify-content: center; }
 
 /* ---- 顶部（对家）：头像居中靠上，手牌居中，下地牌在左 ---- */
