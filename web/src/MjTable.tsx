@@ -850,6 +850,11 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
               <MjTile tile={drawAnim.tile as Tile} size="xs" variant="flat" />
             </div>
           ) : null}
+          {!drawIsMine && (
+            <div className="mj-draw-back-tile">
+              <MjTile back size="sm" variant="flat" />
+            </div>
+          )}
           <div className="mj-draw-meteor" />
         </div>
       )}

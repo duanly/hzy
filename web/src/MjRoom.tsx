@@ -437,17 +437,37 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   return (
     <div className="screen mj-screen" style={{ filter: brightnessFilter }}>
       <div className="mj-bar">
-        <button className="btn ghost sm" onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>离开</button>
+        <button className="mj-ico-btn" title="离开"
+          onClick={() => { socket.send({ type: 'room.leave' }); onLeft(); }}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+               strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
         <div className="mj-bar-center">
           <span>第 {room.roundNo} 局</span>
           <span className="muted">底分 {room.baseScore}</span>
         </div>
         <span className="grow" />
         {ring && <span className="mj-clock">{ring.sec}s</span>}
-        <button className="btn ghost sm" onClick={() => setShowHistory(true)} disabled={!room.ledger.length}>记录</button>
+        <button className="mj-ico-btn" title="记录"
+          onClick={() => setShowHistory(true)} disabled={!room.ledger.length}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+               strokeWidth="1.9" strokeLinecap="round">
+            <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+            <path d="M3.5 9h17M3.5 14.5h17M9.5 9v11M15 9v11" />
+          </svg>
+        </button>
         <div className={`mj-tools ${toolsOpen ? 'open' : ''}`}>
-          <button className="btn ghost sm mj-tools-btn" onClick={() => setToolsOpen(o => !o)} title="设置">
-            ⚙
+          <button className="mj-ico-btn mj-tools-btn" title="设置"
+            onClick={() => setToolsOpen(o => !o)}>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+                 strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+            </svg>
           </button>
           {toolsOpen && (
             <div className="mj-tools-pop" onMouseDown={e => e.stopPropagation()}>

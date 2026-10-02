@@ -388,13 +388,15 @@
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(135deg, #3d7a58, #1f4f37);
   color: #f2e6c4;
-  font-size: 12px; font-weight: 700;
+  font-size: 14px; font-weight: 700;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   border: 2px solid rgba(214,183,106,.5);
   flex: none;
   overflow: hidden;
   position: relative;
   white-space: nowrap;
   padding: 0 2px;
+  text-align: center;
 }
 /* 轮到谁：头像外发光 + 金色环 */
 .mj-seat.mj-turn .mj-avatar {
@@ -979,32 +981,43 @@
   transform: translate(-50%, -50%);
   transition: opacity .15s ease;
 }
-/* 水滴形流星：圆头朝前、尖头朝后 */
+/* 🌟 星光：用 emoji 实现，比自己画的有灵动感 */
 .mj-draw-meteor {
   position: absolute;
   left: 50%; top: 50%;
-  width: 14px; height: 22px;
-  margin-left: -7px; margin-top: -11px;
-  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-  background: radial-gradient(ellipse at 50% 30%, #fffce6 0%, #ffe07a 25%, #ffac30 55%, rgba(255,140,30,0) 100%);
-  box-shadow:
-    0 0 8px #ffcf48,
-    0 0 16px #ff9820,
-    0 0 26px rgba(255,140,30,.5);
+  width: 28px; height: 28px;
+  margin-left: -14px; margin-top: -14px;
+  font-size: 28px;
+  line-height: 28px;
+  text-align: center;
   opacity: 0;
   transition: all .9s cubic-bezier(.25,.7,.25,1);
+  filter: drop-shadow(0 0 6px #ffd86b) drop-shadow(0 0 12px rgba(255,200,80,.6));
+}
+.mj-draw-meteor::before {
+  content: "🌟";
+}
+/* 其他三家落地时的小牌背（牌大小的1/2 ≈ xs 尺寸的一半） */
+.mj-draw-back-tile {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity .15s ease, transform .2s ease;
+}
+.mj-draw-back-tile .mj-tile {
+  /* sm = 32×43, 1/2 ≈ 16×22，直接用 16px 宽 */
+  width: 16px;
+  height: 22px;
 }
 
-/* ---- 阶段1：中心出现一个小光点 ---- */
+/* ---- 阶段1：中心出现一个小光点（🌟 从小变大） ---- */
 .mj-draw-anim.mj-draw-start {
   opacity: 1;
-  transform: scale(0.25);
+  transform: scale(0.3);
 }
 .mj-draw-anim.mj-draw-start .mj-draw-meteor {
-  opacity: .8;
-  width: 8px; height: 8px;
-  margin-left: -4px; margin-top: -4px;
-  border-radius: 50%;
+  opacity: 1;
 }
 
 /* ---- 阶段2：飞向玩家头像（边飞边变大） ---- */
@@ -1017,39 +1030,27 @@
   opacity: 1;
 }
 
-/* 飞向下边居中（bottom 我）：尖头朝下 */
+/* 飞向下边居中（bottom 我） */
 .mj-draw-anim.mj-draw-fly.mj-draw-bottom {
   left: 50%; top: calc(100% - 40px * var(--tile-scale, 1));
 }
-.mj-draw-anim.mj-draw-fly.mj-draw-bottom .mj-draw-meteor {
-  transform: rotate(180deg);
-}
-/* 飞向上边居中（top 对家）：尖头朝上 */
+/* 飞向上边居中（top 对家） */
 .mj-draw-anim.mj-draw-fly.mj-draw-top {
   left: 50%; top: calc(40px * var(--tile-scale, 1));
 }
-.mj-draw-anim.mj-draw-fly.mj-draw-top .mj-draw-meteor {
-  transform: rotate(0deg);
-}
-/* 飞向左边居中（left 上家）：尖头朝左 */
+/* 飞向左边居中（left 上家） */
 .mj-draw-anim.mj-draw-fly.mj-draw-left {
   left: calc(40px * var(--tile-scale, 1)); top: 50%;
 }
-.mj-draw-anim.mj-draw-fly.mj-draw-left .mj-draw-meteor {
-  transform: rotate(-90deg);
-}
-/* 飞向右边居中（right 下家）：尖头朝右 */
+/* 飞向右边居中（right 下家） */
 .mj-draw-anim.mj-draw-fly.mj-draw-right {
   left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%;
 }
-.mj-draw-anim.mj-draw-fly.mj-draw-right .mj-draw-meteor {
-  transform: rotate(90deg);
-}
 
-/* ---- 阶段3：到达后淡出 ---- */
+/* ---- 阶段3：到达后淡出（其他三家落地时显示一张小牌背） ---- */
 .mj-draw-anim.mj-draw-end {
   opacity: 0;
-  transition: opacity .25s ease, transform .25s ease;
+  transition: opacity .3s ease, transform .3s ease;
 }
 .mj-draw-anim.mj-draw-end.mj-draw-bottom { left: 50%; top: calc(100% - 40px * var(--tile-scale, 1)); }
 .mj-draw-anim.mj-draw-end.mj-draw-top    { left: 50%; top: calc(40px * var(--tile-scale, 1)); }
@@ -1057,8 +1058,12 @@
 .mj-draw-anim.mj-draw-end.mj-draw-right  { left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%; }
 .mj-draw-anim.mj-draw-end .mj-draw-meteor {
   opacity: 0;
-  transform: scale(1.3);
-  transition: all .25s ease;
+  transform: scale(1.4);
+  transition: all .3s ease;
+}
+.mj-draw-anim.mj-draw-end:not(.mj-draw-bottom) .mj-draw-back-tile {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 /* ============================================================
@@ -1553,6 +1558,20 @@
 }
 .mj-bar .grow { flex: 1; }
 .mj-bar .btn.sm { font-size: 11px; padding: 2px 8px; }
+.mj-ico-btn {
+  width: 40px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(214,183,106,.25);
+  border-radius: 8px;
+  color: #e8ddc0;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.mj-ico-btn:hover { background: rgba(255,255,255,.12); }
+.mj-ico-btn:active { transform: scale(0.95); }
+.mj-ico-btn:disabled { opacity: .4; cursor: not-allowed; }
 .mj-clock { font-weight: 800; color: #ffd98a; font-variant-numeric: tabular-nums; }
 
 /* ---- 牌桌内顶栏：返回 / 房间信息 / 设置记录玩法 ---- */
