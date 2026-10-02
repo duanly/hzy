@@ -514,19 +514,15 @@
   position: absolute;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: 62%;
-  aspect-ratio: 1 / 1;
-  max-height: 58%;
+  width: var(--center-size, 62%);
+  height: var(--center-size, 62vw);
   max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
   pointer-events: none;
   z-index: 1;
 }
-@media (max-aspect-ratio: 4/3) {
-  .mj-center {
-    width: 55%;
-    max-height: 52%;
-  }
-}
+/* 中央区域尺寸由 JS 计算 --center-size，窄屏比例在 JS 中处理 */
 
 /* ---- 牌墙（四面围起来） ---- */
 .mj-wall {

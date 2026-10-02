@@ -725,23 +725,44 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
     }
   }, [v.ma, v.phase]);
 
-  // 根据屏幕尺寸计算牌的缩放比例
+  // 根据屏幕尺寸计算牌的缩放比例，以及中央正方形的尺寸
   const tableRef = useRef<HTMLDivElement>(null);
   const [tileScale, setTileScale] = useState(1);
+  const [centerSize, setCenterSize] = useState(0);
   useEffect(() => {
     const updateScale = () => {
       const vmin = Math.min(window.innerWidth, window.innerHeight);
-      // 375px 基准，最小 0.75，最大 1.4
+      // 基准 440px，最小 0.75，最大 1.4
       const scale = Math.min(1.4, Math.max(0.75, vmin / 440));
       setTileScale(scale);
+
+      // 计算中央正方形尺寸：宽的 62% vs 高的 58% 取较小值（窄屏用 55% / 52%）
+      const el = tableRef.current;
+      if (el) {
+        const w = el.clientWidth;
+        const h = el.clientHeight;
+        const isNarrow = w / h < 4 / 3;
+        const wPct = isNarrow ? 0.55 : 0.62;
+        const hPct = isNarrow ? 0.52 : 0.58;
+        const size = Math.min(w * wPct, h * hPct);
+        setCenterSize(size);
+      }
     };
     updateScale();
     window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
+    const ro = new ResizeObserver(updateScale);
+    if (tableRef.current) ro.observe(tableRef.current);
+    return () => {
+      window.removeEventListener('resize', updateScale);
+      ro.disconnect();
+    };
   }, []);
 
   return (
-    <div className="mj-table" ref={tableRef} style={{ ['--tile-scale' as any]: tileScale }}>
+    <div className="mj-table" ref={tableRef} style={{
+      ['--tile-scale' as any]: tileScale,
+      ['--center-size' as any]: centerSize ? `${centerSize}px` : '0px',
+    }}>
       {/* 中央区域：中心装饰（倒计时环+箭头+剩余张数） */}
       <div className="mj-center">
         <CenterDeco wallLeft={v.wallLeft} currentRel={pointerRel}
