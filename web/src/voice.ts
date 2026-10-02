@@ -418,6 +418,11 @@ export function cue(key?: string) {
     case 'liuju': tone(587, 120, .1); tone(494, 120, .1, 'triangle', .12); tone(392, 240, .1, 'triangle', .24); break;
     case 'start': tone(523, 90, .1); tone(784, 140, .1, 'triangle', .1); break;
     case 'can_hu': tone(1046, 90, .13); tone(1318, 160, .13, 'triangle', .11); break;   // 你可以胡了
+    case 'mj_tick': tone(1200, 60, .08, 'sine'); break;                                   // 麻将：倒计时滴答
+    case 'mj_draw': tone(784, 50, .1, 'sine'); tone(1046, 80, .1, 'sine', .05); break;     // 麻将：摸牌声
+    case 'mj_peng': tone(523, 80, .12); tone(659, 100, .12, 'triangle', .08); break;       // 麻将：碰
+    case 'mj_gang': tone(392, 80, .14); tone(523, 80, .14, 'triangle', .08); tone(659, 120, .14, 'triangle', .16); break; // 麻将：杠
+    case 'mj_hu': tone(659, 100, .14); tone(880, 100, .14, 'triangle', .1); tone(1318, 280, .14, 'triangle', .2); break;  // 麻将：胡
     default: break;   // 牌名（s1…b10）不配音效：一局几十张，叮个没完反而吵
   }
 }

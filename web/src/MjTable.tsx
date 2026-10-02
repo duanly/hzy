@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MjTile, mjName, HONG, type Tile } from './MjTile.tsx';
 import { sayDraw } from './mjvoice.ts';
+import { cue } from './voice.ts';
 
 /** 倒计时环颜色：绿 → 黄 → 红 */
 function ringColor(f: number) {
@@ -150,11 +151,12 @@ function PlayerCard({ p, justDrew, showHandCount }: {
  *   - 手牌从靠近头像那边码起
  *   - 下地牌从对侧码起（从右往左）
  */
-function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
+function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [], drawPhase }: {
   p: MjSeatView; rel: 0 | 1 | 2 | 3; mine: boolean;
   picked?: number;
   onTilePointerDown?: (e: React.PointerEvent, t: Tile, i: number) => void;
   bubbles?: { id: number; seat: number; text: string; ms?: number }[];
+  drawPhase?: 'flying' | 'landing';
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
   const size: 'sm' | 'ml' = mine ? 'ml' : 'sm';
@@ -175,6 +177,8 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [] }: {
             onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
             className={[
               isDrawn ? 'mj-drawn' : undefined,
+              isDrawn && drawPhase === 'flying' ? 'mj-drawn-flying' : undefined,
+              isDrawn && drawPhase === 'landing' ? 'mj-drawn-landing' : undefined,
               p.huTile !== undefined && t === p.huTile ? 'mj-hu' : undefined,
             ].filter(Boolean).join(' ') || undefined} />
         );
@@ -308,14 +312,29 @@ function CenterDeco({ wallLeft, currentRel, ringFrac, nextSec }: {
   const ringFracToUse = isNext ? Math.max(0, Math.min(1, nextSec / 7)) : frac;
 
   return (
-    <div className="mj-center-deco">
-      {/* 风位字：东南西北环绕 */}
+    <div className={`mj-center-deco${isNext ? ' mj-next-mode' : ''}`}>
+      {/* 风位字：东南西北环绕（下一局时北字位置换成倒计时） */}
       <div className="mj-wind-ring">
         <span className="w-n">北</span>
         <span className="w-s">南</span>
         <span className="w-e">东</span>
         <span className="w-w">西</span>
       </div>
+
+      {/* 下一局倒计时：放在顶部"北"字位置 */}
+      {isNext && (
+        <div className="mj-next-countdown">
+          <svg className="mj-next-ring" width="36" height="36" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,.15)" strokeWidth="2" />
+            <circle cx="18" cy="18" r="14" fill="none"
+              stroke="#4fc3f7" strokeWidth="2" strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 14}
+              strokeDashoffset={2 * Math.PI * 14 * (1 - ringFracToUse)}
+              style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }} />
+          </svg>
+          <span>{nextSec}</span>
+        </div>
+      )}
 
       {/* 倒计时环：起点对准指针，逆时针方向减少 */}
       <svg className="mj-center-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`}
@@ -329,13 +348,8 @@ function CenterDeco({ wallLeft, currentRel, ringFrac, nextSec }: {
       {/* 指针：指向当前玩家（下一局模式不显示） */}
       {!isNext && <TurnPointer angle={pointerDeg} color={color} />}
 
-      {/* 下一局倒计时文字 / 剩余张数 */}
-      {isNext ? (
-        <div className="mj-center-next">
-          <b>下一局</b>
-          <span>{nextSec}s</span>
-        </div>
-      ) : (
+      {/* 剩余张数（下一局模式不显示） */}
+      {!isNext && (
         <div className="mj-center-count">
           <span>{wallLeft}</span>
         </div>
@@ -526,6 +540,17 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
     ? Math.max(0, Math.ceil((v.nextRoundAt - now) / 1000))
     : undefined;
 
+  // 下一局倒计时 ≤5s 时每秒滴答一声
+  const prevNextSecRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (nextSec === undefined) { prevNextSecRef.current = undefined; return; }
+    const prev = prevNextSecRef.current;
+    if (prev !== undefined && nextSec < prev && nextSec > 0 && nextSec <= 5) {
+      cue('mj_tick');
+    }
+    prevNextSecRef.current = nextSec;
+  }, [nextSec]);
+
   // ============== 骰子动画 ==============
   const [showDice, setShowDice] = useState(false);
   const [diceRolling, setDiceRolling] = useState(false);
@@ -573,6 +598,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
           clearDrawTimers();
           sayDraw();
           const t0 = window.setTimeout(() => {
+            cue('mj_draw');
             setDrawAnim({ seat, phase: 'start', tile });   // 中心光点出现
             const t1 = window.setTimeout(() => {
               setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
@@ -589,6 +615,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         } else if (!isMine) {
           // 其他三家：金橙色水滴形流星飞向各自边的中心（总时长 ~1.4s）
           clearDrawTimers();
+          cue('mj_draw');
           setDrawAnim({ seat, phase: 'start', tile: 'star' });   // 中心光点出现
           const t1 = window.setTimeout(() => {
             setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
@@ -851,7 +878,12 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
             mine={p.seat === v.mySeat}
             picked={p.seat === v.mySeat ? picked : undefined}
             onTilePointerDown={p.seat === v.mySeat ? onTilePointerDown : undefined}
-            bubbles={bubbles} />
+            bubbles={bubbles}
+            drawPhase={
+              mine && drawAnim && drawAnim.seat === p.seat
+                ? (drawAnim.phase === 'end' ? 'landing' : 'flying')
+                : undefined
+            } />
         );
       })}
       </div>

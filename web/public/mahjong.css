@@ -192,7 +192,7 @@
   width: 100%;
   padding: 0 calc(20px * var(--tile-scale, 1));
   align-items: flex-end;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: calc(20px * var(--tile-scale, 1));
   position: relative;
 }
@@ -202,12 +202,14 @@
   bottom: 0;
   display: flex;
   align-items: flex-end;
+  z-index: 20;
 }
 .mj-seat-bottom .mj-hand-wrap {
   flex: 1 1 auto;
   min-width: 0;
+  margin-left: calc(80px * var(--tile-scale, 1));
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: flex-end;
 }
 .mj-seat-bottom .mj-melds-wrap {
@@ -215,7 +217,7 @@
   display: flex;
   align-items: flex-end;
 }
-.mj-seat-bottom .mj-hand { justify-content: center; }
+.mj-seat-bottom .mj-hand { justify-content: flex-end; }
 
 /* ---- 顶部（对家）：头像居中靠上，手牌居中，下地牌在左 ---- */
 .mj-seat-top {
@@ -731,6 +733,33 @@
 .mj-wind-ring .w-e { right: -2px;  top: 50%;  transform: translateY(-50%); }
 .mj-wind-ring .w-w { left: -2px;   top: 50%;  transform: translateY(-50%); }
 
+/* 下一局倒计时：放在顶部北字位置，替代北字 */
+.mj-next-countdown {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4fc3f7;
+  pointer-events: none;
+  z-index: 5;
+}
+.mj-next-countdown .mj-next-ring {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 6px rgba(79,195,247,.6));
+}
+.mj-next-countdown span {
+  font-size: 14px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(79,195,247,.5);
+}
+.mj-center-deco.mj-next-mode .mj-wind-ring .w-n { opacity: 0; }
+
 /* ---- 亮牌区：刚打出来的牌 ----
    四阶段：
    - flyIn: 从出牌者位置飞到明牌区（中心）
@@ -1157,6 +1186,30 @@
   margin-right: 0;
   transform: translateY(0);
   animation: mjDrawnPop 2s ease-out forwards;
+}
+/* 摸牌动画中：星光还在飞，牌缩成光点藏着（跟星光呼应） */
+.mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-flying {
+  animation: none;
+  transform: translateY(-20px) scale(0.1);
+  opacity: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+.mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-flying::before {
+  opacity: 1;
+  top: 50%;
+  transform: translateY(-50%) scale(3);
+}
+/* 星光到达：牌弹出来（放大+抬高），然后正常进入 drawn 动画 */
+.mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-landing {
+  animation: mjDrawnLand 1.6s ease-out forwards;
+}
+@keyframes mjDrawnLand {
+  0%   { transform: translateY(-20px) scale(0.2); opacity: 0; margin-left: 0; margin-right: 0; }
+  20%  { transform: translateY(-20px) scale(1.1); opacity: 1; margin-left: 5px; margin-right: 5px; }
+  30%  { transform: translateY(-20px) scale(1); margin-left: 5px; margin-right: 5px; }
+  85%  { transform: translateY(-20px); margin-left: 5px; margin-right: 5px; }
+  100% { transform: translateY(0); margin-left: 0; margin-right: 0; }
 }
 @keyframes mjDrawnPop {
   0%   { margin-left: 5px; margin-right: 5px; transform: translateY(-20px); }
