@@ -515,6 +515,8 @@
 
 /* 自己的手牌：悬停抬起 */
 .mj-seat-bottom .mj-hand .mj-tile {
+  transition: transform .3s cubic-bezier(.25,.7,.25,1);
+}
   cursor: pointer;
 }
 .mj-seat-bottom .mj-hand .mj-sel {
@@ -1047,27 +1049,52 @@
   left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%;
 }
 
-/* ---- 阶段3：到达后淡出（我方星光淡出；其他三家：星光淡出 + 小牌背短暂显现再淡出） ---- */
+/* ---- 阶段3：到达（我方：落到手牌区上方，准备横飘插入；其他三家：小牌背显现后淡出） ---- */
 .mj-draw-anim.mj-draw-end {
-  opacity: 0;
-  transition: opacity .25s ease .25s;
+  opacity: 1;
 }
-.mj-draw-anim.mj-draw-end.mj-draw-bottom { left: 50%; top: calc(100% - 40px * var(--tile-scale, 1)); }
+.mj-draw-anim.mj-draw-end.mj-draw-bottom { left: 50%; top: calc(100% - 60px * var(--tile-scale, 1)); }
 .mj-draw-anim.mj-draw-end.mj-draw-top    { left: 50%; top: calc(40px * var(--tile-scale, 1)); }
 .mj-draw-anim.mj-draw-end.mj-draw-left   { left: calc(40px * var(--tile-scale, 1)); top: 50%; }
 .mj-draw-anim.mj-draw-end.mj-draw-right  { left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%; }
+/* 其他三家 end：星光消失 + 小牌背弹出，然后整体淡出 */
+.mj-draw-anim.mj-draw-end:not(.mj-draw-bottom) {
+  opacity: 0;
+  transition: opacity .25s ease .25s;
+}
 .mj-draw-anim.mj-draw-end .mj-draw-meteor {
   opacity: 0;
-  transform: scale(1.5);
+  transform: scale(1.4);
   transition: all .2s ease;
 }
-/* 落地牌背：弹出来显现，然后随容器一起淡出 */
 .mj-draw-anim.mj-draw-end .mj-draw-back-tile {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
   transition: transform .2s cubic-bezier(.3,1.6,.5,1);
 }
 .mj-draw-anim.mj-draw-end.mj-draw-bottom .mj-draw-back-tile { display: none; }
+/* 我方 end 阶段：🌟 还在，只是飞到位了（继续保持） */
+.mj-draw-anim.mj-draw-end.mj-draw-bottom .mj-draw-meteor {
+  opacity: 1;
+  transform: scale(1);
+  transition: all .25s ease;
+}
+
+/* ---- 阶段4（仅我方）：🌟 横飘到插入位置上方，然后消失，牌从高处落下 ---- */
+.mj-draw-anim.mj-draw-insert {
+  opacity: 1;
+  transition: opacity .2s ease .2s;
+}
+.mj-draw-anim.mj-draw-insert.mj-draw-bottom {
+  /* 飞到最右（手牌右端上方）：右边距 5px + 半张牌宽 */
+  left: calc(100% - 5px * var(--tile-scale, 1) - 26px * var(--tile-scale, 1));
+  top: calc(100% - 50px * var(--tile-scale, 1));
+}
+.mj-draw-anim.mj-draw-insert .mj-draw-meteor {
+  opacity: 0;
+  transform: scale(0.7) translateY(-10px);
+  transition: all .25s ease;
+}
 
 /* ============================================================
    碰/杠蓝光动画：从出牌者弃牌区飞向碰/杠玩家边中心
@@ -1084,17 +1111,18 @@
               transform .65s cubic-bezier(.25,.7,.25,1),
               opacity .2s ease;
 }
+/* 蓝色水滴形流星 💧：圆头朝前、尖头朝后 */
 .mj-meld-beam {
   position: absolute;
   left: 50%; top: 50%;
-  width: 8px; height: 50px;
-  margin-left: -4px; margin-top: -25px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, rgba(100,200,255,0) 0%, #5dc8ff 30%, #a8e4ff 50%, #5dc8ff 70%, rgba(100,200,255,0) 100%);
+  width: 18px; height: 30px;
+  margin-left: -9px; margin-top: -15px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: radial-gradient(ellipse at 50% 25%, #e6f7ff 0%, #7cd3ff 25%, #2ea8f0 55%, rgba(30,140,220,0) 100%);
   box-shadow:
     0 0 10px #4db8ff,
-    0 0 22px #2a9eff,
-    0 0 36px rgba(40,150,255,.6);
+    0 0 20px #2a9eff,
+    0 0 32px rgba(40,150,255,.55);
   opacity: 0;
   transition: opacity .15s ease;
 }
@@ -1208,15 +1236,14 @@
 .mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-flying::before {
   opacity: 0;
 }
-/* 星光到达：牌弹出来（放大+抬高），然后正常进入 drawn 动画 */
+/* 星光到达插入位置：牌撑开位置 + 从升高一张牌的高度落下 */
 .mj-seat-bottom .mj-hand .mj-drawn.mj-drawn-landing {
-  animation: mjDrawnLand 1.6s ease-out forwards;
+  animation: mjDrawnLand 1.5s cubic-bezier(.2,.7,.2,1) forwards;
 }
 @keyframes mjDrawnLand {
-  0%   { width: 0; transform: translateY(-20px) scale(0.2); opacity: 0; margin-left: 0; margin-right: 0; }
-  20%  { width: calc(52px * var(--tile-scale, 1)); transform: translateY(-20px) scale(1.1); opacity: 1; margin-left: 5px; margin-right: 5px; }
-  30%  { transform: translateY(-20px) scale(1); margin-left: 5px; margin-right: 5px; }
-  85%  { transform: translateY(-20px); margin-left: 5px; margin-right: 5px; }
+  0%   { width: 0; opacity: 0; transform: translateY(calc(-70px * var(--tile-scale, 1))) scale(0.8); margin-left: 0; margin-right: 0; }
+  25%  { width: calc(52px * var(--tile-scale, 1)); opacity: 1; transform: translateY(calc(-70px * var(--tile-scale, 1))) scale(1); margin-left: 4px; margin-right: 4px; }
+  40%  { transform: translateY(calc(-75px * var(--tile-scale, 1))) scale(1); }   /* 轻微弹一下 */
   100% { width: calc(52px * var(--tile-scale, 1)); transform: translateY(0); margin-left: 0; margin-right: 0; }
 }
 @keyframes mjDrawnPop {

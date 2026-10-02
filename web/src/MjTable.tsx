@@ -160,6 +160,66 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [], drawP
 }) {
   const pos = ['bottom', 'right', 'top', 'left'][rel];
   const size: 'sm' | 'ml' = mine ? 'ml' : 'sm';
+  const handRef = useRef<HTMLDivElement>(null);
+  const prevRectsRef = useRef<Map<number, DOMRect>>(new Map());
+  const animatingRef = useRef(false);
+
+  // FLIP 动画：手牌位置变动时平滑过渡（仅我方底部）
+  useLayoutEffect(() => {
+    if (!mine || !handRef.current || !p.handIds) return;
+    const el = handRef.current;
+    const tiles = el.querySelectorAll<HTMLElement>('.mj-tile');
+    const currRects = new Map<number, DOMRect>();
+    tiles.forEach(t => {
+      const id = Number(t.dataset.handId);
+      if (!isNaN(id)) currRects.set(id, t.getBoundingClientRect());
+    });
+
+    // 第一次或者刚播完动画，只记录位置
+    if (prevRectsRef.current.size === 0 || !animatingRef.current) {
+      prevRectsRef.current = currRects;
+      return;
+    }
+
+    // 计算位移并应用 invert
+    let moved = false;
+    tiles.forEach(t => {
+      const id = Number(t.dataset.handId);
+      if (isNaN(id)) return;
+      const prev = prevRectsRef.current.get(id);
+      const curr = currRects.get(id);
+      if (!prev || !curr) return;
+      const dx = prev.left - curr.left;
+      const dy = prev.top - curr.top;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        t.style.transition = 'none';
+        t.style.transform = `translate(${dx}px, ${dy}px)`;
+        moved = true;
+      }
+    });
+
+    if (moved) {
+      // 下一帧：清除 transform，播放过渡
+      requestAnimationFrame(() => {
+        tiles.forEach(t => {
+          t.style.transition = '';
+          t.style.transform = '';
+        });
+      });
+      // 动画结束后更新旧位置
+      setTimeout(() => {
+        animatingRef.current = false;
+        const newRects = new Map<number, DOMRect>();
+        tiles.forEach(t => {
+          const id = Number(t.dataset.handId);
+          if (!isNaN(id)) newRects.set(id, t.getBoundingClientRect());
+        });
+        prevRectsRef.current = newRects;
+      }, 350);
+    } else {
+      prevRectsRef.current = currRects;
+    }
+  }, [p.handIds?.join(','), mine, p.hand?.length, drawPhase]);
 
   const hasDrawn = p.drawn !== null && p.drawn !== undefined;
 
@@ -168,11 +228,13 @@ function SeatHand({ p, rel, mine, picked, onTilePointerDown, bubbles = [], drawP
     ? p.handIds.indexOf(p.drawnId) : -1;
 
   const handEl = mine ? (
-    <div className="mj-hand">
+    <div className="mj-hand" ref={handRef}>
       {p.hand!.map((t, i) => {
         const isDrawn = i === drawnIdx;
+        const id = p.handIds?.[i];
         return (
-          <MjTile key={p.handIds?.[i] ?? i} tile={t} size={size}
+          <MjTile key={id ?? i} tile={t} size={size}
+            dataId={id}
             selected={picked === i}
             onPointerDown={onTilePointerDown ? (e) => onTilePointerDown(e, t, i) : undefined}
             className={[
@@ -573,7 +635,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
   // 我方：金橙色流星从中心飞到手牌
   // 其他三家：翠绿色星光从中心飞向头像，头像发光
   const [drawAnim, setDrawAnim] = useState<{
-    seat: number; phase: 'start' | 'fly' | 'end'; tile: Tile | 'star';
+    seat: number; phase: 'start' | 'fly' | 'end' | 'insert'; tile: Tile | 'star';
   } | null>(null);
   const prevWallRef = useRef(v.wallLeft);
   const prevPhaseRef = useRef(v.phase);
@@ -593,23 +655,25 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
         const seat = turnPlayer.seat;
 
         if (isMine && turnPlayer.drawn !== null && turnPlayer.drawn !== true) {
-          // 我方：金橙色水滴形流星从中心飞向下边（总时长 ~1.3s）
+          // 我方：🌟 从中心飞出 → 落到手牌区上方 → 横飘到插入位置 → 牌从高处落下
           const tile = turnPlayer.drawn as Tile;
           clearDrawTimers();
           sayDraw();
           cue('mj_draw');
-          // 立即设为 start：手牌中的 drawn 牌立刻隐藏（缩成光点），星光在中心出现
           setDrawAnim({ seat, phase: 'start', tile });
           const t1 = window.setTimeout(() => {
-            setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);  // 飞出去
+            setDrawAnim(prev => prev ? { ...prev, phase: 'fly' } : null);
           }, 150);
           const t2 = window.setTimeout(() => {
-            setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 到达淡出
+            setDrawAnim(prev => prev ? { ...prev, phase: 'end' } : null);  // 落到手牌区
           }, 1050);
           const t3 = window.setTimeout(() => {
+            setDrawAnim(prev => prev ? { ...prev, phase: 'insert' } : null);  // 飘到插入位置，牌落下
+          }, 1250);
+          const t4 = window.setTimeout(() => {
             setDrawAnim(null);
-          }, 1350);
-          drawTimersRef.current.push(t1, t2, t3);
+          }, 1850);
+          drawTimersRef.current.push(t1, t2, t3, t4);
         } else if (!isMine) {
           // 其他三家：金橙色水滴形流星飞向各自边的中心（总时长 ~1.4s）
           clearDrawTimers();
@@ -879,7 +943,7 @@ export function MjTable({ v, picked, ringFrac, now, onTilePointerDown,
             bubbles={bubbles}
             drawPhase={
               p.seat === v.mySeat && drawAnim && drawAnim.seat === p.seat
-                ? (drawAnim.phase === 'end' ? 'landing' : 'flying')
+                ? (drawAnim.phase === 'insert' ? 'landing' : 'flying')
                 : undefined
             } />
         );

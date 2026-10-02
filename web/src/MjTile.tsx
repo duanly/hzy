@@ -65,11 +65,12 @@ export function MjFace({ tile }: { tile: Tile }) {
    牌组件：带尺寸的外层容器
    ============================================================ */
 
-export function MjTile({ tile, size = 'md', back, className, onClick, onPointerDown, selected, dim, style, variant = 'standing' }: {
+export function MjTile({ tile, size = 'md', back, className, onClick, onPointerDown, selected, dim, style, variant = 'standing', dataId }: {
   tile?: Tile; size?: 'xxs' | 'xs' | 'sm' | 'md' | 'ml' | 'lg'; back?: boolean;
   className?: string; onClick?: () => void; onPointerDown?: (e: React.PointerEvent) => void; selected?: boolean; dim?: boolean;
   style?: React.CSSProperties;
   variant?: 'standing' | 'flat';
+  dataId?: number | string;
 }) {
   const baseCls = `mj-tile mj-${size}${variant === 'flat' ? ' mj-tile-flat' : ''}${selected ? ' mj-sel' : ''}${dim ? ' mj-dim' : ''}${back ? ' mj-back' : ''}${className ? ' ' + className : ''}`;
   const title = back || tile === undefined ? undefined : mjName(tile);
@@ -77,7 +78,8 @@ export function MjTile({ tile, size = 'md', back, className, onClick, onPointerD
   // 背面
   if (back || tile === undefined) {
     return (
-      <div className={baseCls} style={style} onClick={onClick} onPointerDown={onPointerDown} title={title}>
+      <div className={baseCls} style={style} onClick={onClick} onPointerDown={onPointerDown} title={title}
+        data-hand-id={dataId}>
         <img
           src="mj-tile-bodies/tile-back.png"
           alt="牌背"
