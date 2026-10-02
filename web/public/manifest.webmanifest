@@ -2,7 +2,7 @@
   "name": "衡之娱",
   "short_name": "衡之娱",
   "display": "standalone",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": ["standalone"],
   "orientation": "landscape",
   "background_color": "#10452f",
   "theme_color": "#10452f",
