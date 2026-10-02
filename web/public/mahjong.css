@@ -999,18 +999,13 @@
 .mj-draw-meteor::before {
   content: "🌟";
 }
-/* 其他三家落地时的小牌背（牌大小的1/2 ≈ xs 尺寸的一半） */
+/* 其他三家落地时的小牌背：放大到 sm 尺寸 */
 .mj-draw-back-tile {
   position: absolute;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
   opacity: 0;
   transition: opacity .15s ease, transform .2s ease;
-}
-.mj-draw-back-tile .mj-tile {
-  /* sm = 32×43, 1/2 ≈ 16×22，直接用 16px 宽 */
-  width: 16px;
-  height: 22px;
 }
 
 /* ---- 阶段1：中心出现一个小光点（🌟 从小变大） ---- */
@@ -1161,10 +1156,10 @@
 .mj-meld-anim.mj-meld-fly.mj-meld-to-top .mj-meld-beam { transform: rotate(180deg); }
 /* 飞向左边 */
 .mj-meld-anim.mj-meld-fly.mj-meld-to-left { left: calc(40px * var(--tile-scale, 1)); top: 50%; }
-.mj-meld-anim.mj-meld-fly.mj-meld-to-left .mj-meld-beam { transform: rotate(90deg); }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-left .mj-meld-beam { transform: rotate(-90deg); }
 /* 飞向右边 */
 .mj-meld-anim.mj-meld-fly.mj-meld-to-right { left: calc(100% - 40px * var(--tile-scale, 1)); top: 50%; }
-.mj-meld-anim.mj-meld-fly.mj-meld-to-right .mj-meld-beam { transform: rotate(-90deg); }
+.mj-meld-anim.mj-meld-fly.mj-meld-to-right .mj-meld-beam { transform: rotate(90deg); }
 
 /* ---- 阶段3：到达淡出 ---- */
 .mj-meld-anim.mj-meld-end {
@@ -1253,19 +1248,23 @@
 }
 /* 摸上来的牌：牌顶一个金色星光小点标志 */
 .mj-seat-bottom .mj-hand .mj-drawn::before {
-  content: '';
+  content: "🌟";
   position: absolute;
   left: 50%;
-  top: -20px;
-  width: 28px;
-  height: 28px;
-  margin-left: -14px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fffce6 0%, #ffe07a 40%, rgba(255,170,50,0) 100%);
-  box-shadow:
-    0 0 6px #ffcf48,
-    0 0 12px rgba(255,150,30,.6);
+  top: -22px;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  font-size: 24px;
+  line-height: 24px;
+  text-align: center;
   z-index: 5;
+  filter: drop-shadow(0 0 4px #ffd86b) drop-shadow(0 0 8px rgba(255,200,80,.7));
+  animation: mjDrawnStarFloat 1.8s ease-in-out infinite;
+}
+@keyframes mjDrawnStarFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
 /* ---- 翻马动画：3D 翻转 ---- */

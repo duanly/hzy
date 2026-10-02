@@ -270,10 +270,18 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
 
   /* 一局结束：先在中心播翻马动画，1.8 秒后再弹结算清单。
      用 winner/phase 作触发，不用事件 —— 事件可能因为断线丢掉，而快照一定会到。
-     关掉之后不再自动弹回来（看牌桌是玩家主动要看的）。 */
+     关掉之后不再自动弹回来（看牌桌是玩家主动要看的）。
+     新一局开始时（phase 变了）自动关掉结算面板，否则旧面板挂着新数据会显示成"荒庄"。 */
   const endedKey = g?.phase === 'ended' ? `${room.roundNo}` : '';
+  const prevEndedKeyRef = useRef('');
   useEffect(() => {
-    if (!endedKey) return;
+    if (!endedKey) {
+      // 从 ended 变成非 ended（新一局开始）→ 关掉结算面板
+      if (prevEndedKeyRef.current) setShowEnd(false);
+      prevEndedKeyRef.current = '';
+      return;
+    }
+    prevEndedKeyRef.current = endedKey;
     const t = setTimeout(() => setShowEnd(true), 1800);
     return () => clearTimeout(t);
   }, [endedKey]);
