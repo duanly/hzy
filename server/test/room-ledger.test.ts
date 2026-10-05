@@ -186,7 +186,7 @@ test('只有"该你出牌却没出"才算超时；不吃牌不算', () => {
     g.events.push(...evs);
     // 复刻 room.tick 里那一段（tick 真跑起来要等真实时间，这儿只验分类规则）
     for (const e of g.events.slice(before)) {
-      if (e.t === 'discard' || e.t === 'play_drawn') {
+      if (e.t === 'discard') {
         const s = room.seats[e.seat];
         if (s && !s.isBot && s.userId !== null && s.userId > 0) {
           s.misses = (s.misses ?? 0) + 1;
@@ -201,16 +201,20 @@ test('只有"该你出牌却没出"才算超时；不吃牌不算', () => {
     '连着两张不吃：一笔都不该记，更不该托管');
   assert.equal(room.seats[0].autoBot, false, '不吃牌不该被机器人接手');
 
+  assert.equal(countAfter([{ t: 'play_drawn', seat: 0, card: 1 }]), 0,
+    '摸上来的牌没人要（play_drawn）不算超时 —— 玩家根本没按钮要按');
+  assert.equal(room.seats[0].autoBot, false, '摸牌没人要不该被机器人接手');
+
   assert.equal(countAfter([{ t: 'discard', seat: 0, card: 1 }]), 1, '该出牌没出：记一笔');
   assert.equal(room.seats[0].autoBot, false, '头一回不接手 —— 可能只是走开倒杯水');
 
-  assert.equal(countAfter([{ t: 'discard', seat: 0, card: 1 }, { t: 'play_drawn', seat: 0, card: 2 }]), 2,
+  assert.equal(countAfter([{ t: 'discard', seat: 0, card: 1 }, { t: 'discard', seat: 0, card: 2 }]), 2,
     '同一局里连着两次该出牌没出');
   assert.equal(room.seats[0].autoBot, true, '这才交给机器人');
 
-  // 混着来：pass 不该把 discard 那一笔顶成两笔
-  assert.equal(countAfter([{ t: 'pass', seat: 0, card: 1 }, { t: 'discard', seat: 0, card: 2 }, { t: 'pass', seat: 0, card: 3 }]), 1,
-    '中间夹着的 pass 不算数');
+  // 混着来：pass / play_drawn 都不该把 discard 那一笔顶成两笔
+  assert.equal(countAfter([{ t: 'pass', seat: 0, card: 1 }, { t: 'discard', seat: 0, card: 2 }, { t: 'play_drawn', seat: 0, card: 3 }]), 1,
+    '中间夹着的 pass / play_drawn 不算数');
   assert.equal(room.seats[0].autoBot, false, '只有一次真超时，还不到托管');
 });
 
