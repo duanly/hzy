@@ -90,6 +90,8 @@ export class MahjongGame {
   /** 回放用：每一步真正生效的决定 */
   replay: { s: number; t: string; c?: Tile }[] = [];
   deadline = 0;
+  /** 当前出牌玩家真正可用的选项（emitOptions 时保存，view() 直接用，保持一致） */
+  private currentTurnOptions: ActionType[] = [];
   /* 画面比服务端慢一拍：服务端一步算完就往下走，玩家那头还在放动画。
      Room 会把"这一帧要播多久"塞进 lag，新开的时限从**玩家看到**那一刻起算。
      字牌那套引擎里是同一个机制、同一个名字 —— Room 直接拿来就能用。 */
@@ -200,6 +202,10 @@ export class MahjongGame {
   }
 
   private emitOptions(seat: number, options: ActionType[]) {
+    // 保存当前 options，view() 直接用这个，保证和 emit 出去的一致
+    if (this.phase === 'discard' && seat === this.turn) {
+      this.currentTurnOptions = options;
+    }
     if (options.length) this.emit({ t: 'options', seat, options, deadline: this.deadline });
   }
 
@@ -312,7 +318,10 @@ export class MahjongGame {
     this.turn = seat;
     this.phase = 'discard';
     this.setDeadline(this.turnMs);
-    this.emitOptions(seat, this.turnOptions(seat));
+    // 碰后不能胡（只能出或杠），杠上开花才允许胡
+    const opts: ActionType[] = ['discard'];
+    if (this.selfGangTiles(seat).length) opts.push('gang');
+    this.emitOptions(seat, opts);
   }
 
   private doMingGang(seat: number, tile: Tile) {
@@ -418,7 +427,7 @@ export class MahjongGame {
   optionsFor(seat: number | null): { options: ActionType[]; deadline: number; span?: number } | null {
     if (seat === null || this.ended) return null;
     if (this.phase === 'discard' && seat === this.turn)
-      return { options: this.turnOptions(seat), deadline: this.deadline, span: this.turnMs };
+      return { options: this.currentTurnOptions.length ? this.currentTurnOptions : this.turnOptions(seat), deadline: this.deadline, span: this.turnMs };
     if (this.phase === 'claim' && this.claim && this.claim.seat === seat && !this.claim.decided)
       return { options: [...this.claim.options, 'pass'], deadline: this.deadline, span: this.claimMs };
     return null;

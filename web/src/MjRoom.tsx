@@ -368,10 +368,21 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
   const lastTapRef = useRef<{ i: number; t: number } | null>(null);
   const DOUBLE_TAP_MS = 280;
 
+  const onTileClick = () => {
+    // click 事件目前不用，全部在 pointer 事件里处理
+  };
+
   const onTilePointerDown = (e: React.PointerEvent, t: Tile, i: number) => {
     const wasPicked = picked === i;
     dragRef.current = { i, tile: t, y0: e.clientY, started: false };
     setDragOut(false);
+
+    // 未选中 → 按下立刻选中（响应快，避免跟 click 事件各种冲突）
+    if (!wasPicked) {
+      setPicked(i);
+      lastTapRef.current = null;
+    }
+
     const move = (ev: PointerEvent) => {
       const d = dragRef.current; if (!d) return;
       const dy = d.y0 - ev.clientY;
@@ -386,28 +397,15 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       setDragGhost(null);
       if (!d) return;
       const dy = d.y0 - ev.clientY;
-      if (d.started && dy > 22) {           // 拖出弧线 → 出牌
-        setDragOut(false); setPicked(undefined);
+      if (d.started && dy > 22) {           // 明显向上拖出 → 出牌
+        setDragOut(false);
+        setPicked(undefined);
         if (canDiscard) send('discard', d.tile);
-      } else if (!d.started) {              // 没拖动 → 单击选中/取消，双击出牌
-        const now = Date.now();
-        const last = lastTapRef.current;
-        const isDouble = last && last.i === d.i && now - last.t < DOUBLE_TAP_MS;
-        if (isDouble && canDiscard) {
-          // 快速双击 → 直接出牌
-          setPicked(undefined);
-          lastTapRef.current = null;
-          send('discard', d.tile);
-        } else if (wasPicked) {
-          // 单击已选中的牌 → 取消选中（落下）
-          setPicked(undefined);
-          lastTapRef.current = { i: d.i, t: now };
-        } else {
-          // 单击未选中的牌 → 选中（抬高）
-          setPicked(d.i);
-          lastTapRef.current = { i: d.i, t: now };
-        }
+      } else if (wasPicked) {
+        // 点的是已选中的牌，且没拖出去 → 取消选中
+        setPicked(undefined);
       }
+      // 点的是未选中的牌 → pointerdown 时已经选中了，这里不用做
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -550,10 +548,12 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
       </div>
 
       <MjTable v={v} picked={picked} ringFrac={turnRing?.frac} now={now}
+        onTileClick={onTileClick}
         onTilePointerDown={onTilePointerDown}
         onHistory={() => setShowHistory(true)}
         bubbles={bubbles}
-        banner={banner} />
+        banner={banner}
+        dragGhost={dragGhost} />
 
       {/* 出牌弧线：手上方一条线，拖过去松手出牌 */}
       {canDiscard && picked !== undefined && (
@@ -574,13 +574,6 @@ export function MjRoom({ room, me, onLeft }: { room: RoomView; me: PublicUser; o
           </button>
         );
       })()}
-
-      {/* 拖牌虚影：跟着手指走 */}
-      {dragGhost && (
-        <div className="mj-drag-ghost" style={{ left: dragGhost.x, top: dragGhost.y }}>
-          <MjTile tile={dragGhost.tile} size="lg" />
-        </div>
-      )}
 
       {/* 行动按钮：竖着一排贴右下角，拇指够得着 */}
       {btnActs.length > 0 && (
